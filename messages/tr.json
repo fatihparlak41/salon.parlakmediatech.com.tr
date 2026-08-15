@@ -1,0 +1,43 @@
+{
+  "Foundation": {
+    "badge": "Faz 0 — Foundation",
+    "title": "SalonOS",
+    "tagline": "Kuaför ve güzellik salonları için operasyon platformu",
+    "description": "Bu sayfa temel altyapının doğru kurulduğunu doğrulamak için oluşturuldu. Randevu, müşteri, stok ve finans modülleri sonraki fazlarda eklenecek.",
+    "routesHeading": "Kurulu route iskeleti",
+    "linkAppLabel": "Salon paneli",
+    "linkAppPath": "/app/[tenantSlug]",
+    "linkBookLabel": "Randevu sayfası",
+    "linkBookPath": "/book/[tenantSlug]",
+    "linkSuperAdminLabel": "Süper admin",
+    "linkSuperAdminPath": "/super-admin",
+    "sampleSlug": "bella-hair"
+  },
+  "Placeholder": {
+    "tenantApp": {
+      "title": "Salon paneli",
+      "description": "Bu alan Faz 1'de kimlik doğrulama, üyelik ve izin kontrolleriyle doldurulacak."
+    },
+    "book": {
+      "title": "Randevu sayfası",
+      "description": "Herkese açık rezervasyon akışı Faz 2'de bu route üzerine inşa edilecek."
+    },
+    "superAdmin": {
+      "title": "Süper admin",
+      "description": "Platform yönetim paneli Faz 1'de kimlik doğrulama ile birlikte doldurulacak."
+    },
+    "tenantLabel": "Salon",
+    "backHome": "Ana sayfaya dön"
+  },
+  "NotFound": {
+    "title": "Sayfa bulunamadı",
+    "description": "Aradığınız sayfa mevcut değil veya taşınmış olabilir.",
+    "backHome": "Ana sayfaya dön"
+  },
+  "ErrorBoundary": {
+    "title": "Bir şeyler ters gitti",
+    "description": "Beklenmeyen bir hata oluştu. Sorun devam ederse lütfen tekrar deneyin.",
+    "retry": "Tekrar dene",
+    "digest": "Hata referansı"
+  }
+}

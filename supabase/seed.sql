@@ -1,0 +1,3 @@
+-- Local/staging demo data only — never applied to production.
+-- Empty in Faz 0 (no schema exists yet). Faz 1+ adds sample tenants,
+-- memberships and plans here for local development.
