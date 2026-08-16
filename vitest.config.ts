@@ -15,5 +15,13 @@ export default defineConfig({
     testTimeout: 20000,
     hookTimeout: 30000,
     env: parsed,
+    // All test files hit the same live remote Supabase project (no local
+    // Docker stack — see README "Supabase"), including real
+    // signInWithPassword calls against Supabase Auth's rate limiter.
+    // Running files in parallel workers multiplies concurrent auth load
+    // for no benefit here, and previously tripped that rate limit once a
+    // second test file was added. Sequential is the right default for
+    // this project, not just a workaround.
+    fileParallelism: false,
   },
 });
