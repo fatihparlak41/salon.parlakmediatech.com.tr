@@ -52,7 +52,14 @@ export async function signUpAction(
   }
 
   const supabase = await createClient();
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  // NEXT_PUBLIC_SITE_URL wins once set (the real custom domain, once
+  // attached). Until then, Vercel's own VERCEL_URL — auto-populated per
+  // deployment, including a unique one per Preview build — resolves this
+  // correctly with no per-deployment config. Bare localhost fallback is
+  // for `pnpm dev` only.
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
   const { error } = await supabase.auth.signUp({
     email: parsed.data.email,
