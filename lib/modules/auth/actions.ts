@@ -74,6 +74,14 @@ export async function signUpAction(
     if (error.code === "user_already_exists") {
       return fail("CONFLICT", "Bu e-posta adresiyle zaten bir hesap var");
     }
+    // Safe diagnostic fields only — code/status are fixed enum-like
+    // values from the SDK, never user input. error.message is skipped:
+    // some Supabase error types (e.g. email_address_invalid) embed the
+    // submitted email in the message text.
+    console.error("[signUpAction] supabase.auth.signUp failed", {
+      code: error.code,
+      status: error.status,
+    });
     return fail("UNEXPECTED", "Kayıt oluşturulamadı, lütfen tekrar deneyin");
   }
 

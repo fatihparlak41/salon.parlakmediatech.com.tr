@@ -21,6 +21,14 @@ export async function GET(request: Request) {
     if (!error) {
       return NextResponse.redirect(`${origin}${safeNext}`);
     }
+    // Safe diagnostic fields only — never the code itself (single-use
+    // credential) or the request URL (would include it as a query param).
+    console.error("[auth/callback] exchangeCodeForSession failed", {
+      code: error.code,
+      status: error.status,
+    });
+  } else {
+    console.error("[auth/callback] request had no code parameter");
   }
 
   return NextResponse.redirect(`${origin}/login?error=auth_callback_failed`);
