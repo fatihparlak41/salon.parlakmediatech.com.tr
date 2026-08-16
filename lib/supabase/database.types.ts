@@ -694,6 +694,16 @@ export type Database = {
         Returns: boolean
       }
       is_platform_admin: { Args: never; Returns: boolean }
+      security_audit_column_grants: {
+        Args: never
+        Returns: {
+          column_name: string
+          grantee: string
+          privilege_type: string
+          schema_name: string
+          table_name: string
+        }[]
+      }
       security_audit_function_grants: {
         Args: never
         Returns: {
