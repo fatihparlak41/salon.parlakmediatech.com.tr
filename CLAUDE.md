@@ -27,11 +27,16 @@ deliberate and already argued through.
   (UTC), never naive local time.**
 - **Financial records are append-only** — corrections are reversal rows,
   never in-place edits or deletes.
-- Scope stays inside the currently-approved phase. Faz 0 is foundation only
-  (no business tables/modules); Faz 1 adds multi-tenant + auth + RLS + RBAC
-  - super-admin foundation. Don't pull Faz 2+ work (appointments, CRM,
-    finance, inventory, color formulas, marketing) forward without an
-    explicit go-ahead.
+- Scope stays inside the currently-approved phase. Faz 0 (foundation) and
+  Faz 1 (multi-tenant + auth + RLS + RBAC + super-admin foundation) are
+  done. Don't pull Faz 2+ work (appointments, CRM, finance, inventory,
+  color formulas, marketing) forward without an explicit go-ahead.
+- **Any `public.*` RPC wrapper that calls into `private.*` must be
+  `security definer`, not `invoker`.** `private` has schema `usage` revoked
+  from `authenticated` (20260815120014) — an invoker wrapper runs as the
+  caller, who can't reach the schema at all, and fails with `permission
+denied for schema private`. Got this wrong once in 20260815120019, fixed
+  in 20260815120020 — see `supabase/migrations/README.md` "Lessons".
 
 ## Stack specifics that aren't obvious from training data
 
@@ -50,8 +55,19 @@ deliberate and already argued through.
   shadcn's default zinc/gray on a future `shadcn add`.
 - **next-intl**: `localePrefix: "never"` in `lib/i18n/routing.ts` — URLs
   never show `/tr/`, but the `app/[locale]/...` routing is real. Use
-  `lib/i18n/navigation.ts`'s `Link`/`redirect`, not raw `next/navigation`,
-  inside the `[locale]` tree.
+  `lib/i18n/navigation.ts`'s `Link` for anything client-rendered. For
+  **server-side `redirect()`** (Server Components, Server Actions, route
+  guards), use plain `next/navigation` instead — next-intl's server-side
+  `redirect()` requires an explicit `{ href, locale }` object (no ambient
+  "current locale" in RSC context), which is pure ceremony here. See
+  `lib/auth/session.ts`'s import comment.
+- **Supabase RLS**: policies are the authorization boundary; `lib/auth/session.ts`
+  guards (`requireUser`, `getTenantAccess`, `requirePlatformAdmin`) are the
+  optimistic/UX layer only, same relationship as proxy.ts to auth in
+  general. When adding a new tenant-scoped table, follow the pattern in any
+  `2026...create_*.sql` migration: create + `enable row level security` +
+  grants in one migration, actual policies in a later `_rls_policies_*`
+  migration once any needed `private.*` helper exists.
 - Package manager is **pnpm**. `pnpm dlx` has a broken cache on the
   original dev machine (ENOENT on postinstall) — one-off CLI tools
   (`create-next-app`, `shadcn`, `supabase`) were run via `npx` instead;

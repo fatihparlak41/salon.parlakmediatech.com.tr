@@ -1,33 +1,84 @@
 {
-  "Foundation": {
-    "badge": "Faz 0 — Foundation",
-    "title": "SalonOS",
-    "tagline": "Kuaför ve güzellik salonları için operasyon platformu",
-    "description": "Bu sayfa temel altyapının doğru kurulduğunu doğrulamak için oluşturuldu. Randevu, müşteri, stok ve finans modülleri sonraki fazlarda eklenecek.",
-    "routesHeading": "Kurulu route iskeleti",
-    "linkAppLabel": "Salon paneli",
-    "linkAppPath": "/app/[tenantSlug]",
-    "linkBookLabel": "Randevu sayfası",
-    "linkBookPath": "/book/[tenantSlug]",
-    "linkSuperAdminLabel": "Süper admin",
-    "linkSuperAdminPath": "/super-admin",
-    "sampleSlug": "bella-hair"
-  },
   "Placeholder": {
-    "tenantApp": {
-      "title": "Salon paneli",
-      "description": "Bu alan Faz 1'de kimlik doğrulama, üyelik ve izin kontrolleriyle doldurulacak."
-    },
     "book": {
       "title": "Randevu sayfası",
       "description": "Herkese açık rezervasyon akışı Faz 2'de bu route üzerine inşa edilecek."
     },
-    "superAdmin": {
-      "title": "Süper admin",
-      "description": "Platform yönetim paneli Faz 1'de kimlik doğrulama ile birlikte doldurulacak."
-    },
     "tenantLabel": "Salon",
     "backHome": "Ana sayfaya dön"
+  },
+  "Auth": {
+    "login": {
+      "title": "Giriş yap",
+      "emailLabel": "E-posta",
+      "passwordLabel": "Şifre",
+      "submit": "Giriş yap",
+      "submitting": "Giriş yapılıyor…",
+      "noAccount": "Hesabınız yok mu?",
+      "signUpLink": "Kayıt olun"
+    },
+    "signUp": {
+      "title": "Kayıt ol",
+      "fullNameLabel": "Ad Soyad",
+      "emailLabel": "E-posta",
+      "passwordLabel": "Şifre",
+      "passwordHint": "En az 8 karakter",
+      "submit": "Kayıt ol",
+      "submitting": "Kayıt oluşturuluyor…",
+      "hasAccount": "Zaten hesabınız var mı?",
+      "loginLink": "Giriş yapın",
+      "successTitle": "E-postanızı kontrol edin",
+      "successDescription": "{email} adresine bir doğrulama bağlantısı gönderdik."
+    },
+    "signOut": "Çıkış yap"
+  },
+  "Home": {
+    "signedOut": {
+      "title": "SalonOS",
+      "tagline": "Kuaför ve güzellik salonları için operasyon platformu",
+      "loginCta": "Giriş yap",
+      "signUpCta": "Kayıt ol"
+    },
+    "signedIn": {
+      "greeting": "Merhaba, {name}",
+      "yourSalons": "Salonlarınız",
+      "openSalon": "Aç",
+      "noSalons": "Henüz bir salonunuz yok.",
+      "createSalon": "Salon oluştur",
+      "platformAdmin": "Platform yönetimi",
+      "openSuperAdmin": "Süper admin paneline git"
+    }
+  },
+  "Onboarding": {
+    "title": "Salonunuzu oluşturun",
+    "description": "Bu, hesabınıza bağlı ilk salon kaydı olacak — siz otomatik olarak sahibi (owner) olursunuz.",
+    "nameLabel": "Salon adı",
+    "slugLabel": "Adres (URL)",
+    "slugHint": "Küçük harf, rakam ve tire kullanılabilir. Randevu sayfanız: /book/{slug}",
+    "submit": "Salonu oluştur",
+    "submitting": "Oluşturuluyor…"
+  },
+  "TenantApp": {
+    "dashboard": {
+      "title": "Salon paneli",
+      "roleLabel": "Rolünüz",
+      "description": "Bu alanın gerçek içeriği (randevular, müşteriler, raporlar) sonraki fazlarda eklenecek. Bu ekran, oturum + üyelik + izin zincirinin uçtan uca çalıştığını doğruluyor."
+    }
+  },
+  "SuperAdmin": {
+    "title": "Süper Admin",
+    "tenantsHeading": "Salonlar",
+    "columns": {
+      "name": "Ad",
+      "slug": "Adres",
+      "status": "Durum",
+      "createdAt": "Oluşturulma"
+    },
+    "empty": "Henüz kayıtlı salon yok.",
+    "statusActions": {
+      "activate": "Aktifleştir",
+      "suspend": "Askıya al"
+    }
   },
   "NotFound": {
     "title": "Sayfa bulunamadı",

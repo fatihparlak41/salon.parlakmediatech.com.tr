@@ -1,10 +1,12 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import type { Database } from "./database.types";
 
 /**
  * Server client for Server Components, Server Actions and Route Handlers.
- * Uses the public anon key + the caller's session cookie; RLS still applies
- * — this is not a privilege escalation, just SSR-friendly auth plumbing.
+ * Uses the public publishable key + the caller's session cookie; RLS still
+ * applies — this is not a privilege escalation, just SSR-friendly auth
+ * plumbing.
  *
  * Create a fresh client per request (never module-level singleton — see the
  * @supabase/ssr createServerClient docs bundled in node_modules).
@@ -12,9 +14,9 @@ import { cookies } from "next/headers";
 export async function createClient() {
   const cookieStore = await cookies();
 
-  return createServerClient(
+  return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
       cookies: {
         getAll() {

@@ -8,13 +8,14 @@ yayınlanacak.
 Bu repo diğer Parlak Mediatech projelerinden tamamen bağımsızdır — ayrı
 Vercel projesi, ayrı Supabase projesi.
 
-## Durum: Faz 0 — Foundation
+## Durum: Faz 1 tamam — Multi-Tenant + Auth + RLS + RBAC + Super Admin
 
-Şu an sadece temel altyapı var: proje iskeleti, tasarım sistemi, i18n,
-Supabase bağlantı katmanı, route iskeleti. **Randevu, müşteri, finans, stok,
-boya formülü gibi iş modülleri henüz yok** — bunlar sonraki fazlarda,
-onaylandıkça eklenecek. Ayrıntılı mimari kararlar ve tam yol haritası için
-onaylanmış mimari rapora bakın (proje kanalında paylaşıldı).
+Tenant foundation, kimlik doğrulama, temel salon oluşturma akışı, RBAC,
+RLS, süper admin paneli ve zorunlu cross-tenant izolasyon testleri
+tamamlandı ve canlı DEV veritabanına karşı doğrulandı. **Randevu, müşteri
+CRM, finans, stok, boya formülleri, pazarlama gibi iş modülleri henüz yok**
+— bunlar Faz 2+'a bırakıldı. Ayrıntılı mimari kararlar için onaylanmış
+mimari rapora bakın (proje kanalında paylaşıldı).
 
 ## Teknoloji
 
@@ -25,6 +26,7 @@ onaylanmış mimari rapora bakın (proje kanalında paylaşıldı).
   bileşenleri `asChild` değil `render` prop ile kompoze edin)
 - **next-intl** (i18n, bkz. aşağıda)
 - **Supabase** (Auth, Postgres + RLS, Storage) — `@supabase/ssr`
+- **Vitest** (cross-tenant izolasyon test suite, canlı DEV projesine karşı)
 - **pnpm**
 
 > Next.js 16 önceki sürümlerden farklı: Middleware artık **Proxy**
@@ -45,8 +47,9 @@ cp .env.example .env.local   # değerleri doldurun, bkz. aşağıda
 pnpm dev
 ```
 
-`http://localhost:3000` — ana sayfa kurulu route iskeletini gösterir
-(`/app/[tenantSlug]`, `/book/[tenantSlug]`, `/super-admin` placeholder'ları).
+`http://localhost:3000` — oturum açık değilse giriş/kayıt bağlantıları,
+açıksa salonlarınız + (platform admin iseniz) süper admin bağlantısı
+gösterilir.
 
 ### Diğer komutlar
 
@@ -55,11 +58,15 @@ pnpm typecheck        # tsc --noEmit
 pnpm lint             # eslint .
 pnpm format           # prettier --write .
 pnpm build            # next build
+pnpm test             # vitest run — cross-tenant izolasyon testleri (canlı DEV DB)
 
 pnpm db:start         # local Supabase (Docker gerekir)
-pnpm db:reset         # migration'ları + seed.sql'i yeniden uygula
+pnpm db:login         # npx supabase login (bir kere, tarayıcı açar)
+pnpm db:link          # bu repoyu DEV projesine bağla (DB şifresi ister)
+pnpm db:push          # migration'ları DEV projesine uygula
+pnpm db:reset         # local: migration'ları + seed.sql'i yeniden uygula
 pnpm db:migration:new <isim>
-pnpm db:types         # lib/supabase/database.types.ts üret
+pnpm db:types         # lib/supabase/database.types.ts üret (--linked)
 ```
 
 ## Environment değişkenleri
@@ -67,12 +74,12 @@ pnpm db:types         # lib/supabase/database.types.ts üret
 `.env.example` → `.env.local`. Ayrıntılı açıklamalar dosyanın içinde;
 özetle:
 
-| Değişken                        | Nereden                                     | Not                                                                                      |
-| ------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_SUPABASE_URL`      | `npx supabase status` ya da dashboard → API | Client'a açık, güvenlik RLS'ye dayanır                                                   |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | aynı                                        | Client'a açık                                                                            |
-| `SUPABASE_SERVICE_ROLE_KEY`     | dashboard → API (server ortamı)             | **Asla commit etmeyin / client'a sızdırmayın** — sadece `lib/supabase/admin.ts` kullanır |
-| `NEXT_PUBLIC_SITE_URL`          | —                                           | Local: `http://localhost:3000`                                                           |
+| Değişken                               | Nereden                                     | Not                                                                                                                     |
+| -------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`             | `npx supabase status` ya da dashboard → API | Client'a açık, güvenlik RLS'ye dayanır                                                                                  |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | aynı                                        | Client'a açık (Supabase'in yeni `sb_publishable_...` key formatı)                                                       |
+| `SUPABASE_SERVICE_ROLE_KEY`            | dashboard → API (server ortamı)             | **Asla commit etmeyin / client'a sızdırmayın** — sadece `lib/supabase/admin.ts` ve test suite fixture kurulumu kullanır |
+| `NEXT_PUBLIC_SITE_URL`                 | —                                           | Local: `http://localhost:3000`                                                                                          |
 
 Production secret'ları repository'ye değil, Vercel proje ayarlarına girilir.
 
@@ -80,14 +87,59 @@ Production secret'ları repository'ye değil, Vercel proje ayarlarına girilir.
 
 Migration tabanlı geliştirme: şema değişiklikleri `supabase/migrations/*.sql`
 içinde, git'te versiyonlanır — dashboard'dan elle şema değişikliği yapılmaz.
-Faz 0'da `supabase/` sadece yapı olarak var, henüz gerçek migration yok (bkz.
+20 migration canlı **DEV** projesinde uygulanmış durumda (tenants, RBAC,
+RLS politikaları, yardımcı fonksiyonlar, onboarding — bkz.
 `supabase/migrations/README.md`).
 
-Bu makinede Docker kurulu değildi; Supabase CLI `npx supabase@latest` ile
-çalıştırıldı. Docker mevcutsa `pnpm db:start` ile tam local stack (Postgres +
-Auth + Storage + Studio) ayağa kalkar. Docker yoksa/kullanılamıyorsa proje
-buna bağlı kalmadan, migration'lar doğrudan ayrı bir **DEV** Supabase
-projesine uygulanacak şekilde tasarlandı — local stack zorunlu değil.
+Bu makinede Docker kurulu değil; Supabase CLI `npx supabase@latest` ile
+kullanılıyor (`pnpm db:*` script'leri buna göre). Docker mevcutsa
+`pnpm db:start` ile tam local stack (Postgres + Auth + Storage + Studio)
+ayağa kalkar — zorunlu değil, migration'lar doğrudan DEV projesine
+uygulanıyor.
+
+`lib/supabase/database.types.ts` gerçek şemadan üretildi
+(`pnpm db:types`) — `Database` generic'i `client.ts`/`server.ts`/`admin.ts`
+içinde kullanılıyor.
+
+## Kimlik doğrulama ve yetkilendirme
+
+- **Auth**: Supabase Auth (e-posta/şifre). `/login`, `/sign-up`,
+  `/auth/callback` (e-posta onayı — `app/[locale]` dışında, next-intl
+  proxy matcher'ından hariç tutuldu, bkz. `proxy.ts`).
+- **Tenant izolasyonu**: her sorgu RLS'den geçer. Yetkilendirme JWT claim
+  cache'i değil, her istekte `tenant_memberships`'ten taze okuma — bkz.
+  `private.current_tenant_ids()` (`supabase/migrations/20260815120014_*`).
+- **RBAC**: `permissions` (sabit katalog) + `role_templates` (global
+  önayarlar) + `roles`/`role_permissions` (tenant'a klonlanmış, tenant
+  başına özelleştirilebilir). Kod asla rol adına göre dallanmaz, sadece
+  `has_permission(tenantId, key)` — bkz. `lib/auth/session.ts`.
+- **Süper Admin**: `platform_admins` tablosu `tenant_memberships`'ten
+  tamamen bağımsız — bir tenant sahibi olmak asla platform admin yapmaz.
+  `role='owner'` diğer platform admin'leri yönetebilir, `role='support'`
+  yönetemez.
+- **Onboarding**: `private.create_tenant_with_owner()` (SECURITY DEFINER)
+  tek bir işlemde tenant'ı oluşturur, SALON_OWNER şablonunu klonlar, ilk
+  üyeliği kurar. Reserved slug kontrolü üç katmanda: client (hızlı geri
+  bildirim) → Server Action → veritabanı fonksiyonu (bypass edilemez son
+  kapı).
+- **Route guard'lar**: `lib/auth/session.ts`'teki `getTenantAccess()` ve
+  `requirePlatformAdmin()` — `React.cache()` ile sarmalanmış, aynı
+  request içinde layout + page aynı DB round trip'i paylaşır.
+
+## Cross-tenant izolasyon testleri (zorunlu)
+
+```bash
+pnpm test
+```
+
+`tests/cross-tenant-isolation.test.ts` — canlı DEV projesine karşı, gerçek
+kullanıcı oturumlarıyla (asla service-role ile değil) RLS'nin ağ üzerinden
+gerçekten izole ettiğini doğrular: tenant okuma/yazma izolasyonu,
+membership/rol izolasyonu, `has_permission()`/`is_platform_admin()`
+doğruluğu, platform admin çapraz-tenant erişimi, anonim erişim reddi,
+kendi rolünü yükseltememe. `SUPABASE_SERVICE_ROLE_KEY` sadece test
+fixture'larını kurup temizlemek için kullanılır — asertion'lar hep
+publishable key + gerçek oturumla.
 
 ## i18n
 
@@ -99,47 +151,55 @@ route/klasör yeniden yapılandırması gerekmez.
 
 - Metinler: `messages/tr.json` (namespace'lere bölünmüş)
 - Routing config: `lib/i18n/routing.ts`
-- Locale-aware `Link`/`redirect`/router: `lib/i18n/navigation.ts` — ham
-  `next/link` yerine bunu kullanın
+- Client-rendered `Link`/router: `lib/i18n/navigation.ts`
+- **Server-side `redirect()`**: düz `next/navigation` kullanılır, next-intl'in
+  değil — next-intl'in server-side `redirect()`'i `{ href, locale }` objesi
+  istiyor, tek-locale + prefix'siz kurulumda gereksiz. Bkz.
+  `lib/auth/session.ts` başındaki not.
 
 ## Tenant routing
 
 Onaylanan karar (subdomain değil, path tabanlı):
 
-- `/app/[tenantSlug]/...` — kimliği doğrulanmış salon paneli
-- `/book/[tenantSlug]` — herkese açık rezervasyon
-- `/super-admin` — platform yönetimi (Parlak Mediatech)
+- `/app/[tenantSlug]/...` — kimliği doğrulanmış salon paneli (gerçek guard: üye değilseniz 404, oturum yoksa `/login`)
+- `/book/[tenantSlug]` — herkese açık rezervasyon (placeholder, Faz 2)
+- `/super-admin` — platform yönetimi (gerçek guard: `platform_admins` değilseniz ana sayfaya döner)
+- `/onboarding` — ilk salon oluşturma (oturum açık olmalı)
 
 `tenantSlug` her zaman sunucu tarafında `tenants` tablosuna karşı doğrulanır
-(Faz 1) — client'tan gelen slug hiçbir zaman doğrudan yetkilendirme için
-güvenilmez. Rezerve slug listesi (`app`, `book`, `super-admin`, `api`,
-locale kodları vb.) `lib/tenancy/reserved-slugs.ts` içinde — onboarding
-akışı (Faz 2) bu listeye karşı kontrol etmeli.
+— client'tan gelen slug hiçbir zaman doğrudan yetkilendirme için
+güvenilmez. Rezerve slug listesi `lib/tenancy/reserved-slugs.ts` içinde.
 
 ## Klasör yapısı
 
 ```
 app/
-  [locale]/           next-intl kök segmenti (URL'de görünmez)
-    layout.tsx          root layout: font, tema, i18n, toaster
-    page.tsx             foundation durum sayfası
-    app/[tenantSlug]/    salon paneli (Faz 1'de auth guard eklenecek)
-    book/[tenantSlug]/   herkese açık rezervasyon (Faz 2)
-    super-admin/          platform paneli (Faz 1'de auth guard eklenecek)
-  global-error.tsx    kök layout hataları için fallback
-  not-found.tsx        kök seviye 404 fallback
-proxy.ts              next-intl middleware (Next 16: middleware.ts değil)
+  [locale]/              next-intl kök segmenti (URL'de görünmez)
+    layout.tsx             tema, i18n, toaster
+    page.tsx                oturum durumuna göre: landing ya da salon/admin listesi
+    (auth)/login, sign-up   auth sayfaları
+    onboarding/             temel tenant creation flow
+    app/[tenantSlug]/       salon paneli — gerçek auth+membership guard
+    book/[tenantSlug]/      herkese açık rezervasyon (placeholder, Faz 2)
+    super-admin/            platform paneli — gerçek platform_admin guard
+  layout.tsx, not-found.tsx, global-error.tsx   kök seviye (locale'den önce)
+  auth/callback/route.ts  e-posta onay callback'i (proxy matcher'ından hariç)
+proxy.ts                 next-intl routing + Supabase session refresh
 lib/
-  supabase/            client / server / admin Supabase client'ları
-  i18n/                 next-intl routing/request/navigation config
-  tenancy/              reserved-slugs.ts
-  errors.ts             AppError, ActionResult<T>
-  utils.ts               shadcn cn() helper
-components/ui/          shadcn/ui primitifleri
+  supabase/               client / server / admin client'ları + database.types.ts
+  auth/session.ts          session, membership, permission, guard helper'ları
+  modules/                 auth/, tenants/, platform/ — Server Action'lar + Zod şemaları
+  i18n/                    next-intl routing/request/navigation config
+  tenancy/reserved-slugs.ts
+  errors.ts                AppError, ActionResult<T>
+components/
+  auth/, onboarding/       form bileşenleri
+  ui/                      shadcn/ui primitifleri
 supabase/
-  migrations/           boş (Faz 1'de dolacak)
+  migrations/              20 migration — tablolar, RLS, RBAC, onboarding fonksiyonu
   config.toml
-messages/tr.json        çeviri kataloğu
+tests/cross-tenant-isolation.test.ts
+messages/tr.json          çeviri kataloğu
 ```
 
 ## Tasarım
@@ -156,8 +216,7 @@ uygun tek, temiz bir sistem.
 
 ## Faz durumu
 
-- ✅ **Faz 0 — Foundation** (bu commit)
-- ⏭️ **Faz 1 — Multi-Tenant + Auth + RLS + RBAC + Super Admin Foundation**
-  (onay bekliyor)
+- ✅ **Faz 0 — Foundation**
+- ✅ **Faz 1 — Multi-Tenant + Auth + RLS + RBAC + Super Admin Foundation**
 - Faz 2+ (randevu, finans, stok, boya formülleri, pazarlama...) — henüz
   planlama aşamasında, kapsamda değil

@@ -1,10 +1,21 @@
-/**
- * Faz 1 adds the real guard here: resolve tenantSlug -> tenant_id, verify
- * an active tenant_membership for the signed-in user, load permissions.
- * For now this only proves the /app/[tenantSlug] segment resolves.
- */
-export default function TenantAppLayout({
+import { notFound, redirect } from "next/navigation";
+import { getTenantAccess } from "@/lib/auth/session";
+
+export default async function TenantAppLayout({
   children,
+  params,
 }: LayoutProps<"/[locale]/app/[tenantSlug]">) {
+  const { tenantSlug } = await params;
+  const access = await getTenantAccess(tenantSlug);
+
+  if (access.reason === "unauthenticated") {
+    redirect("/login");
+  }
+  if (access.reason === "not_found") {
+    // Also covers "authenticated but not a member" — never confirms to an
+    // unauthorized user whether this tenant slug exists.
+    notFound();
+  }
+
   return children;
 }

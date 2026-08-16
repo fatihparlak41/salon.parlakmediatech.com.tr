@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "./database.types";
 
 /**
  * Service-role client — bypasses RLS entirely (BYPASSRLS). Only for
@@ -12,7 +13,7 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
  * SUPABASE_SERVICE_ROLE_KEY out of the browser bundle, not code review.
  */
 export function createAdminClient() {
-  return createSupabaseClient(
+  return createSupabaseClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {

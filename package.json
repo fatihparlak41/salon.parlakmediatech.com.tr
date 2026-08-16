@@ -16,7 +16,10 @@
     "db:reset": "npx --yes supabase@latest db reset",
     "db:diff": "npx --yes supabase@latest db diff",
     "db:migration:new": "npx --yes supabase@latest migration new",
-    "db:types": "npx --yes supabase@latest gen types typescript --local > lib/supabase/database.types.ts"
+    "db:link": "npx --yes supabase@latest link --project-ref mfkzdgfyshlvvtuqoals",
+    "db:push": "npx --yes supabase@latest db push",
+    "db:types": "npx --yes supabase@latest gen types typescript --linked > lib/supabase/database.types.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -42,13 +45,15 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.9.6",
     "prettier-plugin-tailwindcss": "^0.8.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   },
   "packageManager": "pnpm@9.15.9"
 }
