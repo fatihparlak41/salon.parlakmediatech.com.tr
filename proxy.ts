@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import type { NextRequest } from "next/server";
 import createMiddleware from "next-intl/middleware";
 import { routing } from "@/lib/i18n/routing";
+import { authErrorLogFields, isStaleSessionError } from "@/lib/auth/session-errors";
 
 const handleI18nRouting = createMiddleware(routing);
 
@@ -41,7 +42,26 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  await supabase.auth.getUser();
+  try {
+    await supabase.auth.getUser();
+  } catch (error) {
+    if (isStaleSessionError(error)) {
+      // Stale/revoked cookie (e.g. the account was deleted or every
+      // session was signed out elsewhere) — getUser() has been observed
+      // to throw rather than return {error} for this case. Clear the
+      // now-invalid cookies so this and future requests are cleanly
+      // signed-out instead of retrying the same broken refresh on every
+      // request. Expected condition, not logged.
+      request.cookies.getAll().forEach(({ name }) => {
+        if (name.startsWith("sb-")) response.cookies.delete(name);
+      });
+    } else {
+      console.error(
+        "[proxy] unexpected error during session refresh",
+        authErrorLogFields(error),
+      );
+    }
+  }
 
   return response;
 }

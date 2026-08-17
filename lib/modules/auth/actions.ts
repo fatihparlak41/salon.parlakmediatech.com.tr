@@ -61,12 +61,19 @@ export async function signUpAction(
     process.env.NEXT_PUBLIC_SITE_URL ??
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
+  // Not `/auth/callback` — the confirmation email template now builds its
+  // own link to /auth/confirm (token_hash based, see that route's
+  // comment for why: the PKCE flow /auth/callback still serves for OAuth
+  // fails across devices/browsers). This value only supplies Supabase's
+  // `{{ .RedirectTo }}` template variable, i.e. where /auth/confirm sends
+  // the user after a successful verifyOtp() — also checked server-side
+  // against the project's Redirect URL allowlist.
   const { error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
     options: {
       data: { full_name: parsed.data.fullName },
-      emailRedirectTo: `${siteUrl}/auth/callback`,
+      emailRedirectTo: siteUrl,
     },
   });
 

@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 import { defineConfig } from "vitest/config";
 import { config } from "dotenv";
 
@@ -7,6 +9,8 @@ import { config } from "dotenv";
 // Vitest's test files run in a separate worker context that doesn't
 // automatically inherit env vars set by this config file's own process.
 const { parsed } = config({ path: ".env.local" });
+
+const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   test: {
@@ -23,5 +27,13 @@ export default defineConfig({
     // second test file was added. Sequential is the right default for
     // this project, not just a workaround.
     fileParallelism: false,
+  },
+  resolve: {
+    // Mirrors tsconfig.json's "@/*" path — needed the first time a test
+    // imports real app code (lib/auth/session-errors.ts) instead of only
+    // ./helpers. Vitest doesn't read tsconfig paths on its own.
+    alias: {
+      "@": rootDir,
+    },
   },
 });

@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { authErrorLogFields, isStaleSessionError } from "@/lib/auth/session-errors";
 // Plain next/navigation, not lib/i18n/navigation's Link — the server-side
 // next-intl redirect() requires an explicit `locale` argument (it has no
 // client-side "current locale" context to read), which is pure ceremony in
@@ -40,8 +41,21 @@ export type TenantAccessResult =
 
 export const getCurrentUser = cache(async (): Promise<User | null> => {
   const supabase = await createClient();
-  const { data } = await supabase.auth.getUser();
-  return data.user;
+  try {
+    const { data } = await supabase.auth.getUser();
+    return data.user;
+  } catch (error) {
+    // getUser() has been observed to throw (rather than return {error})
+    // for a stale/revoked refresh-token cookie — fail closed either way:
+    // every caller here (requireUser, getTenantAccess, isPlatformAdmin)
+    // already treats a null user as "not authenticated", so this is the
+    // same safe outcome as the normal {data: {user: null}} path, just
+    // reached from a catch instead. Only log if it's NOT that known case.
+    if (!isStaleSessionError(error)) {
+      console.error("[getCurrentUser] unexpected error", authErrorLogFields(error));
+    }
+    return null;
+  }
 });
 
 export async function requireUser(): Promise<User> {
