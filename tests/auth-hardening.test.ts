@@ -58,6 +58,52 @@ describe("token_hash email confirmation", () => {
     expect(error).not.toBeNull();
     expect(data.session).toBeNull();
   });
+
+  it("possessing a token_hash without calling verifyOtp does not confirm the user (prefetch-safe GET)", async () => {
+    // The actual property app/auth/confirm/route.ts's GET relies on:
+    // generating/holding a token_hash is inert on its own. This is what
+    // makes storing it in a cookie and redirecting — without ever
+    // calling verifyOtp() — safe against an email scanner's automated
+    // GET (observed in practice: Google Workspace Safe Browsing
+    // prefetching links in incoming mail, which previously consumed the
+    // single-use token before the real user's click).
+    const email = `test-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}-prefetch-safe@example.com`;
+    const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+      type: "signup",
+      email,
+      password: "Test1234!Test1234!",
+    });
+    expect(linkError).toBeNull();
+
+    const { data: userAfter } = await admin.auth.admin.getUserById(linkData!.user!.id);
+    expect(userAfter.user?.email_confirmed_at).toBeFalsy();
+
+    await admin.auth.admin.deleteUser(linkData!.user!.id);
+  });
+
+  it("a token_hash already consumed by verifyOtp is rejected on a second attempt", async () => {
+    const email = `test-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}-single-use@example.com`;
+    const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+      type: "signup",
+      email,
+      password: "Test1234!Test1234!",
+    });
+    expect(linkError).toBeNull();
+    const tokenHash = linkData!.properties!.hashed_token;
+
+    const first = anonClient();
+    const { error: firstError } = await first.auth.verifyOtp({ type: "signup", token_hash: tokenHash });
+    expect(firstError).toBeNull();
+
+    // Exactly what happens if the real emailed link is opened a second
+    // time (scanner + human, or a double-click) — confirmEmailAction's
+    // single verifyOtp() call must be the only one that can ever succeed.
+    const second = anonClient();
+    const { error: secondError } = await second.auth.verifyOtp({ type: "signup", token_hash: tokenHash });
+    expect(secondError).not.toBeNull();
+
+    await admin.auth.admin.deleteUser(linkData!.user!.id);
+  });
 });
 
 describe("isStaleSessionError classification", () => {

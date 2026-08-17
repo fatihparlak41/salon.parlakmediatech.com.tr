@@ -1,29 +1,30 @@
 import { NextResponse } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/server";
-import { authErrorLogFields } from "@/lib/auth/session-errors";
+import { setPendingConfirmation } from "@/lib/auth/pending-confirmation";
 
 /**
- * token_hash-based confirmation — the current Supabase/Next.js SSR
- * recommendation for email OTP flows (signup, recovery, email change,
- * magic link). Supabase's Auth email template must build the link as
- * `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=signup&next=/`
- * rather than using `{{ .ConfirmationURL }}` — that default macro (which
- * points at Supabase's own /auth/v1/verify) is a PKCE flow tied to a
- * code_verifier cookie set in whichever browser called signUp(), so it
- * silently fails whenever a user opens the email on a different
- * device/browser than the one they signed up in (empirically confirmed,
- * see Faz 1.5 report). verifyOtp() has no such requirement — the
- * token_hash alone is the credential, so this route works from any
- * browser.
+ * Prefetch-safe by design — this GET NEVER calls verifyOtp() and never
+ * changes auth state. It only stores the token server-side (HttpOnly
+ * cookie, see lib/auth/pending-confirmation.ts) and redirects to a
+ * token-free URL. Verification only happens on the explicit POST from
+ * /confirm-email's button (lib/modules/auth/actions.ts,
+ * confirmEmailAction).
+ *
+ * This replaces an earlier version of this route that called verifyOtp()
+ * directly on GET — which worked, but meant an automated link scanner
+ * (observed in practice: Google Workspace's Safe Browsing prefetch)
+ * could silently consume the single-use token before the real user's
+ * click, landing them on a confusing "expired" error despite never
+ * having clicked anything themselves.
  *
  * Outside app/[locale] on purpose, same as /auth/callback (excluded from
  * the next-intl proxy matcher, see proxy.ts) — not a page a user browses
- * to directly.
+ * to directly, Supabase's email template links straight to it.
  *
  * /auth/callback is untouched and stays in place for OAuth / future PKCE
- * flows, which do need the code_verifier cookie; this route is only for
- * email OTP links.
+ * flows; this route is only for email OTP links (signup confirmation
+ * today, and any future recovery/magic-link/email-change flows that
+ * reuse the same token_hash + verifyOtp() mechanism).
  */
 
 const KNOWN_EMAIL_OTP_TYPES = new Set<EmailOtpType>([
@@ -41,15 +42,9 @@ function parseEmailOtpType(value: string | null): EmailOtpType | null {
     : null;
 }
 
-/**
- * Open-redirect guard. Supabase's `{{ .RedirectTo }}` template variable
- * (used below to carry signUpAction's intended post-confirmation
- * destination through the email) is a full URL, not a bare path, so a
- * simple `startsWith("/")` check isn't enough — this resolves `next`
- * against `origin` and only accepts it if the resulting origin matches
- * exactly, falling back to "/" for anything else (cross-origin,
- * unparsable, protocol-relative "//evil.com", etc.).
- */
+/** Open-redirect guard — see the same check in the old callback route for
+ * why this resolves against `origin` rather than a bare startsWith("/"):
+ * Supabase's `{{ .RedirectTo }}` template variable is a full URL. */
 function resolveSafeNext(next: string, origin: string): string {
   try {
     const resolved = new URL(next, origin);
@@ -65,20 +60,15 @@ export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const tokenHash = searchParams.get("token_hash");
   const type = parseEmailOtpType(searchParams.get("type"));
-  const safeNext = resolveSafeNext(searchParams.get("next") ?? "/", origin);
 
   if (tokenHash && type) {
-    const supabase = await createClient();
-    const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
-    if (!error) {
-      return NextResponse.redirect(`${origin}${safeNext}`);
-    }
-    // Safe diagnostic fields only — never the token_hash itself
-    // (single-use credential) or the request URL (would include it).
-    console.error("[auth/confirm] verifyOtp failed", authErrorLogFields(error));
-  } else {
-    console.error("[auth/confirm] missing or invalid token_hash/type parameter");
+    const next = resolveSafeNext(searchParams.get("next") ?? "/", origin);
+    await setPendingConfirmation({ tokenHash, type, next });
   }
+  // No token_hash/type at all: nothing to store. /confirm-email will
+  // correctly render its "no pending confirmation" state either way —
+  // no error branch needed here, since this handler never attempts
+  // verification and so has nothing that can fail.
 
-  return NextResponse.redirect(`${origin}/login?error=auth_callback_failed`);
+  return NextResponse.redirect(`${origin}/confirm-email`);
 }

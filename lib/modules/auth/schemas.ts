@@ -10,3 +10,7 @@ export const signUpSchema = z.object({
   email: z.string().trim().email("Geçerli bir e-posta adresi girin"),
   password: z.string().min(8, "Şifre en az 8 karakter olmalı"),
 });
+
+export const resendConfirmationSchema = z.object({
+  email: z.string().trim().email("Geçerli bir e-posta adresi girin"),
+});

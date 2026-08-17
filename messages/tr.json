@@ -30,7 +30,17 @@
       "successTitle": "E-postanızı kontrol edin",
       "successDescription": "{email} adresine bir doğrulama bağlantısı gönderdik."
     },
-    "signOut": "Çıkış yap"
+    "signOut": "Çıkış yap",
+    "confirmEmail": {
+      "pendingTitle": "E-posta adresinizi doğrulayın",
+      "pendingDescription": "Kayıt işlemini tamamlamak için aşağıdaki butona basın.",
+      "confirmButton": "E-postamı Onayla",
+      "expiredTitle": "Bu doğrulama bağlantısının süresi dolmuş veya daha önce kullanılmış.",
+      "resendEmailLabel": "E-posta",
+      "resendButton": "Yeni doğrulama e-postası gönder",
+      "resendSubmitting": "Gönderiliyor…",
+      "resendSuccess": "Bu e-posta adresi kayıtlıysa, yeni bir doğrulama bağlantısı gönderildi."
+    }
   },
   "Home": {
     "signedOut": {
