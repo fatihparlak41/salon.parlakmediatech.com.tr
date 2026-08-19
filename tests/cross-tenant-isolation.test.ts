@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  admin,
   anonClient,
   cleanupPlatformAdmins,
   cleanupTenants,
@@ -9,6 +8,7 @@ import {
   createTestTenant,
   createTestUser,
   signInAs,
+  testDb,
   type TestTenant,
   type TestUser,
 } from "./helpers";
@@ -49,9 +49,9 @@ beforeAll(async () => {
   tenantA = await createTestTenant("test-tenant-a", userA.id);
   tenantB = await createTestTenant("test-tenant-b", userB.id);
 
-  await admin
-    .from("platform_admins")
-    .insert({ user_id: platformAdminUser.id, role: "owner" });
+  await testDb`
+    insert into platform_admins (user_id, role) values (${platformAdminUser.id}, 'owner')
+  `;
 
   clientA = await signInAs(userA);
   platformAdminClient = await signInAs(platformAdminUser);
@@ -171,12 +171,10 @@ describe("cross-tenant isolation", () => {
   });
 
   it("a member cannot escalate by updating their own membership row", async () => {
-    const { data: before } = await admin
-      .from("tenant_memberships")
-      .select("id, status")
-      .eq("tenant_id", tenantA.id)
-      .eq("user_id", userA.id)
-      .single();
+    const [before] = await testDb<{ id: string; status: string }[]>`
+      select id, status from tenant_memberships
+      where tenant_id = ${tenantA.id} and user_id = ${userA.id}
+    `;
 
     const { data: updateResult } = await clientA
       .from("tenant_memberships")
@@ -189,11 +187,9 @@ describe("cross-tenant isolation", () => {
     // rows rather than throwing.
     expect(updateResult).toHaveLength(0);
 
-    const { data: after } = await admin
-      .from("tenant_memberships")
-      .select("status")
-      .eq("id", before!.id)
-      .single();
+    const [after] = await testDb<{ status: string }[]>`
+      select status from tenant_memberships where id = ${before!.id}
+    `;
     expect(after?.status).toBe(before?.status);
   });
 });

@@ -2,13 +2,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   addMembership,
-  admin,
   cleanupTenants,
   cleanupUsers,
   createRoleForTenant,
   createTestTenant,
   createTestUser,
   signInAs,
+  testDb,
   type TestTenant,
   type TestUser,
 } from "./helpers";
@@ -70,19 +70,14 @@ beforeAll(async () => {
   ]);
   await addMembership(tenantA.id, bypassOnlyA.id, bypassOnlyRoleA);
 
-  const { data: ownerBMembership } = await admin
-    .from("tenant_memberships")
-    .select("id")
-    .eq("tenant_id", tenantB.id)
-    .eq("user_id", ownerB.id)
-    .single();
+  const [ownerBMembership] = await testDb<{ id: string }[]>`
+    select id from tenant_memberships where tenant_id = ${tenantB.id} and user_id = ${ownerB.id}
+  `;
   ownerBMembershipId = ownerBMembership!.id;
 
-  const { data: financePermission } = await admin
-    .from("permissions")
-    .select("id")
-    .eq("key", "finance.manage")
-    .single();
+  const [financePermission] = await testDb<{ id: string }[]>`
+    select id from permissions where key = 'finance.manage'
+  `;
   financePermissionId = financePermission!.id;
 
   ownerAClient = await signInAs(ownerA);
@@ -106,11 +101,9 @@ describe("permission ceiling — cannot grant what you don't hold", () => {
     expect(error).not.toBeNull();
     expect(data).toBeNull();
 
-    const { data: leaked } = await admin
-      .from("roles")
-      .select("id")
-      .eq("tenant_id", tenantA.id)
-      .eq("name", "Sızma Rolü");
+    const leaked = await testDb`
+      select id from roles where tenant_id = ${tenantA.id} and name = 'Sızma Rolü'
+    `;
     expect(leaked).toHaveLength(0);
   });
 
@@ -132,15 +125,15 @@ describe("permission ceiling — cannot grant what you don't hold", () => {
     });
     expect(error).not.toBeNull();
 
-    const { data: rolePerms } = await admin
-      .from("role_permissions")
-      .select("permission_id")
-      .eq("role_id", limitedRoleA);
-    const { data: perms } = await admin
-      .from("permissions")
-      .select("key")
-      .in("id", (rolePerms ?? []).map((r) => r.permission_id));
-    const keys = (perms ?? []).map((p) => p.key).sort();
+    const rolePerms = await testDb<{ permission_id: string }[]>`
+      select permission_id from role_permissions where role_id = ${limitedRoleA}
+    `;
+    const permissionIds = rolePerms.map((r) => r.permission_id);
+    const perms =
+      permissionIds.length > 0
+        ? await testDb<{ key: string }[]>`select key from permissions where id in ${testDb(permissionIds)}`
+        : [];
+    const keys = perms.map((p) => p.key).sort();
     expect(keys).toEqual(["appointments.view", "staff.manage"]);
   });
 });
@@ -153,11 +146,9 @@ describe("permission ceiling — self privilege-escalation", () => {
     });
     expect(error).not.toBeNull();
 
-    const { data: after } = await admin
-      .from("tenant_memberships")
-      .select("role_id")
-      .eq("id", limitedMembershipA)
-      .single();
+    const [after] = await testDb<{ role_id: string }[]>`
+      select role_id from tenant_memberships where id = ${limitedMembershipA}
+    `;
     expect(after?.role_id).toBe(limitedRoleA);
   });
 });
@@ -178,11 +169,9 @@ describe("permission ceiling — cross-tenant rejection", () => {
     });
     expect(error).not.toBeNull();
 
-    const { data: after } = await admin
-      .from("tenant_memberships")
-      .select("role_id")
-      .eq("id", ownerBMembershipId)
-      .single();
+    const [after] = await testDb<{ role_id: string }[]>`
+      select role_id from tenant_memberships where id = ${ownerBMembershipId}
+    `;
     expect(after?.role_id).toBe(tenantB.ownerRoleId);
   });
 
@@ -219,11 +208,9 @@ describe("permission ceiling — authorized bypass via permissions.manage_unrest
     });
     expect(error).toBeNull();
 
-    const { data: after } = await admin
-      .from("tenant_memberships")
-      .select("role_id")
-      .eq("id", limitedMembershipA)
-      .single();
+    const [after] = await testDb<{ role_id: string }[]>`
+      select role_id from tenant_memberships where id = ${limitedMembershipA}
+    `;
     expect(after?.role_id).toBe(tenantA.ownerRoleId);
   });
 });

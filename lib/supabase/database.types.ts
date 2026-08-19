@@ -39,6 +39,150 @@ export type Database = {
   }
   public: {
     Tables: {
+      appointment_items: {
+        Row: {
+          appointment_id: string
+          appointment_status: string
+          created_at: string
+          duration_minutes: number
+          id: string
+          price: number
+          scheduled_end_at: string
+          scheduled_start_at: string
+          sequence: number
+          service_id: string
+          staff_member_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          appointment_id: string
+          appointment_status?: string
+          created_at?: string
+          duration_minutes: number
+          id?: string
+          price: number
+          scheduled_end_at: string
+          scheduled_start_at: string
+          sequence: number
+          service_id: string
+          staff_member_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          appointment_id?: string
+          appointment_status?: string
+          created_at?: string
+          duration_minutes?: number
+          id?: string
+          price?: number
+          scheduled_end_at?: string
+          scheduled_start_at?: string
+          sequence?: number
+          service_id?: string
+          staff_member_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointment_items_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointment_items_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointment_items_staff_member_id_fkey"
+            columns: ["staff_member_id"]
+            isOneToOne: false
+            referencedRelation: "staff_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointment_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      appointments: {
+        Row: {
+          branch_id: string
+          created_at: string
+          created_by: string | null
+          customer_id: string
+          id: string
+          notes: string | null
+          scheduled_end_at: string
+          scheduled_start_at: string
+          source: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          branch_id: string
+          created_at?: string
+          created_by?: string | null
+          customer_id: string
+          id?: string
+          notes?: string | null
+          scheduled_end_at: string
+          scheduled_start_at: string
+          source?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string
+          id?: string
+          notes?: string | null
+          scheduled_end_at?: string
+          scheduled_start_at?: string
+          source?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointments_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_logs: {
         Row: {
           action: string
@@ -129,6 +273,56 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "branches_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customers: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          email: string | null
+          full_name: string
+          id: string
+          notes: string | null
+          phone: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          email?: string | null
+          full_name: string
+          id?: string
+          notes?: string | null
+          phone?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          email?: string | null
+          full_name?: string
+          id?: string
+          notes?: string | null
+          phone?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customers_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -463,6 +657,349 @@ export type Database = {
           },
         ]
       }
+      service_branches: {
+        Row: {
+          branch_id: string
+          created_at: string
+          service_id: string
+        }
+        Insert: {
+          branch_id: string
+          created_at?: string
+          service_id: string
+        }
+        Update: {
+          branch_id?: string
+          created_at?: string
+          service_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_branches_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_branches_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      services: {
+        Row: {
+          category: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          description: string | null
+          display_order: number
+          duration_minutes: number
+          id: string
+          name: string
+          price: number
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description?: string | null
+          display_order?: number
+          duration_minutes: number
+          id?: string
+          name: string
+          price: number
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description?: string | null
+          display_order?: number
+          duration_minutes?: number
+          id?: string
+          name?: string
+          price?: number
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "services_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_branches: {
+        Row: {
+          branch_id: string
+          created_at: string
+          staff_member_id: string
+        }
+        Insert: {
+          branch_id: string
+          created_at?: string
+          staff_member_id: string
+        }
+        Update: {
+          branch_id?: string
+          created_at?: string
+          staff_member_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_branches_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_branches_staff_member_id_fkey"
+            columns: ["staff_member_id"]
+            isOneToOne: false
+            referencedRelation: "staff_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_members: {
+        Row: {
+          color: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          display_order: number
+          email: string | null
+          full_name: string
+          id: string
+          phone: string | null
+          status: string
+          tenant_id: string
+          tenant_membership_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          display_order?: number
+          email?: string | null
+          full_name: string
+          id?: string
+          phone?: string | null
+          status?: string
+          tenant_id: string
+          tenant_membership_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          display_order?: number
+          email?: string | null
+          full_name?: string
+          id?: string
+          phone?: string | null
+          status?: string
+          tenant_id?: string
+          tenant_membership_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_members_membership_same_tenant"
+            columns: ["tenant_membership_id", "tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_memberships"
+            referencedColumns: ["id", "tenant_id"]
+          },
+          {
+            foreignKeyName: "staff_members_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_members_tenant_membership_id_fkey"
+            columns: ["tenant_membership_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_memberships"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_schedule_exceptions: {
+        Row: {
+          created_at: string
+          deleted_at: string | null
+          end_time: string | null
+          exception_date: string
+          id: string
+          reason: string | null
+          staff_member_id: string
+          start_time: string | null
+          tenant_id: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          deleted_at?: string | null
+          end_time?: string | null
+          exception_date: string
+          id?: string
+          reason?: string | null
+          staff_member_id: string
+          start_time?: string | null
+          tenant_id: string
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          deleted_at?: string | null
+          end_time?: string | null
+          exception_date?: string
+          id?: string
+          reason?: string | null
+          staff_member_id?: string
+          start_time?: string | null
+          tenant_id?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_schedule_exceptions_staff_member_id_fkey"
+            columns: ["staff_member_id"]
+            isOneToOne: false
+            referencedRelation: "staff_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_schedule_exceptions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_schedules: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          deleted_at: string | null
+          end_time: string
+          id: string
+          staff_member_id: string
+          start_time: string
+          tenant_id: string
+          updated_at: string
+          weekday: number
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          end_time: string
+          id?: string
+          staff_member_id: string
+          start_time: string
+          tenant_id: string
+          updated_at?: string
+          weekday: number
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          end_time?: string
+          id?: string
+          staff_member_id?: string
+          start_time?: string
+          tenant_id?: string
+          updated_at?: string
+          weekday?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_schedules_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_schedules_staff_member_id_fkey"
+            columns: ["staff_member_id"]
+            isOneToOne: false
+            referencedRelation: "staff_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_schedules_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_services: {
+        Row: {
+          created_at: string
+          service_id: string
+          staff_member_id: string
+        }
+        Insert: {
+          created_at?: string
+          service_id: string
+          staff_member_id: string
+        }
+        Update: {
+          created_at?: string
+          service_id?: string
+          staff_member_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_services_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_services_staff_member_id_fkey"
+            columns: ["staff_member_id"]
+            isOneToOne: false
+            referencedRelation: "staff_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscriptions: {
         Row: {
           canceled_at: string | null
@@ -672,6 +1209,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      create_appointment: {
+        Args: {
+          p_branch_id: string
+          p_customer_id: string
+          p_items: Json
+          p_notes?: string
+          p_source?: string
+          p_tenant_id: string
+        }
+        Returns: string
+      }
       create_role: {
         Args: {
           p_description: string
@@ -694,6 +1242,10 @@ export type Database = {
         Returns: boolean
       }
       is_platform_admin: { Args: never; Returns: boolean }
+      reschedule_appointment: {
+        Args: { p_appointment_id: string; p_items: Json }
+        Returns: undefined
+      }
       security_audit_column_grants: {
         Args: never
         Returns: {
@@ -702,6 +1254,16 @@ export type Database = {
           privilege_type: string
           schema_name: string
           table_name: string
+        }[]
+      }
+      security_audit_default_privileges: {
+        Args: never
+        Returns: {
+          for_role: string
+          grantee: string
+          object_type: string
+          privilege_type: string
+          schema_name: string
         }[]
       }
       security_audit_function_grants: {
@@ -742,6 +1304,10 @@ export type Database = {
           schema_name: string
           table_name: string
         }[]
+      }
+      update_appointment_status: {
+        Args: { p_appointment_id: string; p_new_status: string }
+        Returns: undefined
       }
       update_membership_role: {
         Args: { p_membership_id: string; p_new_role_id: string }
