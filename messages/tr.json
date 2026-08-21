@@ -69,11 +69,42 @@
     "submitting": "Oluşturuluyor…"
   },
   "TenantApp": {
+    "nav": {
+      "dashboard": "Panel",
+      "staff": "Personel",
+      "services": "Hizmetler"
+    },
     "dashboard": {
       "title": "Salon paneli",
       "roleLabel": "Rolünüz",
       "description": "Bu alanın gerçek içeriği (randevular, müşteriler, raporlar) sonraki fazlarda eklenecek. Bu ekran, oturum + üyelik + izin zincirinin uçtan uca çalıştığını doğruluyor."
     }
+  },
+  "Staff": {
+    "title": "Personel",
+    "description": "Salonunuzda çalışan kişileri, şube atamalarını ve çalışma programlarını yönetin.",
+    "addStaff": "Personel ekle",
+    "searchPlaceholder": "İsim, e-posta veya telefon ara…",
+    "emptyTitle": "Henüz personel eklenmedi",
+    "emptyDescription": "Salonunuzda çalışan kişileri ekleyerek başlayın. Giriş hesabı gerekmez.",
+    "emptyCta": "İlk personeli ekle",
+    "noResults": "Aramanızla eşleşen personel bulunamadı.",
+    "countLabel": "Toplam personel",
+    "activeCountLabel": "Aktif",
+    "noBranchWarning": "Bu personel hiçbir şubeye atanmadı — randevu için görünmeyecek."
+  },
+  "Services": {
+    "title": "Hizmetler",
+    "description": "Salonunuzun sunduğu hizmetleri, sürelerini, fiyatlarını ve şube müsaitliğini yönetin.",
+    "addService": "Hizmet ekle",
+    "searchPlaceholder": "Hizmet adı veya kategori ara…",
+    "emptyTitle": "Henüz hizmet eklenmedi",
+    "emptyDescription": "Salonunuzun sunduğu hizmetleri ekleyerek başlayın.",
+    "emptyCta": "İlk hizmeti ekle",
+    "noResults": "Aramanızla eşleşen hizmet bulunamadı.",
+    "countLabel": "Toplam hizmet",
+    "activeCountLabel": "Aktif",
+    "noBranchWarning": "Bu hizmet hiçbir şubede sunulmuyor — randevu için görünmeyecek."
   },
   "SuperAdmin": {
     "title": "Süper Admin",
