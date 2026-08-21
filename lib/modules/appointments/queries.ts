@@ -92,7 +92,12 @@ export type AppointmentDetail = {
   scheduledEndAt: string;
   notes: string | null;
   createdAt: string;
-  customer: { id: string; fullName: string };
+  /** Null when the caller can read the appointment (appointments.view)
+   * but not the customer row (customers.view) — RLS omits the embedded
+   * resource rather than erroring. The detail view must still render in
+   * that case, with the customer name degrading to a placeholder, the
+   * same way calendar item blocks already do (see mapCalendarItemRow). */
+  customer: { id: string; fullName: string } | null;
   branch: { id: string; name: string };
   items: {
     id: string;
@@ -141,7 +146,7 @@ export async function getAppointmentDetail(appointmentId: string): Promise<Appoi
     }[];
   };
 
-  if (!d.customers || !d.branches) return null;
+  if (!d.branches) return null;
 
   return {
     id: d.id,
@@ -150,7 +155,7 @@ export async function getAppointmentDetail(appointmentId: string): Promise<Appoi
     scheduledEndAt: d.scheduled_end_at,
     notes: d.notes,
     createdAt: d.created_at,
-    customer: { id: d.customers.id, fullName: d.customers.full_name },
+    customer: d.customers ? { id: d.customers.id, fullName: d.customers.full_name } : null,
     branch: { id: d.branches.id, name: d.branches.name },
     items: d.appointment_items
       .filter((i) => i.services && i.staff_members)
@@ -184,6 +189,124 @@ export async function getServicesForBranch(tenantId: string, branchId: string): 
     .map((r) => r.services)
     .filter((s): s is NonNullable<typeof s> => !!s && s.tenant_id === tenantId && s.status === "active" && !s.deleted_at)
     .map((s) => ({ id: s.id, name: s.name, durationMinutes: s.duration_minutes, price: String(s.price) }));
+}
+
+export type CalendarItemRow = {
+  id: string;
+  appointmentId: string;
+  sequence: number;
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  status: string;
+  serviceName: string;
+  staffMemberId: string;
+  staffMemberFullName: string;
+  customerName: string;
+};
+
+const CALENDAR_ITEM_SELECT = `
+  id, appointment_id, sequence, scheduled_start_at, scheduled_end_at, appointment_status,
+  services(name),
+  staff_members(id, full_name),
+  appointments!inner(branch_id, customers(full_name))
+`;
+
+type RawCalendarItemRow = {
+  id: string;
+  appointment_id: string;
+  sequence: number;
+  scheduled_start_at: string;
+  scheduled_end_at: string;
+  appointment_status: string;
+  services: { name: string } | null;
+  staff_members: { id: string; full_name: string } | null;
+  appointments: { branch_id: string; customers: { full_name: string } | null } | null;
+};
+
+function mapCalendarItemRow(r: RawCalendarItemRow): CalendarItemRow | null {
+  if (!r.services || !r.staff_members || !r.appointments) return null;
+  return {
+    id: r.id,
+    appointmentId: r.appointment_id,
+    sequence: r.sequence,
+    scheduledStartAt: r.scheduled_start_at,
+    scheduledEndAt: r.scheduled_end_at,
+    // appointment_items.appointment_status is a DB-trigger-synced copy of
+    // the parent appointment's own status (see 20260819 appointment
+    // engine — it exists so the no-overlap exclusion index can filter
+    // cancelled/no_show without a cross-table lookup). Reading it here
+    // avoids a redundant embed of appointments.status for the identical
+    // value.
+    status: r.appointment_status,
+    serviceName: r.services.name,
+    staffMemberId: r.staff_members.id,
+    staffMemberFullName: r.staff_members.full_name,
+    customerName: r.appointments.customers?.full_name ?? "—",
+  };
+}
+
+/** Calendar range read — one query, overlap-correct (never a plain
+ * BETWEEN: an item can start before the visible boundary and still
+ * extend into it). Branch-scoped via an inner-join filter on the parent
+ * appointment, since appointment_items itself carries no branch_id.
+ * Returns everything a calendar block needs already joined — never one
+ * query per visible item (services/staff_members/appointments.customers
+ * all embedded in this single round trip). */
+export async function getCalendarItems(
+  tenantId: string,
+  branchId: string,
+  rangeStartUtc: string,
+  rangeEndUtc: string,
+): Promise<CalendarItemRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("appointment_items")
+    .select(CALENDAR_ITEM_SELECT)
+    .eq("tenant_id", tenantId)
+    .eq("appointments.branch_id", branchId)
+    // Cancelled items are hidden from the calendar by default: their
+    // slot has already been released (Phase 2A cancellation behavior),
+    // so displaying them prominently would misrepresent a staff member
+    // as booked when they're actually free. They remain fully visible
+    // (and filterable) in the existing /appointments list — nothing is
+    // deleted, only omitted from this operational view. no_show stays
+    // visible: unlike cancelled, it represents a slot the staff member
+    // genuinely worked/was blocked for, which is real history for the day.
+    .neq("appointment_status", "cancelled")
+    .lt("scheduled_start_at", rangeEndUtc)
+    .gt("scheduled_end_at", rangeStartUtc)
+    .order("scheduled_start_at", { ascending: true });
+
+  if (error || !data) return [];
+  return (data as unknown as RawCalendarItemRow[])
+    .map(mapCalendarItemRow)
+    .filter((r): r is CalendarItemRow => r !== null);
+}
+
+export type CalendarStaffOption = { id: string; fullName: string };
+
+/** Active staff assigned to the given branch — the calendar's day-view
+ * columns / week-view staff filter. Independent of any service
+ * eligibility (unlike getEligibleStaff below): the calendar shows every
+ * staff member who works at this branch, regardless of what they
+ * personally can perform. */
+export async function getBranchStaff(tenantId: string, branchId: string): Promise<CalendarStaffOption[]> {
+  const supabase = await createClient();
+  const { data: links } = await supabase.from("staff_branches").select("staff_member_id").eq("branch_id", branchId);
+  const staffIds = (links ?? []).map((l) => l.staff_member_id);
+  if (staffIds.length === 0) return [];
+
+  const { data } = await supabase
+    .from("staff_members")
+    .select("id, full_name")
+    .eq("tenant_id", tenantId)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .in("id", staffIds)
+    .order("display_order", { ascending: true })
+    .order("full_name", { ascending: true });
+
+  return (data ?? []).map((s) => ({ id: s.id, fullName: s.full_name }));
 }
 
 export type StaffForServiceAndBranch = { id: string; fullName: string };

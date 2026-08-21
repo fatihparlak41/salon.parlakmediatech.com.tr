@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { LayoutDashboard, Users, Scissors, Contact, CalendarClock } from "lucide-react";
+import { LayoutDashboard, Users, Scissors, Contact, CalendarClock, CalendarDays } from "lucide-react";
 import { getTenantAccess, hasPermission } from "@/lib/auth/session";
 import { TenantAppShell, type TenantNavItem } from "@/components/tenant-app/app-shell";
 
@@ -36,6 +36,13 @@ export default async function TenantAppLayout({
 
   const navItems: TenantNavItem[] = [
     { href: "", label: t("dashboard"), icon: <LayoutDashboard className="size-4" /> },
+    // Calendar first among the operational modules — the most
+    // operationally prominent screen for day-to-day salon staff use.
+    // /appointments (the searchable/list-based management view) stays
+    // right after it, not removed.
+    ...(canViewAppointments
+      ? [{ href: "/calendar", label: t("calendar"), icon: <CalendarDays className="size-4" /> }]
+      : []),
     ...(canViewAppointments
       ? [{ href: "/appointments", label: t("appointments"), icon: <CalendarClock className="size-4" /> }]
       : []),

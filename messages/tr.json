@@ -71,6 +71,7 @@
   "TenantApp": {
     "nav": {
       "dashboard": "Panel",
+      "calendar": "Takvim",
       "customers": "Müşteriler",
       "appointments": "Randevular",
       "staff": "Personel",
@@ -95,6 +96,19 @@
     "filterToday": "Bugün",
     "filterAll": "Tümü",
     "statusFilterAll": "Tüm durumlar"
+  },
+  "Calendar": {
+    "title": "Takvim",
+    "description": "Günlük ve haftalık operasyonel randevu takvimi.",
+    "addAppointment": "Randevu oluştur",
+    "today": "Bugün",
+    "dayView": "Gün",
+    "weekView": "Hafta",
+    "noBranchStaff": "Bu şubede aktif personel yok.",
+    "noItems": "Bu tarihte randevu yok.",
+    "selectBranch": "Şube seçin",
+    "selectStaffForWeek": "Personel seçin",
+    "noBranches": "Önce bir şube oluşturun."
   },
   "Customers": {
     "title": "Müşteriler",

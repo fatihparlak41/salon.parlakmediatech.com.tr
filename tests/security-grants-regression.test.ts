@@ -275,6 +275,33 @@ describe("security grants regression", () => {
     expect(Array.from(actual), "unexpected authenticated execute grants").toEqual([]);
   });
 
+  it("public.check_appointment_availability has exactly one callable overload, with the expected signature", async () => {
+    // Phase 2D.1 (20260822120000) changed this function from 5 args to 6
+    // (an added p_exclude_appointment_id with a default), via DROP +
+    // CREATE rather than CREATE OR REPLACE — deliberately, since
+    // CREATE OR REPLACE across a different argument list creates a
+    // second, ambiguous overload instead of replacing the first.
+    //
+    // The whitelist test above only proves authenticated has execute on
+    // *a* function named public.check_appointment_availability —
+    // security_audit_function_grants() selects p.proname (the bare name)
+    // and never the argument list, so if a stray second overload of this
+    // name ever existed, its grant row would collapse into the exact
+    // same Set key as the intended one and the whitelist test would
+    // stay green either way. This queries pg_proc directly, keyed by
+    // (name, argument signature), specifically to close that blind spot.
+    const rows = await testDb<{ arg_types: string }[]>`
+      select pg_get_function_identity_arguments(p.oid) as arg_types
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.proname = 'check_appointment_availability'
+    `;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.arg_types).toBe(
+      "p_tenant_id uuid, p_branch_id uuid, p_staff_member_id uuid, p_service_id uuid, p_scheduled_start_at timestamp with time zone, p_exclude_appointment_id uuid",
+    );
+  });
+
   it("every SECURITY DEFINER function pins search_path to empty", async () => {
     const data = await testDb<FunctionAuditRow[]>`select * from security_audit_functions()`;
     const unpinned = data

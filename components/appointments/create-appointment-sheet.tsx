@@ -191,6 +191,10 @@ export function CreateAppointmentSheet({
   tenantSlug,
   tenantTimezone,
   branches,
+  initialBranchId,
+  initialStaffMemberId,
+  initialDate,
+  initialStartTime,
   onCreated,
 }: {
   open: boolean;
@@ -199,6 +203,16 @@ export function CreateAppointmentSheet({
   tenantSlug: string;
   tenantTimezone: string;
   branches: BranchOption[];
+  /** Quick-create-from-calendar defaults — all optional, all unused by
+   * the plain /appointments "Randevu oluştur" flow. initialStaffMemberId
+   * is a PREFERENCE, not a forced value: it only gets applied once the
+   * operator picks a service, and only if that staff member is actually
+   * eligible for it (see AppointmentItemsEditor's preferredStaffMemberId) —
+   * never silently creates an invalid staff/service pairing. */
+  initialBranchId?: string;
+  initialStaffMemberId?: string;
+  initialDate?: string;
+  initialStartTime?: string;
   onCreated: (appointmentId: string) => void;
 }) {
   return (
@@ -214,6 +228,10 @@ export function CreateAppointmentSheet({
             tenantSlug={tenantSlug}
             tenantTimezone={tenantTimezone}
             branches={branches}
+            initialBranchId={initialBranchId}
+            initialStaffMemberId={initialStaffMemberId}
+            initialDate={initialDate}
+            initialStartTime={initialStartTime}
             onCreated={onCreated}
           />
         )}
@@ -227,19 +245,29 @@ function CreateAppointmentForm({
   tenantSlug,
   tenantTimezone,
   branches,
+  initialBranchId,
+  initialStaffMemberId,
+  initialDate,
+  initialStartTime,
   onCreated,
 }: {
   tenantId: string;
   tenantSlug: string;
   tenantTimezone: string;
   branches: BranchOption[];
+  initialBranchId?: string;
+  initialStaffMemberId?: string;
+  initialDate?: string;
+  initialStartTime?: string;
   onCreated: (appointmentId: string) => void;
 }) {
   const [customer, setCustomer] = useState<CustomerOption | null>(null);
-  const [branchId, setBranchId] = useState(branches.length === 1 ? branches[0]!.id : "");
-  const [date, setDate] = useState(() => todayLocalDate(tenantTimezone));
+  const [branchId, setBranchId] = useState(initialBranchId ?? (branches.length === 1 ? branches[0]!.id : ""));
+  const [date, setDate] = useState(initialDate ?? (() => todayLocalDate(tenantTimezone)));
   const [servicesRaw, setServicesRaw] = useState<ServiceForBranch[]>([]);
-  const [items, setItems] = useState<ItemDraft[]>([{ key: crypto.randomUUID(), serviceId: "", staffMemberId: "", startTime: "" }]);
+  const [items, setItems] = useState<ItemDraft[]>([
+    { key: crypto.randomUUID(), serviceId: "", staffMemberId: "", startTime: initialStartTime ?? "" },
+  ]);
   const [notes, setNotes] = useState("");
 
   // Derived rather than reset via a synchronous setState in the effect
@@ -331,6 +359,7 @@ function CreateAppointmentForm({
             date={date}
             items={items}
             services={services}
+            preferredStaffMemberId={initialStaffMemberId}
             onItemsChange={setItems}
           />
         </div>

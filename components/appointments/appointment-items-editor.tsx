@@ -61,6 +61,7 @@ function ItemRow({
   services,
   canRemove,
   excludeAppointmentId,
+  preferredStaffMemberId,
   onChange,
   onRemove,
 }: {
@@ -73,6 +74,7 @@ function ItemRow({
   services: ServiceForBranch[];
   canRemove: boolean;
   excludeAppointmentId?: string;
+  preferredStaffMemberId?: string;
   onChange: (next: ItemDraft) => void;
   onRemove: () => void;
 }) {
@@ -107,6 +109,18 @@ function ItemRow({
     }, 0);
     return () => clearTimeout(handle);
   }, [item.serviceId, branchId]);
+
+  // Quick-create-from-calendar: once the newly-selected service's
+  // eligible-staff list resolves, silently apply the clicked/preferred
+  // staff member IF they're actually eligible for it — never force an
+  // ineligible pairing. Guarded on !item.staffMemberId so this only ever
+  // fills an empty slot (e.g. right after a service change resets it to
+  // ""), never overrides an operator's own later choice.
+  useEffect(() => {
+    if (!preferredStaffMemberId || item.staffMemberId) return;
+    if (!staffOptionsRaw.some((s) => s.id === preferredStaffMemberId)) return;
+    onChange({ ...item, staffMemberId: preferredStaffMemberId });
+  }, [staffOptionsRaw, preferredStaffMemberId, item, onChange]);
 
   useEffect(() => {
     if (!inputsCompleteForAvailability) return;
@@ -174,6 +188,17 @@ function ItemRow({
         <div className="flex flex-col gap-1.5">
           <Label>Personel</Label>
           <Select
+            // Keyed on the value itself: Base UI's Select does not
+            // reliably resync its internal selected-item tracking when
+            // `value` changes purely from an external programmatic
+            // onChange (as opposed to the Select's own interaction) —
+            // confirmed directly in the browser, the preferred-staff
+            // auto-apply below correctly updated item.staffMemberId in
+            // React state, but the Select kept showing the placeholder
+            // and no option as selected until forced to remount. Keying
+            // it this way makes every value change (auto-applied or
+            // manual) start the Select fresh with the correct value.
+            key={item.staffMemberId || "none"}
             value={item.staffMemberId || undefined}
             onValueChange={(v) => onChange({ ...item, staffMemberId: v as string })}
             disabled={!item.serviceId || loadingStaff}
@@ -243,6 +268,7 @@ export function AppointmentItemsEditor({
   items,
   services,
   excludeAppointmentId,
+  preferredStaffMemberId,
   onItemsChange,
 }: {
   tenantId: string;
@@ -257,6 +283,10 @@ export function AppointmentItemsEditor({
    * slot it already occupies. Never passed when creating a new
    * appointment. */
   excludeAppointmentId?: string;
+  /** Quick-create-from-calendar: the clicked staff member, applied only
+   * to the first item and only once it's confirmed eligible for
+   * whichever service the operator ends up selecting. */
+  preferredStaffMemberId?: string;
   onItemsChange: (items: ItemDraft[]) => void;
 }) {
   function updateItem(index: number, next: ItemDraft) {
@@ -305,6 +335,7 @@ export function AppointmentItemsEditor({
           services={services}
           canRemove={items.length > 1}
           excludeAppointmentId={excludeAppointmentId}
+          preferredStaffMemberId={index === 0 ? preferredStaffMemberId : undefined}
           onChange={(next) => updateItem(index, next)}
           onRemove={() => removeItem(index)}
         />

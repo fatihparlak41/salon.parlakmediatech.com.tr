@@ -86,7 +86,11 @@ async function loadAppointmentDetail(appointmentId: string): Promise<Appointment
       staff_members: { id: string; full_name: string } | null;
     }[];
   };
-  if (!d.customers || !d.branches) return null;
+  // customers is null (not an error) when the caller has appointments.view
+  // but not customers.view — RLS omits the embedded resource. The sheet
+  // must still render for that caller, so only branches (member-readable,
+  // never permission-gated) is treated as required. See AppointmentDetail.
+  if (!d.branches) return null;
 
   return {
     id: d.id,
@@ -95,7 +99,7 @@ async function loadAppointmentDetail(appointmentId: string): Promise<Appointment
     scheduledEndAt: d.scheduled_end_at,
     notes: d.notes,
     createdAt: d.created_at,
-    customer: { id: d.customers.id, fullName: d.customers.full_name },
+    customer: d.customers ? { id: d.customers.id, fullName: d.customers.full_name } : null,
     branch: { id: d.branches.id, name: d.branches.name },
     items: d.appointment_items
       .filter((i) => i.services && i.staff_members)
@@ -207,7 +211,7 @@ function AppointmentDetailBody({
   return (
     <>
       <SheetHeader>
-        <SheetTitle>{detail.customer.fullName}</SheetTitle>
+        <SheetTitle>{detail.customer?.fullName ?? "—"}</SheetTitle>
         <SheetDescription>
           {detail.branch.name} ·{" "}
           {formatTenantLocalDateTime(detail.scheduledStartAt, tenantTimezone)}
