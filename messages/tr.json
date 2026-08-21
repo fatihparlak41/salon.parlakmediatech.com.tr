@@ -72,6 +72,7 @@
     "nav": {
       "dashboard": "Panel",
       "customers": "Müşteriler",
+      "appointments": "Randevular",
       "staff": "Personel",
       "services": "Hizmetler"
     },
@@ -80,6 +81,20 @@
       "roleLabel": "Rolünüz",
       "description": "Bu alanın gerçek içeriği (randevular, müşteriler, raporlar) sonraki fazlarda eklenecek. Bu ekran, oturum + üyelik + izin zincirinin uçtan uca çalıştığını doğruluyor."
     }
+  },
+  "Appointments": {
+    "title": "Randevular",
+    "description": "Randevuları oluşturun, görüntüleyin ve yönetin.",
+    "addAppointment": "Randevu oluştur",
+    "emptyTitle": "Henüz randevu yok",
+    "emptyDescription": "İlk randevunuzu oluşturarak başlayın.",
+    "emptyCta": "İlk randevuyu oluştur",
+    "noResults": "Bu filtreyle eşleşen randevu bulunamadı.",
+    "loadMore": "Daha fazla göster",
+    "filterUpcoming": "Yaklaşan",
+    "filterToday": "Bugün",
+    "filterAll": "Tümü",
+    "statusFilterAll": "Tüm durumlar"
   },
   "Customers": {
     "title": "Müşteriler",

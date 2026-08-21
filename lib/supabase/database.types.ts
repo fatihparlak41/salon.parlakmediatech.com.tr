@@ -1215,6 +1215,21 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      check_appointment_availability: {
+        Args: {
+          p_branch_id: string
+          p_exclude_appointment_id?: string
+          p_scheduled_start_at: string
+          p_service_id: string
+          p_staff_member_id: string
+          p_tenant_id: string
+        }
+        Returns: {
+          is_available: boolean
+          reason: string
+          scheduled_end_at: string
+        }[]
+      }
       create_appointment: {
         Args: {
           p_branch_id: string

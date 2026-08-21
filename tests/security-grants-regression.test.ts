@@ -122,6 +122,12 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   // has_permission() check; not SECURITY INVOKER (see that migration's
   // comment for why calling private.normalize_* ruled that out).
   "public.search_customers",
+  // Phase 2D (20260822091500) — advisory read-only availability check,
+  // SECURITY DEFINER with its own explicit has_permission() check (same
+  // SECURITY INVOKER-cannot-call-private.* reasoning as search_customers
+  // above). Authenticated only — no anon grant; Phase 2F's public
+  // booking flow will need its own separate public-safe boundary.
+  "public.check_appointment_availability",
 ];
 
 // Expected output of security_audit_default_privileges() in a healthy

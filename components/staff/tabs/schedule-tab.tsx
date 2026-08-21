@@ -39,6 +39,11 @@ const WEEKDAY_LABELS: Record<number, string> = {
 // row's own weekday value is untouched.
 const DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
+const EXCEPTION_TYPE_LABELS = {
+  unavailable: "Tam gün izinli",
+  custom_hours: "Özel saatler",
+};
+
 type DayState = { enabled: boolean; startTime: string; endTime: string; branchId: string | null };
 
 function buildInitialDayState(rows: ScheduleRow[]): Record<number, DayState> {
@@ -166,7 +171,12 @@ export function ScheduleTab({
                         }
                       >
                         <SelectTrigger className="w-40">
-                          <SelectValue />
+                          {/* Base UI's Select.Value shows the raw stored
+                              value unless given an explicit label-lookup
+                              render function. */}
+                          <SelectValue>
+                            {(value: string) => (value === "any" ? "Her şube" : (branches.find((b) => b.id === value)?.name ?? "Her şube"))}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="any">Her şube</SelectItem>
@@ -334,7 +344,11 @@ function ExceptionsSection({
               <Label>Tür</Label>
               <Select value={type} onValueChange={(v) => setType(v as "unavailable" | "custom_hours")}>
                 <SelectTrigger className="w-44">
-                  <SelectValue />
+                  {/* Base UI's Select.Value shows the raw stored value
+                      unless given an explicit label-lookup render function. */}
+                  <SelectValue>
+                    {(value: string) => EXCEPTION_TYPE_LABELS[value as keyof typeof EXCEPTION_TYPE_LABELS] ?? value}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unavailable">Tam gün izinli</SelectItem>

@@ -376,7 +376,14 @@ function ProfileTab({
             disabled={!canManage}
           >
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="Bağlantı yok" />
+              {/* Base UI's Select.Value shows the raw stored value unless
+                  given an explicit label-lookup render function. */}
+              <SelectValue placeholder="Bağlantı yok">
+                {(value: string) => {
+                  const membership = memberships.find((m) => m.id === value);
+                  return membership ? `${membership.displayName} — ${membership.roleName}` : "Bağlantı yok";
+                }}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="none">Bağlantı yok</SelectItem>
