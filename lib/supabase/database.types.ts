@@ -286,10 +286,12 @@ export type Database = {
           created_by: string | null
           deleted_at: string | null
           email: string | null
+          email_normalized: string | null
           full_name: string
           id: string
           notes: string | null
           phone: string | null
+          phone_normalized: string | null
           status: string
           tenant_id: string
           updated_at: string
@@ -299,10 +301,12 @@ export type Database = {
           created_by?: string | null
           deleted_at?: string | null
           email?: string | null
+          email_normalized?: string | null
           full_name: string
           id?: string
           notes?: string | null
           phone?: string | null
+          phone_normalized?: string | null
           status?: string
           tenant_id: string
           updated_at?: string
@@ -312,10 +316,12 @@ export type Database = {
           created_by?: string | null
           deleted_at?: string | null
           email?: string | null
+          email_normalized?: string | null
           full_name?: string
           id?: string
           notes?: string | null
           phone?: string | null
+          phone_normalized?: string | null
           status?: string
           tenant_id?: string
           updated_at?: string
@@ -1246,6 +1252,36 @@ export type Database = {
         Args: { p_appointment_id: string; p_items: Json }
         Returns: undefined
       }
+      search_customers: {
+        Args: {
+          p_limit?: number
+          p_offset?: number
+          p_query?: string
+          p_status?: string
+          p_tenant_id: string
+        }
+        Returns: {
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          email: string | null
+          email_normalized: string | null
+          full_name: string
+          id: string
+          notes: string | null
+          phone: string | null
+          phone_normalized: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "customers"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       security_audit_column_grants: {
         Args: never
         Returns: {
@@ -1262,6 +1298,16 @@ export type Database = {
           for_role: string
           grantee: string
           object_type: string
+          privilege_type: string
+          schema_name: string
+        }[]
+      }
+      security_audit_extension_function_grants: {
+        Args: never
+        Returns: {
+          extension_name: string
+          function_name: string
+          grantee: string
           privilege_type: string
           schema_name: string
         }[]

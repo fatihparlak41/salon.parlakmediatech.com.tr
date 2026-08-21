@@ -112,6 +112,16 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   "public.create_appointment",
   "public.reschedule_appointment",
   "public.update_appointment_status",
+  // Phase 2C (20260821120000) — evaluated as part of authenticated's own
+  // INSERT/UPDATE on customers (phone_normalized/email_normalized are
+  // GENERATED ALWAYS AS columns), so authenticated needs direct EXECUTE
+  // the same way is_tenant_member/has_permission do for RLS.
+  "private.normalize_phone",
+  "private.normalize_email",
+  // Phase 2C (20260821123000) — SECURITY DEFINER with its own explicit
+  // has_permission() check; not SECURITY INVOKER (see that migration's
+  // comment for why calling private.normalize_* ruled that out).
+  "public.search_customers",
 ];
 
 // Expected output of security_audit_default_privileges() in a healthy

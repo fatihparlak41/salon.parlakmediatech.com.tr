@@ -71,6 +71,7 @@
   "TenantApp": {
     "nav": {
       "dashboard": "Panel",
+      "customers": "Müşteriler",
       "staff": "Personel",
       "services": "Hizmetler"
     },
@@ -79,6 +80,24 @@
       "roleLabel": "Rolünüz",
       "description": "Bu alanın gerçek içeriği (randevular, müşteriler, raporlar) sonraki fazlarda eklenecek. Bu ekran, oturum + üyelik + izin zincirinin uçtan uca çalıştığını doğruluyor."
     }
+  },
+  "Customers": {
+    "title": "Müşteriler",
+    "description": "Salonunuzun müşteri kayıtlarını arayın, oluşturun ve güncelleyin.",
+    "addCustomer": "Müşteri ekle",
+    "searchPlaceholder": "İsim, telefon veya e-posta ara…",
+    "emptyTitle": "Henüz müşteri eklenmedi",
+    "emptyDescription": "Salonunuza gelen müşterileri ekleyerek başlayın.",
+    "emptyCta": "İlk müşteriyi ekle",
+    "noResults": "Aramanızla eşleşen müşteri bulunamadı.",
+    "activeCountLabel": "Aktif müşteri",
+    "archivedCountLabel": "Arşivlenmiş",
+    "loadMore": "Daha fazla göster",
+    "filterActive": "Aktif",
+    "filterArchived": "Arşivlenmiş",
+    "duplicateWarning": "Bu telefon veya e-posta ile eşleşen müşteri(ler) zaten var:",
+    "notesLabel": "Notlar",
+    "appointmentsComingSoon": "Randevu geçmişi yakında burada görünecek."
   },
   "Staff": {
     "title": "Personel",
