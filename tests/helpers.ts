@@ -205,6 +205,11 @@ export async function cleanupTenants(tenantIds: string[]): Promise<void> {
   await testDb`delete from audit_logs where tenant_id in ${testDb(tenantIds)}`;
   await testDb`delete from branches where tenant_id in ${testDb(tenantIds)}`;
   await testDb`delete from tenant_memberships where tenant_id in ${testDb(tenantIds)}`;
+  // tenant_features: not written by any fixture helper above (no
+  // createXxx wrapper for it) — Faz 2F is the first test file to insert
+  // it directly (enabling online_booking), which is what surfaced this
+  // gap. FK-blocks the tenants delete below if left out.
+  await testDb`delete from tenant_features where tenant_id in ${testDb(tenantIds)}`;
 
   const roles = await testDb<{ id: string }[]>`
     select id from roles where tenant_id in ${testDb(tenantIds)}

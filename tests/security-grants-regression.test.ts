@@ -128,7 +128,44 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   // above). Authenticated only — no anon grant; Phase 2F's public
   // booking flow will need its own separate public-safe boundary.
   "public.check_appointment_availability",
+  // Phase 2F (20260822150500/151000) — the public-safe boundary the
+  // comment above anticipated. Granted to BOTH authenticated and anon
+  // (see ANON_FUNCTION_WHITELIST below and the migration's own header
+  // comment): Supabase Auth session storage is per-browser-origin, not
+  // per-route, so a logged-in staff member opening /book/[tenantSlug] in
+  // the same browser calls these as `authenticated`, not `anon`. These 3
+  // are reads only — they never branch on caller identity or grant
+  // anything extra to an authenticated caller, so this isn't a widened
+  // surface, just a correct one for how the browser actually behaves.
+  // The 4th Phase 2F member of this group, create_guest_booking, was
+  // REMOVED from here in Phase 2F.2 (20260822170000) — see
+  // BOOKING_GATEWAY_FUNCTION_WHITELIST below for where it lives now.
+  "public.get_public_booking_context",
+  "public.get_public_eligible_staff",
+  "public.get_public_availability_slots",
 ];
+
+// Phase 2F's public read surface — the only functions anon has ever
+// been granted execute on in this project. Deliberately identical to
+// the read-only entries in AUTHENTICATED_FUNCTION_WHITELIST above — see
+// that list's comment for why the same 3 go to both roles.
+// create_guest_booking (the mutation) was here through Phase 2F.1;
+// Phase 2F.2 (20260822170000) revoked it from both anon and
+// authenticated and granted it to booking_gateway alone instead — see
+// BOOKING_GATEWAY_FUNCTION_WHITELIST.
+const ANON_FUNCTION_WHITELIST = [
+  "public.get_public_booking_context",
+  "public.get_public_eligible_staff",
+  "public.get_public_availability_slots",
+];
+
+// Phase 2F.2 (20260822170000) — the dedicated, least-privilege role
+// behind the Next.js server-side booking gateway. Exactly one grant,
+// ever: EXECUTE on the one mutation the direct-browser path used to
+// have. No table grant of any kind (create_guest_booking is already
+// SECURITY DEFINER and does all its own table access as its owner), no
+// private.* grant, no membership in any other role.
+const BOOKING_GATEWAY_FUNCTION_WHITELIST = ["public.create_guest_booking"];
 
 // Expected output of security_audit_default_privileges() in a healthy
 // environment: zero rows for anon/authenticated (any row for either
@@ -170,10 +207,20 @@ describe("security grants regression", () => {
     expect(anonGrants).toEqual([]);
   });
 
-  it("anon has zero function execute grants", async () => {
+  it("anon's function execute grants exactly match the whitelist", async () => {
+    // Was a blind "zero grants" check through Phase 2E — Phase 2F is the
+    // first phase to intentionally grant anon anything. Same
+    // exactly-matches-the-whitelist pattern as authenticated's function
+    // test below, not simply relaxed to "anything goes".
     const data = await testDb<FunctionGrantRow[]>`select * from security_audit_function_grants()`;
-    const anonGrants = data.filter((g) => g.grantee === "anon");
-    expect(anonGrants).toEqual([]);
+    const actual = new Set(data.filter((g) => g.grantee === "anon").map((g) => `${g.schema_name}.${g.function_name}`));
+
+    for (const fn of ANON_FUNCTION_WHITELIST) {
+      expect(actual.has(fn), `expected anon to have execute on ${fn}`).toBe(true);
+      actual.delete(fn);
+    }
+
+    expect(Array.from(actual), "unexpected anon execute grants").toEqual([]);
   });
 
   it("(A) no migration/application-owned function retains a PUBLIC execute grant", async () => {
@@ -275,6 +322,77 @@ describe("security grants regression", () => {
     expect(Array.from(actual), "unexpected authenticated execute grants").toEqual([]);
   });
 
+  describe("booking_gateway (Phase 2F.2)", () => {
+    it("has exactly the required security properties — NOSUPERUSER/NOCREATEDB/NOCREATEROLE/NOREPLICATION/NOBYPASSRLS/NOINHERIT/LOGIN", async () => {
+      const rows = await testDb<
+        { rolcanlogin: boolean; rolsuper: boolean; rolcreatedb: boolean; rolcreaterole: boolean; rolreplication: boolean; rolbypassrls: boolean; rolinherit: boolean }[]
+      >`
+        select rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls, rolinherit
+        from pg_roles where rolname = 'booking_gateway'
+      `;
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toEqual({
+        rolcanlogin: true,
+        rolsuper: false,
+        rolcreatedb: false,
+        rolcreaterole: false,
+        rolreplication: false,
+        rolbypassrls: false,
+        rolinherit: false,
+      });
+    });
+
+    it("belongs to no other role (no inherited membership to smuggle in extra privilege)", async () => {
+      const rows = await testDb`
+        select r.rolname from pg_auth_members m
+        join pg_roles r on r.oid = m.roleid
+        join pg_roles b on b.oid = m.member
+        where b.rolname = 'booking_gateway'
+      `;
+      expect(rows).toEqual([]);
+    });
+
+    it("EFFECTIVE function EXECUTE surface is exactly BOOKING_GATEWAY_FUNCTION_WHITELIST — no more, no less, PUBLIC-inheritance included", async () => {
+      // has_function_privilege reports the EFFECTIVE answer (direct
+      // grant + role membership + PUBLIC-granted execute all folded
+      // together), not a raw ACL row — the exact "not merely explicit
+      // ACL rows" check Phase 2F.2 asked for. Scoped to public/private,
+      // extension-owned functions excluded (same reasoning as the
+      // anon/authenticated tests above): those are pre-existing,
+      // catalogued separately by test (B), and not application-owned.
+      const rows = await testDb<{ schema: string; name: string; args: string; can_execute: boolean }[]>`
+        select n.nspname as schema, p.proname as name, pg_get_function_identity_arguments(p.oid) as args,
+               has_function_privilege('booking_gateway', p.oid, 'EXECUTE') as can_execute
+        from pg_proc p
+        join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname in ('public', 'private')
+          and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
+      `;
+      const executable = rows.filter((r) => r.can_execute).map((r) => `${r.schema}.${r.name}`);
+      expect(executable.sort()).toEqual([...BOOKING_GATEWAY_FUNCTION_WHITELIST].sort());
+
+      const target = rows.find((r) => r.can_execute)!;
+      expect(target.args).toBe(
+        "p_tenant_slug text, p_branch_id uuid, p_service_id uuid, p_scheduled_start_at timestamp with time zone, p_customer_full_name text, p_customer_phone text, p_staff_member_id uuid, p_customer_email text, p_idempotency_key uuid",
+      );
+    });
+
+    it("EFFECTIVE table CRUD is zero on every public-schema table", async () => {
+      const rows = await testDb<{ table_name: string; can_select: boolean; can_insert: boolean; can_update: boolean; can_delete: boolean }[]>`
+        select c.relname as table_name,
+               has_table_privilege('booking_gateway', c.oid, 'SELECT') as can_select,
+               has_table_privilege('booking_gateway', c.oid, 'INSERT') as can_insert,
+               has_table_privilege('booking_gateway', c.oid, 'UPDATE') as can_update,
+               has_table_privilege('booking_gateway', c.oid, 'DELETE') as can_delete
+        from pg_class c
+        join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'public' and c.relkind = 'r'
+      `;
+      const withAnyAccess = rows.filter((r) => r.can_select || r.can_insert || r.can_update || r.can_delete);
+      expect(withAnyAccess, "booking_gateway must have zero DML on every table — create_guest_booking is SECURITY DEFINER and does all table access as its own owner").toEqual([]);
+    });
+  });
+
   it("public.check_appointment_availability has exactly one callable overload, with the expected signature", async () => {
     // Phase 2D.1 (20260822120000) changed this function from 5 args to 6
     // (an added p_exclude_appointment_id with a default), via DROP +
@@ -299,6 +417,23 @@ describe("security grants regression", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]!.arg_types).toBe(
       "p_tenant_id uuid, p_branch_id uuid, p_staff_member_id uuid, p_service_id uuid, p_scheduled_start_at timestamp with time zone, p_exclude_appointment_id uuid",
+    );
+  });
+
+  it("public.create_guest_booking has exactly one callable overload, with the expected signature", async () => {
+    // Same blind spot as the check_appointment_availability test above,
+    // for the function whose whole grant history changed in Phase
+    // 2F.2 — a stray second overload here would be an especially severe
+    // miss, since this is the one anon-mutating-turned-gateway-only path.
+    const rows = await testDb<{ arg_types: string }[]>`
+      select pg_get_function_identity_arguments(p.oid) as arg_types
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.proname = 'create_guest_booking'
+    `;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.arg_types).toBe(
+      "p_tenant_slug text, p_branch_id uuid, p_service_id uuid, p_scheduled_start_at timestamp with time zone, p_customer_full_name text, p_customer_phone text, p_staff_member_id uuid, p_customer_email text, p_idempotency_key uuid",
     );
   });
 

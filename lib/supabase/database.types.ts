@@ -123,6 +123,7 @@ export type Database = {
           created_by: string | null
           customer_id: string
           id: string
+          idempotency_key: string | null
           notes: string | null
           scheduled_end_at: string
           scheduled_start_at: string
@@ -137,6 +138,7 @@ export type Database = {
           created_by?: string | null
           customer_id: string
           id?: string
+          idempotency_key?: string | null
           notes?: string | null
           scheduled_end_at: string
           scheduled_start_at: string
@@ -151,6 +153,7 @@ export type Database = {
           created_by?: string | null
           customer_id?: string
           id?: string
+          idempotency_key?: string | null
           notes?: string | null
           scheduled_end_at?: string
           scheduled_start_at?: string
@@ -1241,6 +1244,20 @@ export type Database = {
         }
         Returns: string
       }
+      create_guest_booking: {
+        Args: {
+          p_branch_id: string
+          p_customer_email?: string
+          p_customer_full_name: string
+          p_customer_phone: string
+          p_idempotency_key?: string
+          p_scheduled_start_at: string
+          p_service_id: string
+          p_staff_member_id?: string
+          p_tenant_slug: string
+        }
+        Returns: Json
+      }
       create_role: {
         Args: {
           p_description: string
@@ -1253,6 +1270,28 @@ export type Database = {
       create_tenant: {
         Args: { p_name: string; p_slug: string }
         Returns: string
+      }
+      get_public_availability_slots: {
+        Args: {
+          p_branch_id: string
+          p_date: string
+          p_service_id: string
+          p_staff_member_id?: string
+          p_tenant_slug: string
+        }
+        Returns: Json
+      }
+      get_public_booking_context: {
+        Args: { p_tenant_slug: string }
+        Returns: Json
+      }
+      get_public_eligible_staff: {
+        Args: {
+          p_branch_id: string
+          p_service_id: string
+          p_tenant_slug: string
+        }
+        Returns: Json
       }
       has_feature: {
         Args: { p_feature_key: string; p_tenant_id: string }

@@ -29,11 +29,16 @@ export default defineConfig({
     fileParallelism: false,
   },
   resolve: {
-    // Mirrors tsconfig.json's "@/*" path — needed the first time a test
-    // imports real app code (lib/auth/session-errors.ts) instead of only
-    // ./helpers. Vitest doesn't read tsconfig paths on its own.
     alias: {
+      // Mirrors tsconfig.json's "@/*" path — needed the first time a test
+      // imports real app code (lib/auth/session-errors.ts) instead of only
+      // ./helpers. Vitest doesn't read tsconfig paths on its own.
       "@": rootDir,
+      // Phase 2F.2: lib/modules/public-booking/{gateway,turnstile,gateway-db}.ts
+      // import "server-only", which throws outside Next's own build
+      // pipeline (see tests/stubs/server-only-stub.ts's own comment for
+      // why this is safe — test-only, no effect on the real build).
+      "server-only": path.join(rootDir, "tests/stubs/server-only-stub.ts"),
     },
   },
 });
