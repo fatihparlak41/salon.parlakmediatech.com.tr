@@ -18,14 +18,22 @@ export default async function ConfirmEmailPage() {
     );
   }
 
+  // Shared page — "Kayıt işlemini tamamlamak için..." only makes sense
+  // for the signup-confirmation flow. A customer magic-link (Faz 2G.1)
+  // reuses this exact same GET->cookie->POST->verifyOtp mechanism (see
+  // app/auth/confirm/route.ts's own header) but is a LOGIN, not a
+  // registration, so it needs its own copy — branching on pending.type
+  // is a presentation-only choice, the underlying flow is untouched.
+  const isMagicLink = pending.type === "magiclink";
+
   return (
     <div className="flex flex-col gap-6 text-center">
       <div className="flex flex-col gap-2">
         <h1 className="text-xl font-semibold tracking-tight">
-          {t("pendingTitle")}
+          {t(isMagicLink ? "pendingTitleMagicLink" : "pendingTitle")}
         </h1>
         <p className="text-muted-foreground text-sm">
-          {t("pendingDescription")}
+          {t(isMagicLink ? "pendingDescriptionMagicLink" : "pendingDescription")}
         </p>
       </div>
       <ConfirmEmailButton />

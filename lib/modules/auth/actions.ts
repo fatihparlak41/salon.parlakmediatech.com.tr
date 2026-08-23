@@ -12,18 +12,7 @@ import {
 } from "@/lib/auth/pending-confirmation";
 import { authErrorLogFields } from "@/lib/auth/session-errors";
 import { resendConfirmationSchema, signInSchema, signUpSchema } from "./schemas";
-
-// NEXT_PUBLIC_SITE_URL wins once set (the real custom domain, once
-// attached). Until then, Vercel's own VERCEL_URL — auto-populated per
-// deployment, including a unique one per Preview build — resolves this
-// correctly with no per-deployment config. Bare localhost fallback is
-// for `pnpm dev` only.
-function getSiteUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
-  );
-}
+import { getSiteUrl } from "@/lib/site-url";
 
 export async function signInAction(
   _prevState: ActionResult<null> | null,

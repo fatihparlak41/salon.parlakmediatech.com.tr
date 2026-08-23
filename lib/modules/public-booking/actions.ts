@@ -1,5 +1,6 @@
 "use server";
 
+import { getCurrentUser } from "@/lib/auth/session";
 import { processGuestBooking, type GatewayResult } from "./gateway";
 import type { GuestBookingGatewayInput } from "./schemas";
 
@@ -24,7 +25,16 @@ import type { GuestBookingGatewayInput } from "./schemas";
  * to it. A request that never reaches this action (a raw RPC call
  * against Supabase directly) gets a permission-denied error at the
  * database, not a missing feature.
+ *
+ * Faz 2G.1: the optional authenticated-customer link is derived HERE,
+ * server-side, from the actual session cookie — never accepted as a
+ * field on `input`. BookingWizard has no idea this exists and needs no
+ * changes: an already-logged-in customer's booking gets linked to their
+ * account automatically; a logged-out visitor gets ordinary guest
+ * behavior; there is no third code path and no client-supplied identity
+ * that could ever widen or spoof it.
  */
 export async function submitGuestBookingAction(input: GuestBookingGatewayInput): Promise<GatewayResult> {
-  return processGuestBooking(input);
+  const user = await getCurrentUser();
+  return processGuestBooking(input, user?.id ?? null);
 }

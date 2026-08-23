@@ -35,6 +35,8 @@
       "pendingTitle": "E-posta adresinizi doğrulayın",
       "pendingDescription": "Kayıt işlemini tamamlamak için aşağıdaki butona basın.",
       "confirmButton": "E-postamı Onayla",
+      "pendingTitleMagicLink": "Giriş bağlantınız hazır",
+      "pendingDescriptionMagicLink": "Hesabınıza giriş yapmak için aşağıdaki butona basın.",
       "expiredTitle": "Bu doğrulama bağlantısının süresi dolmuş veya daha önce kullanılmış.",
       "resendEmailLabel": "E-posta",
       "resendButton": "Yeni doğrulama e-postası gönder",
@@ -192,6 +194,47 @@
     "newBooking": "Yeni randevu oluştur",
     "requiredField": "Bu alan zorunludur.",
     "todayLabel": "Bugün"
+  },
+  "Account": {
+    "nav": {
+      "home": "Hesabım",
+      "appointments": "Randevularım",
+      "profile": "Profil"
+    },
+    "login": {
+      "title": "Hesabıma giriş yap",
+      "description": "E-posta adresinize bir giriş bağlantısı gönderelim.",
+      "emailLabel": "E-posta",
+      "submit": "Giriş bağlantısı gönder",
+      "submitting": "Gönderiliyor…",
+      "successTitle": "E-postanızı kontrol edin",
+      "successDescription": "Eğer bu e-posta ile devam edilebiliyorsa giriş bağlantısı gönderildi."
+    },
+    "home": {
+      "greeting": "Merhaba, {name}",
+      "appointmentsTitle": "Randevularım",
+      "emptyDescription": "Giriş yapıp randevu aldığınızda burada görünecek.",
+      "appointmentsCount": "{count} randevu",
+      "viewAppointments": "Randevularımı görüntüle",
+      "bookAgainTitle": "Tekrar randevu al"
+    },
+    "profile": {
+      "title": "Profil",
+      "description": "Hesap bilgilerinizi görüntüleyin ve güncelleyin.",
+      "emailLabel": "E-posta",
+      "fullNameLabel": "Ad Soyad",
+      "phoneLabel": "Telefon",
+      "save": "Kaydet",
+      "saving": "Kaydediliyor…",
+      "saved": "Kaydedildi.",
+      "loadError": "Profil yüklenemedi."
+    },
+    "appointments": {
+      "title": "Randevularım",
+      "description": "Giriş yaparak aldığınız randevuların listesi.",
+      "emptyDescription": "Henüz bir randevunuz yok.",
+      "minutesShort": "dk"
+    }
   },
   "SuperAdmin": {
     "title": "Süper Admin",

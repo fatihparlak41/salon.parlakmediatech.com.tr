@@ -85,7 +85,7 @@ afterAll(async () => {
 
 describe("gateway", () => {
   it("9. valid Turnstile + valid payload succeeds through the real DB", async () => {
-    const result = await processGuestBooking(validInput(), { verifyTurnstile: OK_VERIFIER });
+    const result = await processGuestBooking(validInput(), null, { verifyTurnstile: OK_VERIFIER });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.appointmentReference).toBeTruthy();
@@ -94,7 +94,7 @@ describe("gateway", () => {
 
   it("10. invalid Turnstile token means the database is never called", async () => {
     let dbCalled = false;
-    const result = await processGuestBooking(validInput(), {
+    const result = await processGuestBooking(validInput(), null, {
       verifyTurnstile: async () => ({ success: false, errorCodes: ["invalid-input-response"] }),
       callDb: async () => {
         dbCalled = true;
@@ -107,7 +107,7 @@ describe("gateway", () => {
 
   it("11. missing/empty Turnstile token is rejected before verification even runs", async () => {
     let verifyCalled = false;
-    const result = await processGuestBooking(validInput({ turnstileToken: "" }), {
+    const result = await processGuestBooking(validInput({ turnstileToken: "" }), null, {
       verifyTurnstile: async () => {
         verifyCalled = true;
         return { success: true };
@@ -118,7 +118,7 @@ describe("gateway", () => {
   });
 
   it("12. a failed verification (representing a provider failure) never leaks provider diagnostics in the customer-facing message", async () => {
-    const result = await processGuestBooking(validInput(), {
+    const result = await processGuestBooking(validInput(), null, {
       verifyTurnstile: async () => ({ success: false, errorCodes: ["provider-unreachable", "some-internal-detail"] }),
     });
     expect(result.success).toBe(false);
@@ -129,7 +129,7 @@ describe("gateway", () => {
   });
 
   it("13. DB BK005 (slot taken) maps to a customer-safe message, not a raw code", async () => {
-    const result = await processGuestBooking(validInput(), {
+    const result = await processGuestBooking(validInput(), null, {
       verifyTurnstile: OK_VERIFIER,
       callDb: async () => ({ success: false, code: "BK005", message: "raise exception internal text" } satisfies GuestBookingDbResult),
     });
@@ -141,7 +141,7 @@ describe("gateway", () => {
   });
 
   it("14. DB BK007 (idempotency mismatch) maps to a customer-safe message, not a raw code", async () => {
-    const result = await processGuestBooking(validInput(), {
+    const result = await processGuestBooking(validInput(), null, {
       verifyTurnstile: OK_VERIFIER,
       callDb: async () => ({ success: false, code: "BK007", message: "raise exception internal text" } satisfies GuestBookingDbResult),
     });
@@ -161,7 +161,7 @@ describe("gateway", () => {
     // fragment) to prove gateway.ts's mapping never echoes dbResult.message
     // to the customer under any code path — only the static, BK0nn-keyed
     // safe strings in error-codes.ts, or the generic fallback.
-    const result = await processGuestBooking(validInput(), {
+    const result = await processGuestBooking(validInput(), null, {
       verifyTurnstile: OK_VERIFIER,
       callDb: async () => ({
         success: false,
@@ -178,8 +178,8 @@ describe("gateway", () => {
 
   it("16. idempotent retry through the gateway returns the same booking, no duplicate", async () => {
     const input = validInput({ scheduledStartAtUtc: futureIso(11, 10) });
-    const first = await processGuestBooking(input, { verifyTurnstile: OK_VERIFIER });
-    const second = await processGuestBooking(input, { verifyTurnstile: OK_VERIFIER });
+    const first = await processGuestBooking(input, null, { verifyTurnstile: OK_VERIFIER });
+    const second = await processGuestBooking(input, null, { verifyTurnstile: OK_VERIFIER });
     expect(first.success).toBe(true);
     expect(second.success).toBe(true);
     if (first.success && second.success) {
@@ -192,10 +192,10 @@ describe("gateway", () => {
   it("17. a different Turnstile token on retry (CAPTCHA refresh) does not change which booking the idempotency key resolves to", async () => {
     const key = crypto.randomUUID();
     const shared = { idempotencyKey: key, scheduledStartAtUtc: futureIso(12, 10) };
-    const first = await processGuestBooking(validInput({ ...shared, turnstileToken: "token-one" }), {
+    const first = await processGuestBooking(validInput({ ...shared, turnstileToken: "token-one" }), null, {
       verifyTurnstile: OK_VERIFIER,
     });
-    const second = await processGuestBooking(validInput({ ...shared, turnstileToken: "token-two-after-refresh" }), {
+    const second = await processGuestBooking(validInput({ ...shared, turnstileToken: "token-two-after-refresh" }), null, {
       verifyTurnstile: OK_VERIFIER,
     });
     expect(first.success).toBe(true);
@@ -205,5 +205,47 @@ describe("gateway", () => {
     }
     const rows = await testDb`select id from appointments where idempotency_key = ${key}`;
     expect(rows.length).toBe(1);
+  });
+
+  it("19. the trusted account identity is passed to callDb as a value SEPARATE from the browser payload, never merged into it", async () => {
+    // Faz 2G.1 trust-boundary proof at the gateway layer: rawInput (the
+    // Zod-validated browser payload) carries no account-identity field at
+    // all — the type doesn't have one — so the only way callDb could ever
+    // see one is the explicit trustedAccountUserId parameter this test
+    // passes directly, exactly mirroring how actions.ts derives it from
+    // getCurrentUser() server-side, never from `input`.
+    const fakeAccountUserId = crypto.randomUUID();
+    let receivedAccountUserId: string | null | undefined;
+    const result = await processGuestBooking(validInput({ scheduledStartAtUtc: futureIso(13, 10) }), fakeAccountUserId, {
+      verifyTurnstile: OK_VERIFIER,
+      callDb: async (dbInput) => {
+        receivedAccountUserId = dbInput.customerAccountUserId;
+        return { success: true, data: { appointmentReference: "diag" } };
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(receivedAccountUserId).toBe(fakeAccountUserId);
+  });
+
+  it("20. the trusted account identity never appears anywhere in the public confirmation response", async () => {
+    const accountUserId = crypto.randomUUID();
+    const result = await processGuestBooking(validInput({ scheduledStartAtUtc: futureIso(14, 10) }), accountUserId, {
+      verifyTurnstile: OK_VERIFIER,
+      callDb: async () => ({
+        success: true,
+        data: {
+          appointmentReference: "diag-ref",
+          branchName: "B",
+          serviceName: "S",
+          staffName: "St",
+          scheduledStartAt: futureIso(14, 10),
+          durationMinutes: 30,
+          price: 100,
+          tenantTimezone: "Europe/Istanbul",
+        },
+      }),
+    });
+    expect(result.success).toBe(true);
+    expect(JSON.stringify(result)).not.toContain(accountUserId);
   });
 });

@@ -30,9 +30,17 @@ const GENERIC_FAILURE_MESSAGE = "İşlem gerçekleştirilemedi, lütfen tekrar d
  * — deps.callDb exists so a test can prove that directly (inject a
  * spy/throwing stub and assert it was never invoked), not just infer it
  * from the absence of a side effect.
+ *
+ * trustedAccountUserId is a SEPARATE parameter from rawInput on purpose
+ * (Faz 2G.1) — GuestBookingGatewayInput is the Zod-validated shape of
+ * whatever the browser sent, and this value must never be extractable
+ * from that object. The only caller, actions.ts's submitGuestBookingAction,
+ * derives it itself from the server-side session (getCurrentUser()) and
+ * passes it here; nothing about it ever round-trips through the client.
  */
 export async function processGuestBooking(
   rawInput: GuestBookingGatewayInput,
+  trustedAccountUserId: string | null,
   deps: { verifyTurnstile?: TurnstileVerifier; callDb?: DbCaller } = {},
 ): Promise<GatewayResult> {
   const parsed = guestBookingGatewayInputSchema.safeParse(rawInput);
@@ -62,6 +70,7 @@ export async function processGuestBooking(
     staffMemberId: input.staffMemberId,
     customerEmail: input.customerEmail,
     idempotencyKey: input.idempotencyKey,
+    customerAccountUserId: trustedAccountUserId,
   });
 
   if (!dbResult.success) {

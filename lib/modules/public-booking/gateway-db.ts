@@ -41,6 +41,9 @@ export type GuestBookingDbInput = {
   staffMemberId?: string;
   customerEmail?: string;
   idempotencyKey: string;
+  /** Server-derived only (see gateway.ts) — never sourced from the
+   * browser-supplied GuestBookingGatewayInput. */
+  customerAccountUserId: string | null;
 };
 
 export type GuestBookingDbResult =
@@ -65,7 +68,8 @@ export async function callCreateGuestBooking(input: GuestBookingDbInput): Promis
         ${input.customerPhone},
         ${input.staffMemberId ?? null}::uuid,
         ${input.customerEmail ?? null},
-        ${input.idempotencyKey}::uuid
+        ${input.idempotencyKey}::uuid,
+        ${input.customerAccountUserId}::uuid
       )
     `;
     return { success: true, data: row!.create_guest_booking };

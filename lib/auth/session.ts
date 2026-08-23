@@ -66,6 +66,23 @@ export async function requireUser(): Promise<User> {
   return user;
 }
 
+/**
+ * The customer-portal equivalent of requireUser() — deliberately asks
+ * nothing about tenant_memberships or customer_account_links. Being
+ * authenticated is the entire requirement: a brand-new account with zero
+ * linked bookings anywhere is valid and must see a clean empty /account,
+ * never a redirect to /onboarding (that flow is for prospective salon
+ * owners, a different audience this guard has no opinion about — see
+ * app/[locale]/account/(guarded)/layout.tsx).
+ */
+export async function requireAccountUser(): Promise<User> {
+  const user = await getCurrentUser();
+  if (!user) {
+    redirect("/account/login");
+  }
+  return user;
+}
+
 /** All ACTIVE memberships for the current user, across every tenant. */
 export const getUserMemberships = cache(
   async (): Promise<MembershipSummary[]> => {

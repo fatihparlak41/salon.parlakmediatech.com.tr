@@ -143,6 +143,14 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   "public.get_public_booking_context",
   "public.get_public_eligible_staff",
   "public.get_public_availability_slots",
+  // Phase 2G.1 (20260822190000) — the customer-portal RPC surface.
+  // Authenticated only, never anon: the portal requires a signed-in
+  // session, every one of the 3 derives identity exclusively from
+  // auth.uid() (see the migration's own header), and none has a
+  // meaningful anonymous answer the way the Phase 2F read functions do.
+  "public.get_my_account_profile",
+  "public.update_my_account_profile",
+  "public.get_my_appointments",
 ];
 
 // Phase 2F's public read surface — the only functions anon has ever
@@ -373,7 +381,7 @@ describe("security grants regression", () => {
 
       const target = rows.find((r) => r.can_execute)!;
       expect(target.args).toBe(
-        "p_tenant_slug text, p_branch_id uuid, p_service_id uuid, p_scheduled_start_at timestamp with time zone, p_customer_full_name text, p_customer_phone text, p_staff_member_id uuid, p_customer_email text, p_idempotency_key uuid",
+        "p_tenant_slug text, p_branch_id uuid, p_service_id uuid, p_scheduled_start_at timestamp with time zone, p_customer_full_name text, p_customer_phone text, p_staff_member_id uuid, p_customer_email text, p_idempotency_key uuid, p_customer_account_user_id uuid",
       );
     });
 
@@ -423,8 +431,10 @@ describe("security grants regression", () => {
   it("public.create_guest_booking has exactly one callable overload, with the expected signature", async () => {
     // Same blind spot as the check_appointment_availability test above,
     // for the function whose whole grant history changed in Phase
-    // 2F.2 — a stray second overload here would be an especially severe
-    // miss, since this is the one anon-mutating-turned-gateway-only path.
+    // 2F.2/2G.1 — a stray second overload here would be an especially
+    // severe miss, since this is the one anon-mutating-turned-gateway-only
+    // path. 10 args as of 20260822190000 (p_customer_account_user_id
+    // added, DROP+CREATE — see that migration's header).
     const rows = await testDb<{ arg_types: string }[]>`
       select pg_get_function_identity_arguments(p.oid) as arg_types
       from pg_proc p
@@ -433,7 +443,7 @@ describe("security grants regression", () => {
     `;
     expect(rows).toHaveLength(1);
     expect(rows[0]!.arg_types).toBe(
-      "p_tenant_slug text, p_branch_id uuid, p_service_id uuid, p_scheduled_start_at timestamp with time zone, p_customer_full_name text, p_customer_phone text, p_staff_member_id uuid, p_customer_email text, p_idempotency_key uuid",
+      "p_tenant_slug text, p_branch_id uuid, p_service_id uuid, p_scheduled_start_at timestamp with time zone, p_customer_full_name text, p_customer_phone text, p_staff_member_id uuid, p_customer_email text, p_idempotency_key uuid, p_customer_account_user_id uuid",
     );
   });
 

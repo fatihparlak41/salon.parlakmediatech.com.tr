@@ -123,6 +123,7 @@ export type Database = {
           created_by: string | null
           customer_id: string
           id: string
+          idempotency_fingerprint: string | null
           idempotency_key: string | null
           notes: string | null
           scheduled_end_at: string
@@ -138,6 +139,7 @@ export type Database = {
           created_by?: string | null
           customer_id: string
           id?: string
+          idempotency_fingerprint?: string | null
           idempotency_key?: string | null
           notes?: string | null
           scheduled_end_at: string
@@ -153,6 +155,7 @@ export type Database = {
           created_by?: string | null
           customer_id?: string
           id?: string
+          idempotency_fingerprint?: string | null
           idempotency_key?: string | null
           notes?: string | null
           scheduled_end_at?: string
@@ -276,6 +279,54 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "branches_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_account_links: {
+        Row: {
+          claimed_via: string
+          created_at: string
+          customer_id: string
+          deleted_at: string | null
+          id: string
+          is_primary: boolean
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          claimed_via: string
+          created_at?: string
+          customer_id: string
+          deleted_at?: string | null
+          id?: string
+          is_primary?: boolean
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          claimed_via?: string
+          created_at?: string
+          customer_id?: string
+          deleted_at?: string | null
+          id?: string
+          is_primary?: boolean
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_account_links_customer_tenant_fkey"
+            columns: ["customer_id", "tenant_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id", "tenant_id"]
+          },
+          {
+            foreignKeyName: "customer_account_links_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -1247,6 +1298,7 @@ export type Database = {
       create_guest_booking: {
         Args: {
           p_branch_id: string
+          p_customer_account_user_id?: string
           p_customer_email?: string
           p_customer_full_name: string
           p_customer_phone: string
@@ -1271,6 +1323,8 @@ export type Database = {
         Args: { p_name: string; p_slug: string }
         Returns: string
       }
+      get_my_account_profile: { Args: never; Returns: Json }
+      get_my_appointments: { Args: never; Returns: Json }
       get_public_availability_slots: {
         Args: {
           p_branch_id: string
@@ -1412,6 +1466,10 @@ export type Database = {
       update_membership_role: {
         Args: { p_membership_id: string; p_new_role_id: string }
         Returns: undefined
+      }
+      update_my_account_profile: {
+        Args: { p_full_name: string; p_phone?: string }
+        Returns: Json
       }
       update_role_permissions: {
         Args: { p_permission_keys: string[]; p_role_id: string }

@@ -198,6 +198,10 @@ export async function cleanupTenants(tenantIds: string[]): Promise<void> {
   if (staffIds.length > 0) {
     await testDb`delete from staff_services where staff_member_id in ${testDb(staffIds)}`;
   }
+  // customer_account_links: NO ACTION on its composite (customer_id,
+  // tenant_id) FK — a link row still pointing at a customer blocks the
+  // customers delete just below, same FK-order lesson as tenant_features.
+  await testDb`delete from customer_account_links where tenant_id in ${testDb(tenantIds)}`;
   await testDb`delete from customers where tenant_id in ${testDb(tenantIds)}`;
   await testDb`delete from services where tenant_id in ${testDb(tenantIds)}`;
   await testDb`delete from staff_members where tenant_id in ${testDb(tenantIds)}`;
