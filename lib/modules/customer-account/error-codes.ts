@@ -8,6 +8,13 @@
 export const ACCOUNT_ERROR_MESSAGES: Record<string, string> = {
   AC001: "Bu işlem için giriş yapmanız gerekiyor.",
   AC002: "Lütfen ad soyad bilgisini kontrol edin.",
+  // Faz 2G.2A (20260823201517) — cancel_my_appointment. AC003 is
+  // deliberately one generic message for every "not manageable" reason
+  // (doesn't exist / not owned / wrong status) — no existence side
+  // channel, matching the DB function's own single errcode for all three.
+  AC003: "Bu randevu şu anda yönetilemiyor.",
+  AC004: "Bu salon için online iptal kapalı.",
+  AC005: "İptal süresi geçti.",
 };
 
 const DEFAULT_MESSAGE = "İşlem gerçekleştirilemedi, lütfen tekrar deneyin.";

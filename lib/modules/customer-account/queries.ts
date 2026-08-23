@@ -23,6 +23,11 @@ export type MyAppointment = {
   status: string;
   scheduledStartAt: string;
   scheduledEndAt: string;
+  // DB-computed authority (Faz 2G.2A, 20260823201517) — status + tenant
+  // policy + cutoff, evaluated inside get_my_appointments() itself. The
+  // UI only ever reads these, never re-derives eligibility client-side.
+  canCancel: boolean;
+  canReschedule: boolean;
   services: MyAppointmentService[];
 };
 

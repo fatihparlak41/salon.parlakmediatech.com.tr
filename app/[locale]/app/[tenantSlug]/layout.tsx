@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { LayoutDashboard, Users, Scissors, Contact, CalendarClock, CalendarDays } from "lucide-react";
+import { LayoutDashboard, Users, Scissors, Contact, CalendarClock, CalendarDays, Settings as SettingsIcon } from "lucide-react";
 import { getTenantAccess, hasPermission } from "@/lib/auth/session";
 import { TenantAppShell, type TenantNavItem } from "@/components/tenant-app/app-shell";
 
@@ -27,11 +27,12 @@ export default async function TenantAppLayout({
   // what actually enforces access on every query these pages make; a
   // direct URL hit on a hidden route still resolves through the same
   // has_permission-gated policies, same as always.
-  const [canViewStaff, canViewServices, canViewCustomers, canViewAppointments] = await Promise.all([
+  const [canViewStaff, canViewServices, canViewCustomers, canViewAppointments, canManageSettings] = await Promise.all([
     hasPermission(access.tenant.id, "staff.view"),
     hasPermission(access.tenant.id, "services.view"),
     hasPermission(access.tenant.id, "customers.view"),
     hasPermission(access.tenant.id, "appointments.view"),
+    hasPermission(access.tenant.id, "settings.manage"),
   ]);
 
   const navItems: TenantNavItem[] = [
@@ -54,6 +55,9 @@ export default async function TenantAppLayout({
       : []),
     ...(canViewServices
       ? [{ href: "/services", label: t("services"), icon: <Scissors className="size-4" /> }]
+      : []),
+    ...(canManageSettings
+      ? [{ href: "/settings", label: t("settings"), icon: <SettingsIcon className="size-4" /> }]
       : []),
   ];
 

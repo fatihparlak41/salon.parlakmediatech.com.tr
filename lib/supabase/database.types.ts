@@ -1227,6 +1227,10 @@ export type Database = {
           created_at: string
           created_by: string | null
           currency: string
+          customer_cancellation_cutoff_minutes: number
+          customer_cancellation_enabled: boolean
+          customer_reschedule_cutoff_minutes: number
+          customer_reschedule_enabled: boolean
           deleted_at: string | null
           id: string
           name: string
@@ -1240,6 +1244,10 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           currency?: string
+          customer_cancellation_cutoff_minutes?: number
+          customer_cancellation_enabled?: boolean
+          customer_reschedule_cutoff_minutes?: number
+          customer_reschedule_enabled?: boolean
           deleted_at?: string | null
           id?: string
           name: string
@@ -1253,6 +1261,10 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           currency?: string
+          customer_cancellation_cutoff_minutes?: number
+          customer_cancellation_enabled?: boolean
+          customer_reschedule_cutoff_minutes?: number
+          customer_reschedule_enabled?: boolean
           deleted_at?: string | null
           id?: string
           name?: string
@@ -1269,6 +1281,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cancel_my_appointment: {
+        Args: { p_appointment_id: string }
+        Returns: Json
+      }
       check_appointment_availability: {
         Args: {
           p_branch_id: string

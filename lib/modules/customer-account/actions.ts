@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getSiteUrl } from "@/lib/site-url";
@@ -84,4 +85,30 @@ export async function updateMyAccountProfileAction(
   }
 
   return ok(data as unknown as AccountProfile);
+}
+
+/**
+ * Faz 2G.2A — the customer-facing cancellation mutation. Deliberately no
+ * tenant/customer id parameter: cancel_my_appointment (20260823201517)
+ * derives auth.uid() itself and re-proves ownership through
+ * customer_account_links inside the database, under a row lock — this
+ * action is a thin, unauthenticated-at-the-TS-layer pass-through by
+ * design, since the RPC boundary is what actually enforces everything.
+ */
+export async function cancelMyAppointmentAction(
+  _prevState: ActionResult<{ appointmentId: string; status: string }> | null,
+  appointmentId: string,
+): Promise<ActionResult<{ appointmentId: string; status: string }>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("cancel_my_appointment", {
+    p_appointment_id: appointmentId,
+  });
+
+  if (error) {
+    return fail("UNEXPECTED", mapAccountErrorCode(error.code));
+  }
+
+  revalidatePath("/account/appointments");
+  revalidatePath("/account");
+  return ok(data as unknown as { appointmentId: string; status: string });
 }

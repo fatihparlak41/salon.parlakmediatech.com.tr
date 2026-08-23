@@ -151,6 +151,10 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   "public.get_my_account_profile",
   "public.update_my_account_profile",
   "public.get_my_appointments",
+  // Faz 2G.2A (20260823201517) — the customer cancellation mutation.
+  // Authenticated only: identity is auth.uid(), ownership re-derived via
+  // customer_account_links inside the function itself.
+  "public.cancel_my_appointment",
 ];
 
 // Phase 2F's public read surface — the only functions anon has ever

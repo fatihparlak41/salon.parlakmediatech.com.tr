@@ -77,7 +77,8 @@
       "customers": "Müşteriler",
       "appointments": "Randevular",
       "staff": "Personel",
-      "services": "Hizmetler"
+      "services": "Hizmetler",
+      "settings": "Ayarlar"
     },
     "dashboard": {
       "title": "Salon paneli",
@@ -233,7 +234,34 @@
       "title": "Randevularım",
       "description": "Giriş yaparak aldığınız randevuların listesi.",
       "emptyDescription": "Henüz bir randevunuz yok.",
-      "minutesShort": "dk"
+      "minutesShort": "dk",
+      "cancelAction": "Randevuyu İptal Et",
+      "cancelling": "İptal ediliyor…",
+      "cancelConfirmTitle": "Randevuyu iptal etmek istiyor musunuz?",
+      "cancelConfirmDescription": "Bu işlem geri alınamaz. Randevu kaydınız iptal edilmiş olarak saklanır.",
+      "cancelConfirmAction": "Evet, iptal et",
+      "cancelConfirmDismiss": "Vazgeç"
+    }
+  },
+  "Settings": {
+    "title": "Ayarlar",
+    "description": "Salonunuzun operasyonel ayarlarını yönetin.",
+    "selfService": {
+      "heading": "Müşteri Self-Servis",
+      "description": "Müşterilerin /account üzerinden kendi randevularını yönetmesine izin verin.",
+      "cancellationEnabledLabel": "Online iptale izin ver",
+      "cancellationCutoffLabel": "İptal süresi",
+      "rescheduleEnabledLabel": "Online randevu değişikliğine izin ver",
+      "rescheduleCutoffLabel": "Değişiklik süresi",
+      "rescheduleNotYetAvailable": "Randevu değişikliği özelliği yakında eklenecek — bu ayar şimdilik bir etki yaratmaz.",
+      "save": "Kaydet",
+      "saving": "Kaydediliyor…",
+      "saved": "Kaydedildi."
+    },
+    "units": {
+      "minutes": "dakika",
+      "hours": "saat",
+      "days": "gün"
     }
   },
   "SuperAdmin": {

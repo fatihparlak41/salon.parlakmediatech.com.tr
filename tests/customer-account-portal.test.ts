@@ -131,7 +131,8 @@ describe("get_my_appointments", () => {
     const mine = rows.find((r) => r.appointmentId === appointmentId);
     expect(mine).toBeTruthy();
     expect(Object.keys(mine!).sort()).toEqual(
-      ["appointmentId", "branchName", "scheduledEndAt", "scheduledStartAt", "services", "status", "tenantName", "tenantSlug", "tenantTimezone"].sort(),
+      // canCancel/canReschedule added in Faz 2G.2A (20260823201517).
+      ["appointmentId", "branchName", "canCancel", "canReschedule", "scheduledEndAt", "scheduledStartAt", "services", "status", "tenantName", "tenantSlug", "tenantTimezone"].sort(),
     );
     expect(mine!.status).toBe("confirmed");
     expect(mine!.tenantSlug).toBe(tenant.slug);
