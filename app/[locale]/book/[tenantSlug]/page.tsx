@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getPublicBookingContext } from "@/lib/modules/public-booking/queries";
 import { BookingWizard } from "@/components/public-booking/booking-wizard";
+import { getCurrentUser } from "@/lib/auth/session";
 
 /**
  * Public booking entry point — no auth, no tenant membership, no
@@ -21,6 +22,10 @@ export default async function BookingPage({
   const t = await getTranslations("PublicBooking");
   const context = await getPublicBookingContext(tenantSlug);
   const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+  // Faz 2G.3.1 — display hint only, see booking-wizard.tsx's own comment
+  // on the isAuthenticated prop for why this is safe to derive here and
+  // pass through without being a trust boundary itself.
+  const user = await getCurrentUser();
 
   // Fail closed, not open: Turnstile is the mandatory mutation control
   // (Phase 2F.2), not an optional enhancement — if the site key isn't
@@ -49,6 +54,7 @@ export default async function BookingPage({
         tenantTimezone={context.salon.timezone}
         branches={context.branches}
         turnstileSiteKey={turnstileSiteKey}
+        isAuthenticated={!!user}
         labels={{
           unavailableTitle: t("unavailableTitle"),
           unavailableBody: t("unavailableBody"),
@@ -73,6 +79,8 @@ export default async function BookingPage({
           fullNameLabel: t("fullNameLabel"),
           phoneLabel: t("phoneLabel"),
           emailLabel: t("emailLabel"),
+          claimOptInLabel: t("claimOptInLabel"),
+          claimPendingNote: t("claimPendingNote"),
           summaryTitle: t("summaryTitle"),
           summaryBranch: t("summaryBranch"),
           summaryService: t("summaryService"),

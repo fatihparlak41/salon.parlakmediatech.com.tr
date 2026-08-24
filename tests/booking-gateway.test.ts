@@ -54,6 +54,7 @@ function validInput(overrides: Partial<GuestBookingGatewayInput> = {}): GuestBoo
     staffMemberId: staffId,
     idempotencyKey: crypto.randomUUID(),
     turnstileToken: "test-token",
+    wantAccountClaim: false,
     ...overrides,
   };
 }
@@ -247,5 +248,127 @@ describe("gateway", () => {
     });
     expect(result.success).toBe(true);
     expect(JSON.stringify(result)).not.toContain(accountUserId);
+  });
+});
+
+/**
+ * Faz 2G.3.1 — the claim-secret GENERATION side of the trust boundary
+ * lives entirely in gateway.ts (node:crypto, never Postgres — see that
+ * module's own header), so it's tested here at the gateway layer with an
+ * injected callDb, exactly like every other gateway.ts behavior above.
+ * The RPC/database side (hash-only storage, two-proof completion,
+ * link/concurrency/enumeration/security) is covered separately in
+ * tests/future-booking-claim.test.ts, driven directly via testDb.
+ */
+describe("gateway — claim secret generation (Faz 2G.3.1)", () => {
+  it("no opt-in (wantAccountClaim: false) never generates a secret or sends a hash to the database", async () => {
+    let receivedHash: string | undefined = "unset";
+    const result = await processGuestBooking(
+      validInput({ customerEmail: "claim-test@example.com", wantAccountClaim: false }),
+      null,
+      {
+        verifyTurnstile: OK_VERIFIER,
+        callDb: async (dbInput) => {
+          receivedHash = dbInput.claimSecretHash;
+          return { success: true, data: { appointmentReference: "diag", claimIssued: false } };
+        },
+      },
+    );
+    expect(result.success).toBe(true);
+    expect(receivedHash).toBeUndefined();
+    if (result.success) expect(result.claimSecret).toBeUndefined();
+  });
+
+  it("opt-in without an email never generates a secret — nothing to bind proof B to", async () => {
+    let receivedHash: string | undefined = "unset";
+    const result = await processGuestBooking(
+      validInput({ customerEmail: undefined, wantAccountClaim: true }),
+      null,
+      {
+        verifyTurnstile: OK_VERIFIER,
+        callDb: async (dbInput) => {
+          receivedHash = dbInput.claimSecretHash;
+          return { success: true, data: { appointmentReference: "diag", claimIssued: false } };
+        },
+      },
+    );
+    expect(result.success).toBe(true);
+    expect(receivedHash).toBeUndefined();
+  });
+
+  it("an authenticated booker (trustedAccountUserId set) never generates a secret, even with opt-in + email", async () => {
+    let receivedHash: string | undefined = "unset";
+    const result = await processGuestBooking(
+      validInput({ customerEmail: "claim-test@example.com", wantAccountClaim: true }),
+      crypto.randomUUID(),
+      {
+        verifyTurnstile: OK_VERIFIER,
+        callDb: async (dbInput) => {
+          receivedHash = dbInput.claimSecretHash;
+          return { success: true, data: { appointmentReference: "diag", claimIssued: false } };
+        },
+      },
+    );
+    expect(result.success).toBe(true);
+    expect(receivedHash).toBeUndefined();
+  });
+
+  it("opt-in + email + guest booker generates a 256-bit secret, sends only its SHA-256 hash to the database, and returns the raw secret + claimRef separately from `data` when the database confirms claimIssued", async () => {
+    let receivedHash: string | undefined;
+    const fakeClaimRef = crypto.randomUUID();
+    const result = await processGuestBooking(
+      validInput({ customerEmail: "claim-test@example.com", wantAccountClaim: true }),
+      null,
+      {
+        verifyTurnstile: OK_VERIFIER,
+        callDb: async (dbInput) => {
+          receivedHash = dbInput.claimSecretHash;
+          return { success: true, data: { appointmentReference: "diag", claimIssued: true, claimRef: fakeClaimRef } };
+        },
+      },
+    );
+    expect(result.success).toBe(true);
+    expect(receivedHash).toBeTruthy();
+    expect(receivedHash).toMatch(/^[0-9a-f]{64}$/); // sha256 hex digest
+    if (result.success) {
+      expect(result.claimSecret).toBeTruthy();
+      expect(result.claimSecret).toMatch(/^[0-9a-f]{64}$/); // 32 bytes hex = 256 bits
+      expect(result.claimSecret).not.toBe(receivedHash); // raw secret, not its hash
+      expect(result.claimRef).toBe(fakeClaimRef);
+      expect(JSON.stringify(result.data)).not.toContain(result.claimSecret!); // never nested inside `data`
+      expect(JSON.stringify(result.data)).not.toContain(fakeClaimRef); // claimRef stripped from `data` too (Faz 2G.3.1A)
+    }
+  });
+
+  it("if the database reports claimIssued: false (best-effort creation failed/no-opped), the gateway never hands back a claim secret or ref — even though one was generated locally", async () => {
+    const result = await processGuestBooking(
+      validInput({ customerEmail: "claim-test@example.com", wantAccountClaim: true }),
+      null,
+      {
+        verifyTurnstile: OK_VERIFIER,
+        callDb: async () => ({ success: true, data: { appointmentReference: "diag", claimIssued: false, claimRef: null } }),
+      },
+    );
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.claimSecret).toBeUndefined();
+      expect(result.claimRef).toBeUndefined();
+    }
+  });
+
+  it("claimIssued: true but a missing claimRef (shouldn't happen, but must fail closed) never hands back a claim secret either", async () => {
+    const result = await processGuestBooking(
+      validInput({ customerEmail: "claim-test@example.com", wantAccountClaim: true }),
+      null,
+      {
+        verifyTurnstile: OK_VERIFIER,
+        callDb: async () => ({ success: true, data: { appointmentReference: "diag", claimIssued: true, claimRef: null } }),
+      },
+    );
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.claimSecret).toBeUndefined();
+      expect(result.claimRef).toBeUndefined();
+    }
   });
 });

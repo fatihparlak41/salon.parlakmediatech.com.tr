@@ -21,6 +21,13 @@ export const ACCOUNT_ERROR_MESSAGES: Record<string, string> = {
   AC007: "Randevu değişikliği süresi geçti.",
   AC008: "Seçilen saat artık uygun değil.",
   AC009: "Bu işlem artık gerçekleştirilemiyor.",
+  // Faz 2G.3.1 (20260824120000) — claim_my_recent_booking. One generic
+  // code for every rejection reason (missing/wrong/expired/consumed
+  // secret, email mismatch, already linked to someone else) — matches
+  // that function's own single errcode for all of them, no enumeration
+  // signal between "this claim never existed" and "this claim was
+  // valid but something about it failed".
+  AC010: "Bu randevu hesabınıza eklenemedi. Bağlantı süresi dolmuş veya geçersiz olabilir.",
 };
 
 const DEFAULT_MESSAGE = "İşlem gerçekleştirilemedi, lütfen tekrar deneyin.";

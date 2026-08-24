@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isStaleSessionError } from "@/lib/auth/session-errors";
+import { resolveSafeNext } from "@/app/auth/confirm/route";
 import {
   admin,
   anonClient,
@@ -103,6 +104,44 @@ describe("token_hash email confirmation", () => {
     expect(secondError).not.toBeNull();
 
     await admin.auth.admin.deleteUser(linkData!.user!.id);
+  });
+});
+
+/**
+ * Faz 2G.3.1A — resolveSafeNext is exported directly from
+ * app/auth/confirm/route.ts (see that export's own comment) so this
+ * pure function can be unit-tested without an HTTP harness this project
+ * doesn't have. Directly relevant now that `next` carries a claim_ref
+ * path segment (/account/claim/complete/<uuid>) end to end through the
+ * Magic Link flow — the ref itself is non-secret, but the destination it
+ * travels through must still only ever resolve to this app's own origin.
+ */
+describe("resolveSafeNext (Faz 2G.3.1A routing safety)", () => {
+  const origin = "https://app.example.com";
+
+  it("preserves a same-origin path, including a claim_ref dynamic segment", () => {
+    const ref = "11111111-2222-4333-8444-555555555555";
+    expect(resolveSafeNext(`/account/claim/complete/${ref}`, origin)).toBe(`/account/claim/complete/${ref}`);
+  });
+
+  it("rejects a crafted absolute external URL, falling back to /", () => {
+    expect(resolveSafeNext("https://evil.example/steal?x=1", origin)).toBe("/");
+  });
+
+  it("rejects a protocol-relative external URL (the classic //host bypass), falling back to /", () => {
+    expect(resolveSafeNext("//evil.example/steal", origin)).toBe("/");
+  });
+
+  it("rejects an external URL even when it starts with the app's own path as a decoy", () => {
+    expect(resolveSafeNext("https://evil.example/account/claim/complete/anything", origin)).toBe("/");
+  });
+
+  it("a plain relative string with no special characters still resolves safely under the same origin", () => {
+    expect(resolveSafeNext("not-a-real-path", origin)).toBe("/not-a-real-path");
+  });
+
+  it("falls back to / when next cannot be parsed as a URL at all, instead of throwing", () => {
+    expect(resolveSafeNext("http://[::1", origin)).toBe("/");
   });
 });
 

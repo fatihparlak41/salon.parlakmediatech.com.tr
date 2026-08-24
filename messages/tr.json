@@ -181,6 +181,8 @@
     "fullNameLabel": "Ad Soyad",
     "phoneLabel": "Telefon",
     "emailLabel": "E-posta (opsiyonel)",
+    "claimOptInLabel": "Randevumu hesabıma eklemek istiyorum",
+    "claimPendingNote": "Randevuyu hesabınıza eklemek için e-postanıza gönderdiğimiz bağlantıya, bu randevuyu oluşturduğunuz cihaz ve tarayıcıdan tıklayın.",
     "summaryTitle": "Randevu özeti",
     "summaryBranch": "Şube",
     "summaryService": "Hizmet",
@@ -252,6 +254,15 @@
       "rescheduleSummary": "Yeni randevu zamanı: {date} {time}",
       "rescheduleConfirming": "Kaydediliyor…",
       "rescheduleConfirmAction": "Değişikliği Onayla"
+    },
+    "claim": {
+      "title": "Randevuyu Hesabınıza Ekleyin",
+      "description": "Az önce yaptığınız randevuyu hesabınıza eklemek için aşağıdaki butona tıklayın.",
+      "action": "Randevuyu Hesabıma Ekle",
+      "claiming": "Ekleniyor…",
+      "success": "Randevu hesabınıza eklendi.",
+      "goToAppointments": "Randevularımı Görüntüle",
+      "noPendingClaim": "Eklenecek bekleyen bir randevu bulunamadı. Bağlantıyı randevuyu oluşturduğunuz cihaz ve tarayıcıda açtığınızdan emin olun."
     }
   },
   "Settings": {

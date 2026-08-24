@@ -60,6 +60,13 @@ export type GuestBookingConfirmation = {
   durationMinutes: number;
   price: number; // see PublicBookingService.price — same jsonb_build_object numeric-serialization behavior
   tenantTimezone: string;
+  // Faz 2G.3.1 — whether this booking opted into account linking AND a
+  // claim capability was actually issued (email present, not an
+  // authenticated booker — see gateway.ts). Safe to expose: reveals
+  // nothing beyond "you may want to check your email", never anything
+  // about the claim secret/row itself. BookingWizard uses this only to
+  // show/hide a short note on the success screen.
+  claimIssued: boolean;
 };
 
 export async function fetchPublicBookingContext(tenantSlug: string): Promise<PublicBookingContext> {

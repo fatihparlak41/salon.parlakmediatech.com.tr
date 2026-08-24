@@ -159,6 +159,10 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   // advisory slot-preview read, same authenticated-only reasoning.
   "public.reschedule_my_appointment",
   "public.get_my_reschedule_slots",
+  // Faz 2G.3.1 (20260824120000) — future-booking verified-claim
+  // completion. Authenticated only: identity is auth.uid(), the claim
+  // itself is an opaque secret hash, never an id.
+  "public.claim_my_recent_booking",
 ];
 
 // Phase 2F's public read surface — the only functions anon has ever
@@ -388,8 +392,11 @@ describe("security grants regression", () => {
       expect(executable.sort()).toEqual([...BOOKING_GATEWAY_FUNCTION_WHITELIST].sort());
 
       const target = rows.find((r) => r.can_execute)!;
+      // Faz 2G.3.1 (20260824120000) added an 11th trailing parameter,
+      // p_claim_secret_hash — DROP+CREATE, reapplied to booking_gateway
+      // fresh, same house rule as every prior signature change here.
       expect(target.args).toBe(
-        "p_tenant_slug text, p_branch_id uuid, p_service_id uuid, p_scheduled_start_at timestamp with time zone, p_customer_full_name text, p_customer_phone text, p_staff_member_id uuid, p_customer_email text, p_idempotency_key uuid, p_customer_account_user_id uuid",
+        "p_tenant_slug text, p_branch_id uuid, p_service_id uuid, p_scheduled_start_at timestamp with time zone, p_customer_full_name text, p_customer_phone text, p_staff_member_id uuid, p_customer_email text, p_idempotency_key uuid, p_customer_account_user_id uuid, p_claim_secret_hash text",
       );
     });
 
@@ -439,10 +446,11 @@ describe("security grants regression", () => {
   it("public.create_guest_booking has exactly one callable overload, with the expected signature", async () => {
     // Same blind spot as the check_appointment_availability test above,
     // for the function whose whole grant history changed in Phase
-    // 2F.2/2G.1 — a stray second overload here would be an especially
-    // severe miss, since this is the one anon-mutating-turned-gateway-only
-    // path. 10 args as of 20260822190000 (p_customer_account_user_id
-    // added, DROP+CREATE — see that migration's header).
+    // 2F.2/2G.1/2G.3.1 — a stray second overload here would be an
+    // especially severe miss, since this is the one
+    // anon-mutating-turned-gateway-only path. 11 args as of
+    // 20260824120000 (p_claim_secret_hash added, DROP+CREATE — see that
+    // migration's header).
     const rows = await testDb<{ arg_types: string }[]>`
       select pg_get_function_identity_arguments(p.oid) as arg_types
       from pg_proc p
@@ -451,7 +459,7 @@ describe("security grants regression", () => {
     `;
     expect(rows).toHaveLength(1);
     expect(rows[0]!.arg_types).toBe(
-      "p_tenant_slug text, p_branch_id uuid, p_service_id uuid, p_scheduled_start_at timestamp with time zone, p_customer_full_name text, p_customer_phone text, p_staff_member_id uuid, p_customer_email text, p_idempotency_key uuid, p_customer_account_user_id uuid",
+      "p_tenant_slug text, p_branch_id uuid, p_service_id uuid, p_scheduled_start_at timestamp with time zone, p_customer_full_name text, p_customer_phone text, p_staff_member_id uuid, p_customer_email text, p_idempotency_key uuid, p_customer_account_user_id uuid, p_claim_secret_hash text",
     );
   });
 

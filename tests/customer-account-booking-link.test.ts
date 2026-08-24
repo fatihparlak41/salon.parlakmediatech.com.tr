@@ -98,7 +98,9 @@ describe("no stale overload after the signature change", () => {
       join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'private' and p.proname in ('create_guest_booking', 'canonical_booking_fingerprint')`;
     const byName = new Map(rows.map((r) => [r.proname, r.nargs]));
-    expect(byName.get("create_guest_booking")).toBe(10);
+    // Faz 2G.3.1 (20260824120000) grew create_guest_booking by one
+    // trailing parameter (p_claim_secret_hash) — 10 -> 11.
+    expect(byName.get("create_guest_booking")).toBe(11);
     expect(byName.get("canonical_booking_fingerprint")).toBe(9);
   });
 });

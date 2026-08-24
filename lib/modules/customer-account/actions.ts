@@ -1,10 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { createHash } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getSiteUrl } from "@/lib/site-url";
 import { authErrorLogFields } from "@/lib/auth/session-errors";
+import { getBookingClaimSecretCookie, clearBookingClaimSecretCookie, isValidClaimRef } from "@/lib/auth/booking-claim-cookie";
 import type { ActionResult } from "@/lib/errors";
 import { fail, ok } from "@/lib/errors";
 import { accountMagicLinkSchema, updateAccountProfileSchema } from "./schemas";
@@ -138,4 +140,60 @@ export async function rescheduleMyAppointmentAction(
   revalidatePath("/account/appointments");
   revalidatePath("/account");
   return ok(data as unknown as { appointmentId: string; scheduledStartAt: string });
+}
+
+/**
+ * Faz 2G.3.1 / 2G.3.1A — completes a future-booking verified claim. No
+ * customer/tenant/appointment id is accepted as input, from formData or
+ * otherwise. Two things ARE accepted from formData: claimRef (a
+ * non-secret locator, booking_account_claims.id — see the migration's
+ * own header for why it carries no authority by itself) and, indirectly
+ * through it, the matching per-claim HttpOnly cookie. The raw secret is
+ * hashed here the same way gateway.ts hashed it at issuance (SHA-256)
+ * and handed to claim_my_recent_booking alongside the ref as an opaque
+ * pair — never the raw secret, never any other id. auth.uid() (proof
+ * B's carrier) is read inside that RPC from the real session, not from
+ * anything this action passes.
+ *
+ * claimRef is validated as a well-formed uuid before it's used to build
+ * a cookie name or reach the database — a malformed/tampered value is
+ * treated identically to "no such claim" (AC010), never a distinct
+ * error, so it adds no enumeration signal.
+ *
+ * The matching cookie is cleared only on success, not on every failure
+ * — see booking-claim-cookie.ts's own header. Only THAT ONE claim's
+ * cookie is ever touched; every other pending claim's cookie (a
+ * different name entirely, keyed by its own ref) is untouched by this
+ * call, by construction.
+ */
+export async function claimMyRecentBookingAction(
+  _prevState: ActionResult<{ claimed: boolean }> | null,
+  formData: FormData,
+): Promise<ActionResult<{ claimed: boolean }>> {
+  void _prevState;
+  const claimRef = formData.get("claimRef");
+  if (typeof claimRef !== "string" || !isValidClaimRef(claimRef)) {
+    return fail("VALIDATION", mapAccountErrorCode("AC010"));
+  }
+
+  const rawSecret = await getBookingClaimSecretCookie(claimRef);
+  if (!rawSecret) {
+    return fail("NOT_FOUND", mapAccountErrorCode("AC010"));
+  }
+  const secretHash = createHash("sha256").update(rawSecret).digest("hex");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("claim_my_recent_booking", {
+    p_claim_ref: claimRef,
+    p_claim_secret_hash: secretHash,
+  });
+
+  if (error) {
+    return fail("UNEXPECTED", mapAccountErrorCode(error.code));
+  }
+
+  await clearBookingClaimSecretCookie(claimRef);
+  revalidatePath("/account/appointments");
+  revalidatePath("/account");
+  return ok({ claimed: true });
 }

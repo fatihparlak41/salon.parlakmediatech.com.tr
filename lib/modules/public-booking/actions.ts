@@ -1,6 +1,10 @@
 "use server";
 
 import { getCurrentUser } from "@/lib/auth/session";
+import { createClient } from "@/lib/supabase/server";
+import { getSiteUrl } from "@/lib/site-url";
+import { authErrorLogFields } from "@/lib/auth/session-errors";
+import { setBookingClaimSecretCookie } from "@/lib/auth/booking-claim-cookie";
 import { processGuestBooking, type GatewayResult } from "./gateway";
 import type { GuestBookingGatewayInput } from "./schemas";
 
@@ -33,8 +37,48 @@ import type { GuestBookingGatewayInput } from "./schemas";
  * account automatically; a logged-out visitor gets ordinary guest
  * behavior; there is no third code path and no client-supplied identity
  * that could ever widen or spoof it.
+ *
+ * Faz 2G.3.1: this is also the one place the booking-browser claim
+ * cookie is ever written, and the one place the Magic Link proving proof
+ * B gets sent — both Next.js-request-scoped side effects that belong
+ * here, not in the testable gateway.ts core (same reasoning as the
+ * authenticated-link derivation above). result.claimSecret/claimRef are
+ * stripped before the return below regardless of outcome: neither may
+ * ever cross the server/client boundary into what BookingWizard
+ * receives.
+ *
+ * Faz 2G.3.1A: the cookie is keyed by claimRef (booking_account_claims.id)
+ * and the Magic Link's `next` carries that same ref in its path — one
+ * browser can hold several independently-pending claims this way,
+ * rather than the single global cookie/destination that let a second
+ * opted-in booking silently overwrite a first, unclaimed one (see the
+ * 2G.3.1A report). claimRef is a plain path segment, never authentication
+ * material — completion still requires the matching per-claim secret AND
+ * the authenticated email, both checked together in one database lookup
+ * (see claim_my_recent_booking's own header).
  */
 export async function submitGuestBookingAction(input: GuestBookingGatewayInput): Promise<GatewayResult> {
   const user = await getCurrentUser();
-  return processGuestBooking(input, user?.id ?? null);
+  const result = await processGuestBooking(input, user?.id ?? null);
+
+  if (result.success && result.claimSecret && result.claimRef && input.customerEmail) {
+    await setBookingClaimSecretCookie(result.claimRef, result.claimSecret);
+
+    const supabase = await createClient();
+    const { error } = await supabase.auth.signInWithOtp({
+      email: input.customerEmail,
+      options: {
+        shouldCreateUser: true,
+        emailRedirectTo: `${getSiteUrl()}/auth/confirm?next=/account/claim/complete/${result.claimRef}`,
+      },
+    });
+    if (error) {
+      console.error("[submitGuestBookingAction] claim signInWithOtp failed", authErrorLogFields(error));
+    }
+  }
+
+  if (result.success) {
+    return { success: true, data: result.data };
+  }
+  return result;
 }

@@ -44,6 +44,9 @@ export type GuestBookingDbInput = {
   /** Server-derived only (see gateway.ts) — never sourced from the
    * browser-supplied GuestBookingGatewayInput. */
   customerAccountUserId: string | null;
+  /** Faz 2G.3.1 — a HASH only, computed in gateway.ts via node:crypto.
+   * The raw secret never reaches this module, let alone Postgres. */
+  claimSecretHash?: string;
 };
 
 export type GuestBookingDbResult =
@@ -69,7 +72,8 @@ export async function callCreateGuestBooking(input: GuestBookingDbInput): Promis
         ${input.staffMemberId ?? null}::uuid,
         ${input.customerEmail ?? null},
         ${input.idempotencyKey}::uuid,
-        ${input.customerAccountUserId}::uuid
+        ${input.customerAccountUserId}::uuid,
+        ${input.claimSecretHash ?? null}
       )
     `;
     return { success: true, data: row!.create_guest_booking };

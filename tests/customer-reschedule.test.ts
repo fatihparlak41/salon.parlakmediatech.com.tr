@@ -572,8 +572,18 @@ describe("staff authority unchanged", () => {
 describe("audit", () => {
   it("exactly one appointment.rescheduled row, actor_user_id = the real customer, actor_type='user'", async () => {
     await setPolicy(tenant.id, { customer_reschedule_enabled: true, customer_reschedule_cutoff_minutes: 0 });
-    const { appointmentId } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: hoursFromNow(200) });
-    await rescheduleAs(accountUser, appointmentId, hoursFromNow(202));
+    // safeMorningStart, not hoursFromNow: this test asserts audit-log
+    // content, not cutoff timing, so it doesn't need real-clock
+    // relativity — and a fixed +200h/+202h pair is a genuine latent flake
+    // (reproduced independently: 2026-08-24 run landed the +202h target
+    // at 23:50 Europe/Istanbul, tripping staff_is_available's own
+    // pre-existing midnight-crossing guard purely by wall-clock
+    // coincidence, unrelated to Faz 2G.3.1 or anything this test means to
+    // check). Same fix pattern as every other fixture in this file that
+    // stacks an offset/delta within one day.
+    const start = safeMorningStart(7);
+    const { appointmentId } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start });
+    await rescheduleAs(accountUser, appointmentId, new Date(start.getTime() + 2 * 3600_000));
 
     const rows = await testDb<{ actor_user_id: string; actor_type: string }[]>`
       select actor_user_id, actor_type from audit_logs where entity_id = ${appointmentId} and action = 'appointment.rescheduled'`;

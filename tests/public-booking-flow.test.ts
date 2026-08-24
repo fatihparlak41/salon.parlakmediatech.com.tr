@@ -512,7 +512,26 @@ describe("guest booking creation", () => {
       p_idempotency_key: crypto.randomUUID(),
     });
     expect(Object.keys(asConfirmation(raw)).sort()).toEqual(
-      ["appointmentReference", "branchName", "durationMinutes", "price", "scheduledStartAt", "serviceName", "staffName", "tenantTimezone"].sort(),
+      // claimIssued (Faz 2G.3.1) and claimRef (Faz 2G.3.1A) are both
+      // always present in the RAW database response — always false/null
+      // here since this call passes no claim secret hash at all.
+      // claimIssued is safe to expose (see client-queries.ts's own
+      // GuestBookingConfirmation comment); claimRef is stripped out by
+      // gateway.ts before anything reaches the browser (this test calls
+      // the database directly, bypassing that stripping step on
+      // purpose, so it still sees the raw field here).
+      [
+        "appointmentReference",
+        "branchName",
+        "claimIssued",
+        "claimRef",
+        "durationMinutes",
+        "price",
+        "scheduledStartAt",
+        "serviceName",
+        "staffName",
+        "tenantTimezone",
+      ].sort(),
     );
   });
 

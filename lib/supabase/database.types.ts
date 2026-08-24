@@ -242,6 +242,70 @@ export type Database = {
           },
         ]
       }
+      booking_account_claims: {
+        Row: {
+          appointment_id: string
+          consumed_at: string | null
+          consumed_by_user_id: string | null
+          created_at: string
+          customer_id: string
+          email_normalized_snapshot: string
+          email_snapshot: string
+          expires_at: string
+          id: string
+          secret_hash: string
+          tenant_id: string
+        }
+        Insert: {
+          appointment_id: string
+          consumed_at?: string | null
+          consumed_by_user_id?: string | null
+          created_at?: string
+          customer_id: string
+          email_normalized_snapshot: string
+          email_snapshot: string
+          expires_at: string
+          id?: string
+          secret_hash: string
+          tenant_id: string
+        }
+        Update: {
+          appointment_id?: string
+          consumed_at?: string | null
+          consumed_by_user_id?: string | null
+          created_at?: string
+          customer_id?: string
+          email_normalized_snapshot?: string
+          email_snapshot?: string
+          expires_at?: string
+          id?: string
+          secret_hash?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "booking_account_claims_appointment_tenant_fkey"
+            columns: ["appointment_id", "tenant_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id", "tenant_id"]
+          },
+          {
+            foreignKeyName: "booking_account_claims_customer_tenant_fkey"
+            columns: ["customer_id", "tenant_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id", "tenant_id"]
+          },
+          {
+            foreignKeyName: "booking_account_claims_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       branches: {
         Row: {
           address: string | null
@@ -1300,6 +1364,10 @@ export type Database = {
           scheduled_end_at: string
         }[]
       }
+      claim_my_recent_booking: {
+        Args: { p_claim_ref: string; p_claim_secret_hash: string }
+        Returns: Json
+      }
       create_appointment: {
         Args: {
           p_branch_id: string
@@ -1314,6 +1382,7 @@ export type Database = {
       create_guest_booking: {
         Args: {
           p_branch_id: string
+          p_claim_secret_hash?: string
           p_customer_account_user_id?: string
           p_customer_email?: string
           p_customer_full_name: string

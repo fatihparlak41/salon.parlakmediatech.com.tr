@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { TurnstileWidget } from "@/components/public-booking/turnstile-widget";
 import {
   fetchPublicEligibleStaff,
@@ -47,6 +48,8 @@ type Labels = {
   fullNameLabel: string;
   phoneLabel: string;
   emailLabel: string;
+  claimOptInLabel: string;
+  claimPendingNote: string;
   summaryTitle: string;
   summaryBranch: string;
   summaryService: string;
@@ -106,6 +109,7 @@ export function BookingWizard({
   tenantTimezone,
   branches,
   turnstileSiteKey,
+  isAuthenticated,
   labels,
 }: {
   tenantSlug: string;
@@ -113,6 +117,15 @@ export function BookingWizard({
   tenantTimezone: string;
   branches: PublicBookingBranch[];
   turnstileSiteKey: string;
+  // Faz 2G.3.1 — a display hint only, server-derived (see page.tsx),
+  // never a trust boundary: it only decides whether the claim opt-in
+  // checkbox renders. Even a tampered value changes nothing server-side
+  // — submitGuestBookingAction independently re-derives the real session
+  // and ignores wantAccountClaim entirely for an authenticated booker
+  // (see gateway.ts), exactly matching "if the customer is already
+  // authenticated, do not show this flow" without needing this prop to
+  // be trustworthy.
+  isAuthenticated: boolean;
   labels: Labels;
 }) {
   const singleBranch = branches.length === 1 ? branches[0]! : null;
@@ -130,6 +143,7 @@ export function BookingWizard({
   const [customerFullName, setCustomerFullName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
+  const [wantAccountClaim, setWantAccountClaim] = useState(false);
 
   const [staffOptions, setStaffOptions] = useState<PublicBookingStaffOption[]>([]);
   const [staffLoading, setStaffLoading] = useState(false);
@@ -259,6 +273,7 @@ export function BookingWizard({
       customerPhone: customerPhone.trim(),
       staffMemberId: staffChoice === "any" ? undefined : (staffChoice ?? undefined),
       customerEmail: customerEmail.trim() || undefined,
+      wantAccountClaim,
       idempotencyKey,
       turnstileToken,
     });
@@ -289,6 +304,7 @@ export function BookingWizard({
     setCustomerFullName("");
     setCustomerPhone("");
     setCustomerEmail("");
+    setWantAccountClaim(false);
     setConfirmation(null);
     setSubmitError(null);
     goTo(stepOrder[0]!);
@@ -441,6 +457,12 @@ export function BookingWizard({
             <Label htmlFor="pb-email">{labels.emailLabel}</Label>
             <Input id="pb-email" type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} />
           </div>
+          {!isAuthenticated && customerEmail.trim().length > 0 && (
+            <label className="flex items-start gap-2 text-sm">
+              <Checkbox checked={wantAccountClaim} onCheckedChange={() => setWantAccountClaim((v) => !v)} className="mt-0.5" />
+              {labels.claimOptInLabel}
+            </label>
+          )}
           <Button type="button" disabled={!contactValid} onClick={goNext}>
             {labels.next}
           </Button>
@@ -499,6 +521,9 @@ export function BookingWizard({
         <section className="flex flex-col items-center gap-3 py-8 text-center">
           <h1 className="text-xl font-semibold">{labels.confirmedTitle}</h1>
           <p className="text-muted-foreground text-sm">{labels.confirmedBody}</p>
+          {confirmation.claimIssued && (
+            <p className="bg-muted rounded-lg px-3 py-2 text-sm">{labels.claimPendingNote}</p>
+          )}
           <div className="mt-2 flex w-full flex-col gap-2 rounded-xl border p-4 text-left text-sm">
             <div className="flex justify-between gap-2">
               <span className="text-muted-foreground">{labels.summaryBranch}</span>

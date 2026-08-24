@@ -1,4 +1,5 @@
 import "server-only";
+import { randomBytes, createHash } from "node:crypto";
 import { guestBookingGatewayInputSchema, type GuestBookingGatewayInput } from "./schemas";
 import { verifyTurnstileToken, type TurnstileVerifier } from "./turnstile";
 import { callCreateGuestBooking, type GuestBookingDbInput, type GuestBookingDbResult } from "./gateway-db";
@@ -8,7 +9,15 @@ import type { GuestBookingConfirmation } from "./client-queries";
 type DbCaller = (input: GuestBookingDbInput) => Promise<GuestBookingDbResult>;
 
 export type GatewayResult =
-  | { success: true; data: GuestBookingConfirmation }
+  // claimSecret/claimRef (Faz 2G.3.1/2G.3.1A) are present only when a
+  // claim capability was actually issued this call. Neither may ever
+  // reach the browser: actions.ts reads them to set the per-claim
+  // HttpOnly cookie and build the Magic Link's `next` path, then
+  // returns {success, data} only, omitting both before the result
+  // crosses the server/client boundary. claimRef alone carries no
+  // authority (see the migration's own header), but it's still an
+  // internal correlation detail with no reason to reach client JS.
+  | { success: true; data: GuestBookingConfirmation; claimSecret?: string; claimRef?: string }
   | { success: false; message: string };
 
 const SECURITY_CHECK_FAILED_MESSAGE = "Güvenlik doğrulaması başarısız oldu. Lütfen tekrar deneyin.";
@@ -59,6 +68,20 @@ export async function processGuestBooking(
     return { success: false, message: SECURITY_CHECK_FAILED_MESSAGE };
   }
 
+  // Faz 2G.3.1 — the booking-browser claim secret (proof A) is generated
+  // here, on the Next.js server, and ONLY here: node:crypto.randomBytes,
+  // 256 bits. Only its SHA-256 hash ever reaches callDb/Postgres — the
+  // raw value lives exclusively in this function's local variable and,
+  // moments later, actions.ts's HttpOnly cookie write. Never generated
+  // for an authenticated booker (Phase 2G.1's trusted linking already
+  // owns that case) and never without an email to bind proof B to.
+  let rawClaimSecret: string | undefined;
+  let claimSecretHash: string | undefined;
+  if (trustedAccountUserId === null && input.wantAccountClaim && input.customerEmail) {
+    rawClaimSecret = randomBytes(32).toString("hex");
+    claimSecretHash = createHash("sha256").update(rawClaimSecret).digest("hex");
+  }
+
   const callDb = deps.callDb ?? callCreateGuestBooking;
   const dbResult = await callDb({
     tenantSlug: input.tenantSlug,
@@ -71,6 +94,7 @@ export async function processGuestBooking(
     customerEmail: input.customerEmail,
     idempotencyKey: input.idempotencyKey,
     customerAccountUserId: trustedAccountUserId,
+    claimSecretHash,
   });
 
   if (!dbResult.success) {
@@ -86,5 +110,23 @@ export async function processGuestBooking(
     return { success: false, message: mapPublicBookingErrorCode(dbResult.code) };
   }
 
-  return { success: true, data: dbResult.data as unknown as GuestBookingConfirmation };
+  // claimRef (booking_account_claims.id) travels inside the raw DB
+  // response alongside the public fields — extracted here and never
+  // forwarded as part of `data`, the same way claimSecret never enters
+  // the DB response at all. Destructuring it out is deliberate: `data`
+  // must carry exactly the fields BookingWizard has always received,
+  // nothing new.
+  const { claimRef, ...data } = dbResult.data as unknown as GuestBookingConfirmation & { claimRef: string | null };
+  // claimIssued (see private.upsert_booking_claim) confirms the row was
+  // actually written before this function ever promises a browser a
+  // working capability — claim creation is best-effort and swallows its
+  // own failures inside the database, so this check is load-bearing, not
+  // decorative. claimRef must also be present (it always is exactly
+  // when claimIssued is true — private.upsert_booking_claim returns the
+  // row's id if and only if it wrote/rotated it) before a cookie is
+  // ever promised.
+  if (rawClaimSecret && data.claimIssued && claimRef) {
+    return { success: true, data, claimSecret: rawClaimSecret, claimRef };
+  }
+  return { success: true, data };
 }

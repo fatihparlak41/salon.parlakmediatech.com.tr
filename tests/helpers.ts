@@ -186,6 +186,11 @@ export async function addMembership(
 export async function cleanupTenants(tenantIds: string[]): Promise<void> {
   if (tenantIds.length === 0) return;
 
+  // booking_account_claims: NO ACTION on both its composite FKs
+  // (appointment_id, tenant_id) and (customer_id, tenant_id) — a claim
+  // row still pointing at either blocks the deletes just below, same
+  // FK-order lesson as customer_account_links.
+  await testDb`delete from booking_account_claims where tenant_id in ${testDb(tenantIds)}`;
   await testDb`delete from appointment_items where tenant_id in ${testDb(tenantIds)}`;
   await testDb`delete from appointments where tenant_id in ${testDb(tenantIds)}`;
   await testDb`delete from staff_schedule_exceptions where tenant_id in ${testDb(tenantIds)}`;

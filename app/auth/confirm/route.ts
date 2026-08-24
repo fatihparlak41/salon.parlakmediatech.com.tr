@@ -44,8 +44,12 @@ function parseEmailOtpType(value: string | null): EmailOtpType | null {
 
 /** Open-redirect guard — see the same check in the old callback route for
  * why this resolves against `origin` rather than a bare startsWith("/"):
- * Supabase's `{{ .RedirectTo }}` template variable is a full URL. */
-function resolveSafeNext(next: string, origin: string): string {
+ * Supabase's `{{ .RedirectTo }}` template variable is a full URL.
+ * Exported for direct unit testing (Faz 2G.3.1A) — a pure function, safe
+ * to import, matching this project's established "test the real
+ * function directly" style rather than driving it through an HTTP
+ * request this test suite has no harness for. */
+export function resolveSafeNext(next: string, origin: string): string {
   try {
     const resolved = new URL(next, origin);
     return resolved.origin === origin

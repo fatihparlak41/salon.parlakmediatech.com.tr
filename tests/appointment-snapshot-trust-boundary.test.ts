@@ -39,6 +39,20 @@ function hoursFromNow(hours: number): Date {
   return new Date(Date.now() + hours * 3600_000);
 }
 
+/** Local 08:00 (Europe/Istanbul, UTC+3, no DST) N days out — same helper
+ * and same reasoning as customer-reschedule.test.ts's own copy: a fixed
+ * hoursFromNow start+delta pair is a genuine latent flake whenever the
+ * resulting local time happens to cross midnight (staff_is_available's
+ * own pre-existing, unrelated guard), which depends only on what time of
+ * day the suite happens to run. Used only where a test doesn't actually
+ * need real-clock cutoff relativity. */
+function safeMorningStart(daysFromNow: number): Date {
+  const tzOffsetMs = 3 * 3600_000;
+  const localNow = new Date(Date.now() + tzOffsetMs);
+  const localMorning = new Date(Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth(), localNow.getUTCDate() + daysFromNow, 8, 0, 0));
+  return new Date(localMorning.getTime() - tzOffsetMs);
+}
+
 async function makeStaffAndService(durationMinutes: number, price: number) {
   const staff = await createStaffMember(tenant.id, `Trust Staff ${crypto.randomUUID().slice(0, 8)}`);
   const service = await createService(tenant.id, `Trust Service ${crypto.randomUUID().slice(0, 8)}`, durationMinutes, price);
@@ -205,7 +219,13 @@ describe("customer reschedule — no field exists to inject a snapshot through",
     await testDb`insert into customer_account_links (user_id, tenant_id, customer_id, claimed_via, is_primary) values (${custAuth.id}, ${tenant.id}, ${customer!.id}, 'future_booking', true)`;
     await testDb`update tenants set customer_reschedule_enabled = true, customer_reschedule_cutoff_minutes = 0 where id = ${tenant.id}`;
 
-    const start = hoursFromNow(80);
+    // safeMorningStart, not hoursFromNow: this test asserts snapshot
+    // preservation, not cutoff timing, so it doesn't need real-clock
+    // relativity — and a fixed +80h/+82h pair is a genuine latent flake
+    // (reproduced independently: crosses local midnight on some runs,
+    // tripping staff_is_available's own pre-existing, unrelated
+    // midnight-crossing guard purely by wall-clock coincidence).
+    const start = safeMorningStart(1);
     const end = new Date(start.getTime() + 30 * 60_000);
     const [appt] = await testDb<{ id: string }[]>`
       insert into appointments (tenant_id, branch_id, customer_id, status, scheduled_start_at, scheduled_end_at)
@@ -216,7 +236,7 @@ describe("customer reschedule — no field exists to inject a snapshot through",
     await testDb`update services set duration_minutes = 999, price = 99999 where id = ${service.id}`;
 
     const client = await signInAs(custAuth);
-    const { error } = await client.rpc("reschedule_my_appointment", { p_appointment_id: appt!.id, p_new_start_at: hoursFromNow(82).toISOString() });
+    const { error } = await client.rpc("reschedule_my_appointment", { p_appointment_id: appt!.id, p_new_start_at: new Date(start.getTime() + 2 * 3600_000).toISOString() });
     await client.auth.signOut();
     expect(error).toBeNull();
 
