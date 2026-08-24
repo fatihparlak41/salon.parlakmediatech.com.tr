@@ -1341,6 +1341,10 @@ export type Database = {
       }
       get_my_account_profile: { Args: never; Returns: Json }
       get_my_appointments: { Args: never; Returns: Json }
+      get_my_reschedule_slots: {
+        Args: { p_appointment_id: string; p_date: string }
+        Returns: Json
+      }
       get_public_availability_slots: {
         Args: {
           p_branch_id: string
@@ -1375,6 +1379,10 @@ export type Database = {
       reschedule_appointment: {
         Args: { p_appointment_id: string; p_items: Json }
         Returns: undefined
+      }
+      reschedule_my_appointment: {
+        Args: { p_appointment_id: string; p_new_start_at: string }
+        Returns: Json
       }
       search_customers: {
         Args: {

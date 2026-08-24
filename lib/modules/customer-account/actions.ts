@@ -112,3 +112,30 @@ export async function cancelMyAppointmentAction(
   revalidatePath("/account");
   return ok(data as unknown as { appointmentId: string; status: string });
 }
+
+/**
+ * Faz 2G.2B — the customer-facing reschedule mutation. Same shape as
+ * cancelMyAppointmentAction: no tenant/customer id, no service/staff/item
+ * array — reschedule_my_appointment (20260823205200) derives auth.uid()
+ * itself, re-proves ownership, and moves every existing item by one
+ * uniform delta server-side. This action only ever passes through the
+ * new target start time the customer picked from get_my_reschedule_slots.
+ */
+export async function rescheduleMyAppointmentAction(
+  _prevState: ActionResult<{ appointmentId: string; scheduledStartAt: string }> | null,
+  input: { appointmentId: string; newStartAtIso: string },
+): Promise<ActionResult<{ appointmentId: string; scheduledStartAt: string }>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("reschedule_my_appointment", {
+    p_appointment_id: input.appointmentId,
+    p_new_start_at: input.newStartAtIso,
+  });
+
+  if (error) {
+    return fail("UNEXPECTED", mapAccountErrorCode(error.code));
+  }
+
+  revalidatePath("/account/appointments");
+  revalidatePath("/account");
+  return ok(data as unknown as { appointmentId: string; scheduledStartAt: string });
+}

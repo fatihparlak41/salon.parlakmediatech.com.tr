@@ -4,6 +4,7 @@ import { startTransition, useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import { cancelMyAppointmentAction } from "@/lib/modules/customer-account/actions";
 import type { MyAppointment } from "@/lib/modules/customer-account/queries";
+import { RescheduleAppointmentSheet } from "@/components/customer-account/reschedule-appointment-sheet";
 import { formatTenantLocalDateTime } from "@/lib/modules/appointments/timezone";
 import { STATUS_LABELS_TR, type AppointmentStatus } from "@/lib/modules/appointments/status";
 import { Badge } from "@/components/ui/badge";
@@ -76,6 +77,7 @@ function CancelAppointmentDialog({
 export function AppointmentsList({ appointments }: { appointments: MyAppointment[] }) {
   const t = useTranslations("Account.appointments");
   const [dialogFor, setDialogFor] = useState<string | null>(null);
+  const [rescheduleFor, setRescheduleFor] = useState<string | null>(null);
 
   if (appointments.length === 0) {
     return <p className="text-muted-foreground text-sm">{t("emptyDescription")}</p>;
@@ -98,23 +100,46 @@ export function AppointmentsList({ appointments }: { appointments: MyAppointment
               </li>
             ))}
           </ul>
-          {a.canCancel ? (
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              className="w-fit"
-              onClick={() => setDialogFor(a.appointmentId)}
-            >
-              {t("cancelAction")}
-            </Button>
-          ) : null}
+          <div className="flex flex-wrap gap-2">
+            {a.canReschedule ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-fit"
+                onClick={() => setRescheduleFor(a.appointmentId)}
+              >
+                {t("rescheduleAction")}
+              </Button>
+            ) : null}
+            {a.canCancel ? (
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                className="w-fit"
+                onClick={() => setDialogFor(a.appointmentId)}
+              >
+                {t("cancelAction")}
+              </Button>
+            ) : null}
+          </div>
           {dialogFor === a.appointmentId ? (
             <CancelAppointmentDialog
               appointmentId={a.appointmentId}
               open={dialogFor === a.appointmentId}
               onOpenChange={(open) => setDialogFor(open ? a.appointmentId : null)}
               onCancelled={() => setDialogFor(null)}
+            />
+          ) : null}
+          {rescheduleFor === a.appointmentId ? (
+            <RescheduleAppointmentSheet
+              appointmentId={a.appointmentId}
+              tenantTimezone={a.tenantTimezone}
+              serviceCount={a.services.length}
+              open={rescheduleFor === a.appointmentId}
+              onOpenChange={(open) => setRescheduleFor(open ? a.appointmentId : null)}
+              onRescheduled={() => setRescheduleFor(null)}
             />
           ) : null}
         </li>

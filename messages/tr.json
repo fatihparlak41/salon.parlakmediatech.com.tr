@@ -240,7 +240,18 @@
       "cancelConfirmTitle": "Randevuyu iptal etmek istiyor musunuz?",
       "cancelConfirmDescription": "Bu işlem geri alınamaz. Randevu kaydınız iptal edilmiş olarak saklanır.",
       "cancelConfirmAction": "Evet, iptal et",
-      "cancelConfirmDismiss": "Vazgeç"
+      "cancelConfirmDismiss": "Vazgeç",
+      "rescheduleAction": "Randevuyu Değiştir",
+      "rescheduleTitle": "Randevunuzu değiştirin",
+      "rescheduleSingleServiceNote": "Hizmetiniz aynı personelle yeni saate taşınacaktır.",
+      "rescheduleMultiServiceNote": "Randevunuzdaki {count} hizmet aynı sıra ve personellerle yeni saate taşınacaktır.",
+      "rescheduleDateLabel": "Tarih",
+      "rescheduleTimeLabel": "Saat",
+      "rescheduleLoadingSlots": "Uygun saatler yükleniyor…",
+      "rescheduleNoSlots": "Bu tarihte uygun saat yok. Başka bir tarih deneyin.",
+      "rescheduleSummary": "Yeni randevu zamanı: {date} {time}",
+      "rescheduleConfirming": "Kaydediliyor…",
+      "rescheduleConfirmAction": "Değişikliği Onayla"
     }
   },
   "Settings": {
@@ -253,7 +264,6 @@
       "cancellationCutoffLabel": "İptal süresi",
       "rescheduleEnabledLabel": "Online randevu değişikliğine izin ver",
       "rescheduleCutoffLabel": "Değişiklik süresi",
-      "rescheduleNotYetAvailable": "Randevu değişikliği özelliği yakında eklenecek — bu ayar şimdilik bir etki yaratmaz.",
       "save": "Kaydet",
       "saving": "Kaydediliyor…",
       "saved": "Kaydedildi."

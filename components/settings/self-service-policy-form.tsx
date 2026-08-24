@@ -150,7 +150,6 @@ export function SelfServicePolicyForm({
           disabled={!policy.rescheduleEnabled}
           onChange={(minutes) => setPolicy((p) => ({ ...p, rescheduleCutoffMinutes: minutes }))}
         />
-        <p className="text-muted-foreground text-xs">{t("rescheduleNotYetAvailable")}</p>
       </div>
 
       {state && !state.success ? (

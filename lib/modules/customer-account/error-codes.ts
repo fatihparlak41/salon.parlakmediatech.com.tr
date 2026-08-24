@@ -15,6 +15,12 @@ export const ACCOUNT_ERROR_MESSAGES: Record<string, string> = {
   AC003: "Bu randevu şu anda yönetilemiyor.",
   AC004: "Bu salon için online iptal kapalı.",
   AC005: "İptal süresi geçti.",
+  // Faz 2G.2B (20260823205200) — reschedule_my_appointment /
+  // get_my_reschedule_slots.
+  AC006: "Bu salon için online randevu değişikliği kapalı.",
+  AC007: "Randevu değişikliği süresi geçti.",
+  AC008: "Seçilen saat artık uygun değil.",
+  AC009: "Bu işlem artık gerçekleştirilemiyor.",
 };
 
 const DEFAULT_MESSAGE = "İşlem gerçekleştirilemedi, lütfen tekrar deneyin.";

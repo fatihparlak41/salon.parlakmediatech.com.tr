@@ -155,6 +155,10 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   // Authenticated only: identity is auth.uid(), ownership re-derived via
   // customer_account_links inside the function itself.
   "public.cancel_my_appointment",
+  // Faz 2G.2B (20260823205200) — customer reschedule mutation + its
+  // advisory slot-preview read, same authenticated-only reasoning.
+  "public.reschedule_my_appointment",
+  "public.get_my_reschedule_slots",
 ];
 
 // Phase 2F's public read surface — the only functions anon has ever
