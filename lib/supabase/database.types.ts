@@ -398,6 +398,57 @@ export type Database = {
           },
         ]
       }
+      customer_account_pairing_codes: {
+        Row: {
+          code_hash: string
+          consumed_at: string | null
+          consumed_by_customer_id: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          revoked_at: string | null
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          code_hash: string
+          consumed_at?: string | null
+          consumed_by_customer_id?: string | null
+          created_at?: string
+          expires_at: string
+          id?: string
+          revoked_at?: string | null
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          code_hash?: string
+          consumed_at?: string | null
+          consumed_by_customer_id?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          revoked_at?: string | null
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_account_pairing_codes_customer_tenant_fkey"
+            columns: ["consumed_by_customer_id", "tenant_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id", "tenant_id"]
+          },
+          {
+            foreignKeyName: "customer_account_pairing_codes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customers: {
         Row: {
           created_at: string
@@ -1395,6 +1446,10 @@ export type Database = {
         }
         Returns: Json
       }
+      create_my_link_code: {
+        Args: { p_code_hash: string; p_tenant_slug: string }
+        Returns: Json
+      }
       create_role: {
         Args: {
           p_description: string
@@ -1408,8 +1463,16 @@ export type Database = {
         Args: { p_name: string; p_slug: string }
         Returns: string
       }
+      get_customer_account_link_status: {
+        Args: { p_customer_id: string }
+        Returns: Json
+      }
       get_my_account_profile: { Args: never; Returns: Json }
       get_my_appointments: { Args: never; Returns: Json }
+      get_my_link_salon_context: {
+        Args: { p_tenant_slug: string }
+        Returns: Json
+      }
       get_my_reschedule_slots: {
         Args: { p_appointment_id: string; p_date: string }
         Returns: Json
@@ -1445,6 +1508,10 @@ export type Database = {
         Returns: boolean
       }
       is_platform_admin: { Args: never; Returns: boolean }
+      link_customer_account_with_code: {
+        Args: { p_code_hash: string; p_customer_id: string }
+        Returns: Json
+      }
       reschedule_appointment: {
         Args: { p_appointment_id: string; p_items: Json }
         Returns: undefined
@@ -1551,6 +1618,10 @@ export type Database = {
           schema_name: string
           table_name: string
         }[]
+      }
+      unlink_salon_assisted_customer_account: {
+        Args: { p_customer_id: string }
+        Returns: Json
       }
       update_appointment_status: {
         Args: { p_appointment_id: string; p_new_status: string }

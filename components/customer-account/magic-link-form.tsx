@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
  * branches on "account exists" vs "new account", by construction: the
  * action never tells it which one happened.
  */
-export function MagicLinkForm() {
+export function MagicLinkForm({ next }: { next?: string }) {
   const t = useTranslations("Account.login");
   const [state, formAction, isPending] = useActionState(requestAccountMagicLinkAction, null);
 
@@ -28,6 +28,7 @@ export function MagicLinkForm() {
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
+      {next && <input type="hidden" name="next" value={next} />}
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="email">{t("emailLabel")}</Label>
         <Input id="email" name="email" type="email" autoComplete="email" required />

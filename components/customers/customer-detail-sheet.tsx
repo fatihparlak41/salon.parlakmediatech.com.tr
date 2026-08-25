@@ -25,6 +25,7 @@ import {
   type UpdateCustomerProfileInput,
   type UpdateCustomerStatusInput,
 } from "@/lib/modules/customers/actions";
+import { AccountLinkSection } from "@/components/customers/account-link-section";
 
 async function loadCustomer(customerId: string): Promise<CustomerRow | null> {
   const supabase = createClient();
@@ -51,12 +52,14 @@ export function CustomerDetailSheet({
   onOpenChange,
   tenantSlug,
   canManage,
+  canLinkAccount,
   onSaved,
 }: {
   customerId: string | null;
   onOpenChange: (open: boolean) => void;
   tenantSlug: string;
   canManage: boolean;
+  canLinkAccount: boolean;
   onSaved: () => void;
 }) {
   return (
@@ -72,6 +75,7 @@ export function CustomerDetailSheet({
             customerId={customerId}
             tenantSlug={tenantSlug}
             canManage={canManage}
+            canLinkAccount={canLinkAccount}
             onSaved={onSaved}
           />
         )}
@@ -84,11 +88,13 @@ function CustomerDetailSheetBody({
   customerId,
   tenantSlug,
   canManage,
+  canLinkAccount,
   onSaved,
 }: {
   customerId: string;
   tenantSlug: string;
   canManage: boolean;
+  canLinkAccount: boolean;
   onSaved: () => void;
 }) {
   const [customer, setCustomer] = useState<CustomerRow | null>(null);
@@ -131,7 +137,13 @@ function CustomerDetailSheetBody({
           </TabsList>
 
           <TabsContent value="profile" className="pt-4">
-            <ProfileTab tenantSlug={tenantSlug} customer={customer} canManage={canManage} onSaved={reload} />
+            <ProfileTab
+              tenantSlug={tenantSlug}
+              customer={customer}
+              canManage={canManage}
+              canLinkAccount={canLinkAccount}
+              onSaved={reload}
+            />
           </TabsContent>
 
           <TabsContent value="appointments" className="pt-4">
@@ -150,11 +162,13 @@ function ProfileTab({
   tenantSlug,
   customer,
   canManage,
+  canLinkAccount,
   onSaved,
 }: {
   tenantSlug: string;
   customer: CustomerRow;
   canManage: boolean;
+  canLinkAccount: boolean;
   onSaved: () => void;
 }) {
   const [fullName, setFullName] = useState(customer.fullName);
@@ -181,6 +195,8 @@ function ProfileTab({
 
   return (
     <div className="flex flex-col gap-4">
+      <AccountLinkSection tenantSlug={tenantSlug} customerId={customer.id} canManageLink={canLinkAccount} />
+
       <div className="flex items-center justify-between rounded-lg border p-3">
         <div>
           <p className="text-sm font-medium">Durum</p>

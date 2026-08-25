@@ -7,10 +7,12 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getSiteUrl } from "@/lib/site-url";
 import { authErrorLogFields } from "@/lib/auth/session-errors";
 import { getBookingClaimSecretCookie, clearBookingClaimSecretCookie, isValidClaimRef } from "@/lib/auth/booking-claim-cookie";
+import { resolveSafeNext } from "@/app/auth/confirm/route";
 import type { ActionResult } from "@/lib/errors";
 import { fail, ok } from "@/lib/errors";
 import { accountMagicLinkSchema, updateAccountProfileSchema } from "./schemas";
 import { mapAccountErrorCode } from "./error-codes";
+import { generateLinkCode, hashLinkCode } from "./link-code";
 import type { AccountProfile } from "./queries";
 
 /**
@@ -29,6 +31,14 @@ import type { AccountProfile } from "./queries";
  * shouldCreateUser: true (the SDK default, stated explicitly here) is
  * what makes this work as both first-time signup AND returning login in
  * one call — a customer never fills out a separate signup form.
+ *
+ * Faz 2G.3.2: an optional `next` form field lets a caller who was
+ * redirected here from a guarded route (e.g. /account/link-salon/[slug])
+ * return to that exact destination after authenticating, instead of
+ * always landing on the generic /account home. Re-validated here with
+ * the same resolveSafeNext guard app/auth/confirm/route.ts's own GET
+ * uses — a client-submitted hidden field is never trusted at face
+ * value, even though the page that set it already validated it once.
  */
 export async function requestAccountMagicLinkAction(
   _prevState: ActionResult<null> | null,
@@ -42,12 +52,16 @@ export async function requestAccountMagicLinkAction(
     return fail("VALIDATION", parsed.error.issues[0]?.message ?? "Geçersiz form");
   }
 
+  const rawNext = formData.get("next");
+  const siteUrl = getSiteUrl();
+  const next = typeof rawNext === "string" && rawNext ? resolveSafeNext(rawNext, siteUrl) : "/account";
+
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithOtp({
     email: parsed.data.email,
     options: {
       shouldCreateUser: true,
-      emailRedirectTo: `${getSiteUrl()}/auth/confirm?next=/account`,
+      emailRedirectTo: `${siteUrl}/auth/confirm?next=${encodeURIComponent(next)}`,
     },
   });
 
@@ -56,6 +70,42 @@ export async function requestAccountMagicLinkAction(
   }
 
   return ok(null);
+}
+
+/**
+ * Faz 2G.3.2 — issues a fresh, tenant-bound pairing code for the
+ * authenticated customer to hand to salon staff in person. The raw code
+ * is generated and hashed here, in Node, and returned directly in this
+ * action's own response — unlike the booking-claim secret (2G.3.1),
+ * there is no cookie step to protect it from: displaying it to the
+ * customer IS the feature, so it's fine for it to reach the browser.
+ * Only the hash ever reaches the database; create_my_link_code derives
+ * user_id from auth.uid() itself and never accepts one as a parameter.
+ */
+export async function createMyLinkCodeAction(
+  _prevState: ActionResult<{ code: string; expiresAt: string }> | null,
+  formData: FormData,
+): Promise<ActionResult<{ code: string; expiresAt: string }>> {
+  const tenantSlug = formData.get("tenantSlug");
+  if (typeof tenantSlug !== "string" || !tenantSlug) {
+    return fail("VALIDATION", mapAccountErrorCode("AC011"));
+  }
+
+  const rawCode = generateLinkCode();
+  const codeHash = hashLinkCode(rawCode);
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("create_my_link_code", {
+    p_tenant_slug: tenantSlug,
+    p_code_hash: codeHash,
+  });
+
+  if (error) {
+    return fail("UNEXPECTED", mapAccountErrorCode(error.code));
+  }
+
+  const result = data as unknown as { expiresAt: string };
+  return ok({ code: rawCode, expiresAt: result.expiresAt });
 }
 
 export async function updateMyAccountProfileAction(

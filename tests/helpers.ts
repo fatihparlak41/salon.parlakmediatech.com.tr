@@ -169,6 +169,47 @@ export async function addMembership(
   return membership.id;
 }
 
+/** Clones a REAL role_templates row (SALON_MANAGER, RECEPTIONIST, ...)
+ * into this tenant's own roles/role_permissions, exactly mirroring what
+ * createTestTenant already does for SALON_OWNER, then attaches userId
+ * to it. Unlike createRoleForTenant (an explicit, hand-picked
+ * permission list, useful for "this exact set" fixtures), this is for
+ * proving a role template's actual DEFAULT grants — e.g. Faz 2G.3.2's
+ * "Manager yes, Receptionist no by default" requirement — since a
+ * hand-picked list can't accidentally drift out of sync with what the
+ * template really ships. */
+export async function createTestMembershipFromTemplate(
+  tenantId: string,
+  userId: string,
+  templateKey: string,
+): Promise<{ roleId: string }> {
+  const [template] = await testDb<
+    { id: string; key: string; name: string; description: string | null }[]
+  >`select id, key, name, description from role_templates where key = ${templateKey}`;
+  if (!template) throw new Error(`role template ${templateKey} not found`);
+
+  const [role] = await testDb<{ id: string }[]>`
+    insert into roles (tenant_id, key, name, description, is_system_default, cloned_from_template_id)
+    values (${tenantId}, ${template.key}, ${template.name}, ${template.description}, true, ${template.id})
+    returning id
+  `;
+  if (!role) throw new Error(`failed to clone role template ${templateKey}`);
+
+  const templatePermissions = await testDb<{ permission_id: string }[]>`
+    select permission_id from role_template_permissions where role_template_id = ${template.id}
+  `;
+  if (templatePermissions.length > 0) {
+    await testDb`
+      insert into role_permissions ${testDb(
+        templatePermissions.map((p) => ({ role_id: role.id, permission_id: p.permission_id })),
+      )}
+    `;
+  }
+
+  await addMembership(tenantId, userId, role.id);
+  return { roleId: role.id };
+}
+
 /**
  * FK-safe teardown, in dependency order. audit_logs and branches are the
  * two easy-to-forget ones — private.log_audit_event() and the "insert a
@@ -191,6 +232,10 @@ export async function cleanupTenants(tenantIds: string[]): Promise<void> {
   // row still pointing at either blocks the deletes just below, same
   // FK-order lesson as customer_account_links.
   await testDb`delete from booking_account_claims where tenant_id in ${testDb(tenantIds)}`;
+  // customer_account_pairing_codes (Faz 2G.3.2): same FK-order lesson —
+  // its composite FK (consumed_by_customer_id, tenant_id) blocks a plain
+  // customers delete once a code has been redeemed.
+  await testDb`delete from customer_account_pairing_codes where tenant_id in ${testDb(tenantIds)}`;
   await testDb`delete from appointment_items where tenant_id in ${testDb(tenantIds)}`;
   await testDb`delete from appointments where tenant_id in ${testDb(tenantIds)}`;
   await testDb`delete from staff_schedule_exceptions where tenant_id in ${testDb(tenantIds)}`;

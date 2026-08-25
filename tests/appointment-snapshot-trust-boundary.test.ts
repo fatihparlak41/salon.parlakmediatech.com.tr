@@ -139,7 +139,14 @@ describe("staff reschedule — same service — cannot be repriced by the caller
   it("old snapshot 900/45, catalog changed to 1100/60, malicious reschedule payload sends 1/1, result stays 900/45", async () => {
     const { staff, service } = await makeStaffAndService(45, 900);
     const [customer] = await testDb<{ id: string }[]>`insert into customers (tenant_id, full_name) values (${tenant.id}, 'Trust Customer 2') returning id`;
-    const start = hoursFromNow(60);
+    // safeMorningStart, not hoursFromNow — same reasoning as the other
+    // fix further down in this file: a fixed +60h/+62h pair is a latent
+    // flake whenever it crosses local midnight (staff_is_available's
+    // own pre-existing, unrelated guard), which depends only on what
+    // time of day the suite happens to run. This test asserts snapshot
+    // preservation, not cutoff timing, so it doesn't need real-clock
+    // relativity.
+    const start = safeMorningStart(1);
     const end = new Date(start.getTime() + 45 * 60_000);
     const [appt] = await testDb<{ id: string }[]>`
       insert into appointments (tenant_id, branch_id, customer_id, status, scheduled_start_at, scheduled_end_at)
@@ -150,7 +157,7 @@ describe("staff reschedule — same service — cannot be repriced by the caller
     // Catalog changes AFTER booking — the classic snapshot scenario.
     await testDb`update services set duration_minutes = 60, price = 1100 where id = ${service.id}`;
 
-    const newStart = hoursFromNow(62);
+    const newStart = new Date(start.getTime() + 2 * 3600_000);
     const client = await signInAs(owner);
     const { error } = await client.rpc("reschedule_appointment", {
       p_appointment_id: appt!.id,

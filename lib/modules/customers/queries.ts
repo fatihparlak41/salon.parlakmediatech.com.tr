@@ -73,3 +73,32 @@ export async function getCustomerDetail(customerId: string): Promise<CustomerRow
   if (error || !data) return null;
   return mapRow(data);
 }
+
+export type CustomerAccountLinkStatus = {
+  isLinked: boolean;
+  claimedVia: string | null;
+  isPrimary: boolean;
+  canUnlink: boolean;
+};
+
+/**
+ * Faz 2G.3.2 — minimal, non-identifying link status for the staff CRM
+ * view: enough to decide which button to show (link / unlink / a
+ * read-only "linked, verified" badge), never the linked account's
+ * user_id or email. Gated by customers.view inside the RPC itself (the
+ * same permission that already lets staff see the record at all), not
+ * customers.link_account — viewing status and performing the mutation
+ * are deliberately different capabilities.
+ */
+export async function getCustomerAccountLinkStatus(customerId: string): Promise<CustomerAccountLinkStatus> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("get_customer_account_link_status", { p_customer_id: customerId });
+  if (error || !data) return { isLinked: false, claimedVia: null, isPrimary: false, canUnlink: false };
+  const result = data as unknown as { isLinked: boolean; claimedVia?: string; isPrimary?: boolean; canUnlink?: boolean };
+  return {
+    isLinked: result.isLinked,
+    claimedVia: result.claimedVia ?? null,
+    isPrimary: result.isPrimary ?? false,
+    canUnlink: result.canUnlink ?? false,
+  };
+}

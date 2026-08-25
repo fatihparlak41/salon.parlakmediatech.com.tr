@@ -11,7 +11,7 @@ export default async function CustomersPage({
   const access = await getTenantAccess(tenantSlug);
   if (access.reason !== "ok") return null;
 
-  const [canView, canManage] = await Promise.all([
+  const [canView, canManage, canLinkAccount] = await Promise.all([
     hasPermission(access.tenant.id, "customers.view"),
     // customers.create and customers.update are two separate permission
     // keys (no unified customers.manage) — but every role template that
@@ -21,6 +21,12 @@ export default async function CustomersPage({
     // Archive/reactivate is a plain status UPDATE, gated by
     // customers.update, same as editing.
     hasPermission(access.tenant.id, "customers.update"),
+    // Faz 2G.3.2 — deliberately its own permission, not folded into
+    // canManage: linking grants account-history visibility and
+    // potential cancel/reschedule authority, a materially different
+    // capability from editing a phone field. Owner/Manager by default,
+    // not Receptionist even though Receptionist holds customers.update.
+    hasPermission(access.tenant.id, "customers.link_account"),
   ]);
 
   if (!canView) {
@@ -39,6 +45,7 @@ export default async function CustomersPage({
       tenantId={access.tenant.id}
       tenantSlug={tenantSlug}
       canManage={canManage}
+      canLinkAccount={canLinkAccount}
       initialCustomers={initialCustomers}
       initialCounts={counts}
       labels={{

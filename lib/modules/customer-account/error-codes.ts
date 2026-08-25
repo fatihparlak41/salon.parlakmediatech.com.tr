@@ -28,6 +28,10 @@ export const ACCOUNT_ERROR_MESSAGES: Record<string, string> = {
   // signal between "this claim never existed" and "this claim was
   // valid but something about it failed".
   AC010: "Bu randevu hesabınıza eklenemedi. Bağlantı süresi dolmuş veya geçersiz olabilir.",
+  // Faz 2G.3.2 (20260824170000) — get_my_link_salon_context /
+  // create_my_link_code. One generic code for "no such tenant" and "bad
+  // code input" — no reason to distinguish them for the customer.
+  AC011: "İşlem gerçekleştirilemedi, lütfen tekrar deneyin.",
 };
 
 const DEFAULT_MESSAGE = "İşlem gerçekleştirilemedi, lütfen tekrar deneyin.";

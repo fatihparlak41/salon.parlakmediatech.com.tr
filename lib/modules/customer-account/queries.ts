@@ -53,3 +53,19 @@ export async function getMyAppointments(): Promise<MyAppointment[]> {
   if (error || !data) return [];
   return data as unknown as MyAppointment[];
 }
+
+/**
+ * Faz 2G.3.2 — resolves a public tenant slug to its display name for
+ * the /account/link-salon/[tenantSlug] page. Deliberately not
+ * getPublicBookingContext: this feature has nothing to do with
+ * online_booking and must not inherit that unrelated gate. A null
+ * result (bad slug, suspended tenant, deleted tenant) collapses to the
+ * same "not found" outcome the page renders — never distinguishes why.
+ */
+export async function getMyLinkSalonContext(tenantSlug: string): Promise<{ tenantName: string } | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("get_my_link_salon_context", { p_tenant_slug: tenantSlug });
+  if (error || !data) return null;
+  const result = data as unknown as { found: boolean; tenantName?: string };
+  return result.found && result.tenantName ? { tenantName: result.tenantName } : null;
+}

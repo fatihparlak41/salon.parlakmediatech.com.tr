@@ -129,7 +129,26 @@
     "filterArchived": "Arşivlenmiş",
     "duplicateWarning": "Bu telefon veya e-posta ile eşleşen müşteri(ler) zaten var:",
     "notesLabel": "Notlar",
-    "appointmentsComingSoon": "Randevu geçmişi yakında burada görünecek."
+    "appointmentsComingSoon": "Randevu geçmişi yakında burada görünecek.",
+    "accountLink": {
+      "linkedBadgeVerified": "Hesap Bağlı (Doğrulanmış)",
+      "linkedBadgeSalonAssisted": "Hesap Bağlı",
+      "notLinked": "SalonOS hesabına bağlı değil",
+      "linkAction": "SalonOS Hesabına Bağla",
+      "unlinkAction": "SalonOS Hesap Bağlantısını Kaldır",
+      "dialogTitle": "SalonOS Hesabına Bağla",
+      "dialogDescription": "Bu işlem, bu müşteri kaydındaki randevuların müşterinin SalonOS hesabında görüntülenmesini sağlayacaktır.",
+      "codeInputLabel": "Müşterinin 12 haneli kodu",
+      "confirmLink": "Bağla",
+      "linking": "Bağlanıyor…",
+      "linkSuccess": "Hesap başarıyla bağlandı.",
+      "unlinkDialogTitle": "Hesap Bağlantısını Kaldır",
+      "unlinkDialogDescription": "Bu işlem sonrasında müşteri, bu kayıttaki randevuları hesabında göremeyecek. Randevu ve müşteri kaydı silinmeyecektir.",
+      "confirmUnlink": "Evet, Kaldır",
+      "unlinking": "Kaldırılıyor…",
+      "unlinkSuccess": "Hesap bağlantısı kaldırıldı.",
+      "cancel": "Vazgeç"
+    }
   },
   "Staff": {
     "title": "Personel",
@@ -183,6 +202,7 @@
     "emailLabel": "E-posta (opsiyonel)",
     "claimOptInLabel": "Randevumu hesabıma eklemek istiyorum",
     "claimPendingNote": "Randevuyu hesabınıza eklemek için e-postanıza gönderdiğimiz bağlantıya, bu randevuyu oluşturduğunuz cihaz ve tarayıcıdan tıklayın.",
+    "linkExistingRecord": "Mevcut salon kaydımı hesabıma bağla",
     "summaryTitle": "Randevu özeti",
     "summaryBranch": "Şube",
     "summaryService": "Hizmet",
@@ -263,6 +283,18 @@
       "success": "Randevu hesabınıza eklendi.",
       "goToAppointments": "Randevularımı Görüntüle",
       "noPendingClaim": "Eklenecek bekleyen bir randevu bulunamadı. Bağlantıyı randevuyu oluşturduğunuz cihaz ve tarayıcıda açtığınızdan emin olun."
+    },
+    "linkSalon": {
+      "title": "{salonName} kaydınızı bağlayın",
+      "description": "Bu kodu salon görevlisine vererek mevcut müşteri kaydınızı hesabınıza bağlatabilirsiniz.",
+      "generate": "Kod Oluştur",
+      "generating": "Oluşturuluyor…",
+      "regenerate": "Yeni Kod Oluştur",
+      "codeLabel": "HESAP BAĞLANTI KODU",
+      "copy": "Kopyala",
+      "copied": "Kopyalandı",
+      "expiresNote": "Bu kod 15 dakika geçerlidir. Yeni kod oluşturmak öncekini geçersiz kılar.",
+      "notFound": "Salon bulunamadı."
     }
   },
   "Settings": {

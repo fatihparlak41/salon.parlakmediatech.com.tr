@@ -58,6 +58,7 @@ export function CustomersPageClient({
   tenantId,
   tenantSlug,
   canManage,
+  canLinkAccount,
   initialCustomers,
   initialCounts,
   labels,
@@ -65,6 +66,7 @@ export function CustomersPageClient({
   tenantId: string;
   tenantSlug: string;
   canManage: boolean;
+  canLinkAccount: boolean;
   initialCustomers: CustomerRow[];
   initialCounts: { active: number; archived: number };
   labels: Labels;
@@ -223,6 +225,7 @@ export function CustomersPageClient({
         }}
         tenantSlug={tenantSlug}
         canManage={canManage}
+        canLinkAccount={canLinkAccount}
         onSaved={refreshList}
       />
     </div>

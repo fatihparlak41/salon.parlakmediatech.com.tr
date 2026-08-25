@@ -48,6 +48,22 @@ export default async function BookingPage({
 
   return (
     <div className="bg-background min-h-screen">
+      {/* Faz 2G.3.2 — always-visible entry point into salon-assisted
+          account linking, independent of wizard step/state. Points at
+          the customer's OWN authenticated /account area; an
+          unauthenticated visitor is sent through the normal login flow
+          and returned here afterward (see that route's own header). */}
+      <div className="mx-auto w-full max-w-md px-4 pt-4 sm:max-w-lg">
+        <Button
+          render={<Link href={`/account/link-salon/${tenantSlug}`} />}
+          nativeButton={false}
+          variant="link"
+          size="sm"
+          className="h-auto p-0 text-xs"
+        >
+          {t("linkExistingRecord")}
+        </Button>
+      </div>
       <BookingWizard
         tenantSlug={tenantSlug}
         tenantName={context.salon.name}

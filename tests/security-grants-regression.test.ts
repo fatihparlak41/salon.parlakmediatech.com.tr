@@ -163,6 +163,15 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   // completion. Authenticated only: identity is auth.uid(), the claim
   // itself is an opaque secret hash, never an id.
   "public.claim_my_recent_booking",
+  // Faz 2G.3.2 (20260824170000) — salon-assisted account linking.
+  // Customer-portal side (identity from auth.uid() only):
+  "public.get_my_link_salon_context",
+  "public.create_my_link_code",
+  // Staff side (permission-checked internally against the tenant
+  // derived from the target customer row):
+  "public.link_customer_account_with_code",
+  "public.unlink_salon_assisted_customer_account",
+  "public.get_customer_account_link_status",
 ];
 
 // Phase 2F's public read surface — the only functions anon has ever
