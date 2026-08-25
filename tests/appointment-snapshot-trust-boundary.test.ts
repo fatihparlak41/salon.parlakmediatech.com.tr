@@ -10,6 +10,7 @@ import {
   createStaffSchedule,
   cleanupTenants,
   cleanupUsers,
+  safeMorningStart,
   type TestUser,
 } from "./helpers";
 
@@ -35,23 +36,14 @@ let owner: TestUser;
 let tenant: { id: string; slug: string };
 let branchId: string;
 
-function hoursFromNow(hours: number): Date {
-  return new Date(Date.now() + hours * 3600_000);
-}
-
-/** Local 08:00 (Europe/Istanbul, UTC+3, no DST) N days out — same helper
- * and same reasoning as customer-reschedule.test.ts's own copy: a fixed
- * hoursFromNow start+delta pair is a genuine latent flake whenever the
- * resulting local time happens to cross midnight (staff_is_available's
- * own pre-existing, unrelated guard), which depends only on what time of
- * day the suite happens to run. Used only where a test doesn't actually
- * need real-clock cutoff relativity. */
-function safeMorningStart(daysFromNow: number): Date {
-  const tzOffsetMs = 3 * 3600_000;
-  const localNow = new Date(Date.now() + tzOffsetMs);
-  const localMorning = new Date(Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth(), localNow.getUTCDate() + daysFromNow, 8, 0, 0));
-  return new Date(localMorning.getTime() - tzOffsetMs);
-}
+// Faz 2H.0 — every fixture below uses safeMorningStart (hoisted into
+// helpers.ts), not a fixed hoursFromNow(N): none of these tests assert
+// anything about real-clock relativity, only snapshot/price authority,
+// so a wall-clock-relative timestamp was pure latent flake risk
+// (confirmed: two of these — the 60/62h and 70/72h reschedule pairs —
+// were independently caught failing during the Faz 2H.0 audit, each
+// time because the resulting local time crossed midnight and tripped
+// staff_is_available's own pre-existing, unrelated guard).
 
 async function makeStaffAndService(durationMinutes: number, price: number) {
   const staff = await createStaffMember(tenant.id, `Trust Staff ${crypto.randomUUID().slice(0, 8)}`);
@@ -81,7 +73,7 @@ describe("new staff booking — create_appointment cannot be repriced by the cal
   it("service = 1100/60, malicious payload sends price=1/duration=1, stored snapshot is the authoritative 1100/60", async () => {
     const { staff, service } = await makeStaffAndService(60, 1100);
     const [customer] = await testDb<{ id: string }[]>`insert into customers (tenant_id, full_name) values (${tenant.id}, 'Trust Customer 1') returning id`;
-    const start = hoursFromNow(48);
+    const start = safeMorningStart(2);
 
     const client = await signInAs(owner);
     const { data: appointmentId, error } = await client.rpc("create_appointment", {
@@ -119,7 +111,7 @@ describe("new guest booking — no field exists to inject a snapshot through", (
     const { staff, service } = await makeStaffAndService(45, 900);
     const [feature] = await testDb<{ id: string }[]>`select id from features where key = 'online_booking'`;
     await testDb`insert into tenant_features (tenant_id, feature_id, enabled) values (${tenant.id}, ${feature!.id}, true) on conflict do nothing`;
-    const start = hoursFromNow(50);
+    const start = safeMorningStart(3);
 
     const [result] = await testDb<{ create_guest_booking: Record<string, unknown> }[]>`
       select public.create_guest_booking(
@@ -181,7 +173,7 @@ describe("staff reschedule — service changed — authoritative new-service pri
     const { staff: oldStaff, service: oldService } = await makeStaffAndService(45, 900);
     const { staff: newStaff, service: newService } = await makeStaffAndService(75, 1500);
     const [customer] = await testDb<{ id: string }[]>`insert into customers (tenant_id, full_name) values (${tenant.id}, 'Trust Customer 3') returning id`;
-    const start = hoursFromNow(70);
+    const start = safeMorningStart(4);
     const end = new Date(start.getTime() + 45 * 60_000);
     const [appt] = await testDb<{ id: string }[]>`
       insert into appointments (tenant_id, branch_id, customer_id, status, scheduled_start_at, scheduled_end_at)
@@ -189,7 +181,7 @@ describe("staff reschedule — service changed — authoritative new-service pri
     await testDb`insert into appointment_items (tenant_id, appointment_id, service_id, staff_member_id, scheduled_start_at, scheduled_end_at, duration_minutes, price, sequence)
       values (${tenant.id}, ${appt!.id}, ${oldService.id}, ${oldStaff.id}, ${start.toISOString()}::timestamptz, ${end.toISOString()}::timestamptz, 45, 900, 1)`;
 
-    const newStart = hoursFromNow(72);
+    const newStart = new Date(start.getTime() + 2 * 3600_000);
     const client = await signInAs(owner);
     const { error } = await client.rpc("reschedule_appointment", {
       p_appointment_id: appt!.id,

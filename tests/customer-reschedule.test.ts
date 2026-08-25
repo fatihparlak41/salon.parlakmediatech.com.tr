@@ -11,6 +11,8 @@ import {
   createStaffSchedule,
   cleanupTenants,
   cleanupUsers,
+  hoursFromNow,
+  safeMorningStart,
   type TestUser,
 } from "./helpers";
 
@@ -32,40 +34,17 @@ let otherUser: TestUser;
 let tenant: { id: string; slug: string };
 let branchId: string;
 
-/** Real-clock-relative on purpose — the cutoff/past-rejection tests
- * compare against the database's actual now(), so this must genuinely
- * mean "N hours from the real current instant", not an anchored one. */
-function hoursFromNow(hours: number): Date {
-  return new Date(Date.now() + hours * 3600_000);
-}
+// hoursFromNow/safeMorningStart now live in helpers.ts (Faz 2H.0 —
+// hoisted so every test file reaches for the same two, instead of each
+// file keeping its own copy). hoursFromNow is real-clock-relative on
+// purpose, reserved for the genuine cutoff/past-rejection tests that
+// compare against the database's actual now(); everything else in this
+// file uses safeMorningStart, since a fixed hoursFromNow(N) is a latent
+// flake whenever it happens to land near tenant-local midnight
+// (staff_is_available's own pre-existing, unrelated guard) — confirmed
+// repeatedly during the Faz 2H.0 audit, including a test in this exact
+// file ("a PRIMARY-linked appointment is manageable").
 
-/** get_my_reschedule_slots only generates 15-minute-aligned candidates
- * (00:00, 00:15, ...) — a fixture whose own start isn't aligned can
- * never appear as "the own current slot", regardless of correctness.
- * Only needed where a test asserts the own slot specifically appears. */
-function roundDownTo15Min(date: Date): Date {
-  const ms = 15 * 60_000;
-  return new Date(Math.floor(date.getTime() / ms) * ms);
-}
-
-/**
- * Local 08:00 (Europe/Istanbul, this project's fixed-offset UTC+3
- * tenant default — no DST) N days out, decoupled from the real current
- * time-of-day. Used only by fixtures that stack multiple item
- * offsets/durations plus a reschedule delta within one test — those
- * need same-day headroom, since staff_is_available (pre-existing,
- * unrelated to this phase) rejects anything crossing local midnight,
- * and hoursFromNow's real-clock-relative small values would otherwise
- * make those specific fixtures flaky depending on what time of day the
- * suite happens to run. Not used for cutoff-boundary tests, which need
- * hoursFromNow's genuine "relative to real now()" meaning instead.
- */
-function safeMorningStart(daysFromNow: number): Date {
-  const tzOffsetMs = 3 * 3600_000;
-  const localNow = new Date(Date.now() + tzOffsetMs);
-  const localMorning = new Date(Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth(), localNow.getUTCDate() + daysFromNow, 8, 0, 0));
-  return new Date(localMorning.getTime() - tzOffsetMs);
-}
 
 async function setPolicy(
   tenantId: string,
@@ -194,17 +173,18 @@ describe("no stale overload after the signature changes", () => {
 
 describe("snapshot preservation — the confirmed pre-existing bug, fixed", () => {
   it("STAFF reschedule (unchanged service) preserves the original price/duration snapshot even after the catalog price changes", async () => {
+    const start10 = safeMorningStart(10);
     const { appointmentId, itemServiceIds, itemStaffIds } = await createLinkedAppointment({
       userId: accountUser.id,
       status: "scheduled",
-      start: hoursFromNow(48),
+      start: start10,
       items: [{ durationMinutes: 45, price: 900, offsetMinutes: 0 }],
     });
 
     await testDb`update services set price = 1100, duration_minutes = 60 where id = ${itemServiceIds[0]}`;
 
     const ownerClient = await signInAs(owner);
-    const newStart = hoursFromNow(50).toISOString();
+    const newStart = new Date(start10.getTime() + 2 * 3600_000).toISOString();
     const { error } = await ownerClient.rpc("reschedule_appointment", {
       p_appointment_id: appointmentId,
       p_items: [{ service_id: itemServiceIds[0], staff_member_id: itemStaffIds[0], scheduled_start_at: newStart, sequence: 1 }],
@@ -222,10 +202,11 @@ describe("snapshot preservation — the confirmed pre-existing bug, fixed", () =
   });
 
   it("STAFF reschedule that explicitly SWAPS an item's service correctly picks up the new service's current price/duration (a real edit, not a time move)", async () => {
+    const start11 = safeMorningStart(11);
     const { appointmentId, itemStaffIds } = await createLinkedAppointment({
       userId: accountUser.id,
       status: "scheduled",
-      start: hoursFromNow(52),
+      start: start11,
       items: [{ durationMinutes: 45, price: 900, offsetMinutes: 0 }],
     });
     const newService = await createService(tenant.id, "Swapped Service", 20, 300);
@@ -233,7 +214,7 @@ describe("snapshot preservation — the confirmed pre-existing bug, fixed", () =
     await testDb`insert into staff_services (staff_member_id, service_id) values (${itemStaffIds[0]}, ${newService.id})`;
 
     const ownerClient = await signInAs(owner);
-    const newStart = hoursFromNow(53).toISOString();
+    const newStart = new Date(start11.getTime() + 1 * 3600_000).toISOString();
     const { error } = await ownerClient.rpc("reschedule_appointment", {
       p_appointment_id: appointmentId,
       p_items: [{ service_id: newService.id, staff_member_id: itemStaffIds[0], scheduled_start_at: newStart, sequence: 1 }],
@@ -248,16 +229,17 @@ describe("snapshot preservation — the confirmed pre-existing bug, fixed", () =
   });
 
   it("CUSTOMER reschedule preserves the original price/duration snapshot even after the catalog price changes", async () => {
+    const start12 = safeMorningStart(12);
     const { appointmentId, itemServiceIds } = await createLinkedAppointment({
       userId: accountUser.id,
       status: "scheduled",
-      start: hoursFromNow(54),
+      start: start12,
       items: [{ durationMinutes: 45, price: 900, offsetMinutes: 0 }],
     });
     await setPolicy(tenant.id, { customer_reschedule_enabled: true, customer_reschedule_cutoff_minutes: 0 });
     await testDb`update services set price = 1100, duration_minutes = 60 where id = ${itemServiceIds[0]}`;
 
-    const { data, error } = await rescheduleAs(accountUser, appointmentId, hoursFromNow(56));
+    const { data, error } = await rescheduleAs(accountUser, appointmentId, new Date(start12.getTime() + 2 * 3600_000));
     expect(error).toBeNull();
     expect(data).toBeTruthy();
 
@@ -354,28 +336,31 @@ describe("rollback safety", () => {
 
 describe("ownership", () => {
   it("AC003: a random, never-existed appointment id", async () => {
-    const { error } = await rescheduleAs(accountUser, crypto.randomUUID(), hoursFromNow(48));
+    const { error } = await rescheduleAs(accountUser, crypto.randomUUID(), safeMorningStart(13));
     expect(error!.code).toBe("AC003");
   });
 
   it("AC003: an appointment linked to a DIFFERENT account", async () => {
     await setPolicy(tenant.id, { customer_reschedule_enabled: true, customer_reschedule_cutoff_minutes: 0 });
-    const { appointmentId } = await createLinkedAppointment({ userId: otherUser.id, status: "scheduled", start: hoursFromNow(80), items: [{ durationMinutes: 30, price: 100, offsetMinutes: 0 }] });
-    const { error } = await rescheduleAs(accountUser, appointmentId, hoursFromNow(82));
+    const start14 = safeMorningStart(14);
+    const { appointmentId } = await createLinkedAppointment({ userId: otherUser.id, status: "scheduled", start: start14, items: [{ durationMinutes: 30, price: 100, offsetMinutes: 0 }] });
+    const { error } = await rescheduleAs(accountUser, appointmentId, new Date(start14.getTime() + 2 * 3600_000));
     expect(error!.code).toBe("AC003");
   });
 
   it("a PRIMARY-linked appointment is manageable", async () => {
     const primaryUser = await createTestUser("p2g2b-primary");
-    const { appointmentId } = await createLinkedAppointment({ userId: primaryUser.id, status: "scheduled", start: hoursFromNow(84), items: [{ durationMinutes: 30, price: 100, offsetMinutes: 0 }], isPrimary: true });
-    const { error } = await rescheduleAs(primaryUser, appointmentId, hoursFromNow(86));
+    const start15 = safeMorningStart(15);
+    const { appointmentId } = await createLinkedAppointment({ userId: primaryUser.id, status: "scheduled", start: start15, items: [{ durationMinutes: 30, price: 100, offsetMinutes: 0 }], isPrimary: true });
+    const { error } = await rescheduleAs(primaryUser, appointmentId, new Date(start15.getTime() + 2 * 3600_000));
     expect(error).toBeNull();
     await cleanupUsers([primaryUser.id]);
   });
 
   it("a NON-primary linked appointment is also manageable — all active links count", async () => {
-    const { appointmentId } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: hoursFromNow(88), items: [{ durationMinutes: 30, price: 100, offsetMinutes: 0 }], isPrimary: false });
-    const { error } = await rescheduleAs(accountUser, appointmentId, hoursFromNow(90));
+    const start16 = safeMorningStart(16);
+    const { appointmentId } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: start16, items: [{ durationMinutes: 30, price: 100, offsetMinutes: 0 }], isPrimary: false });
+    const { error } = await rescheduleAs(accountUser, appointmentId, new Date(start16.getTime() + 2 * 3600_000));
     expect(error).toBeNull();
   });
 });
@@ -393,8 +378,9 @@ describe("status eligibility", () => {
   for (const { status, eligible } of cases) {
     it(`status=${status} is ${eligible ? "" : "NOT "}customer-reschedulable`, async () => {
       await setPolicy(tenant.id, { customer_reschedule_enabled: true, customer_reschedule_cutoff_minutes: 0 });
-      const { appointmentId } = await createLinkedAppointment({ userId: accountUser.id, status, start: hoursFromNow(100), items: [{ durationMinutes: 30, price: 100, offsetMinutes: 0 }] });
-      const { error } = await rescheduleAs(accountUser, appointmentId, hoursFromNow(102));
+      const start17 = safeMorningStart(17);
+      const { appointmentId } = await createLinkedAppointment({ userId: accountUser.id, status, start: start17, items: [{ durationMinutes: 30, price: 100, offsetMinutes: 0 }] });
+      const { error } = await rescheduleAs(accountUser, appointmentId, new Date(start17.getTime() + 2 * 3600_000));
       if (eligible) {
         expect(error).toBeNull();
       } else {
@@ -407,8 +393,9 @@ describe("status eligibility", () => {
 describe("policy and cutoff", () => {
   it("AC006: reschedule disabled", async () => {
     await setPolicy(tenant.id, { customer_reschedule_enabled: false });
-    const { appointmentId } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: hoursFromNow(110), items: [{ durationMinutes: 30, price: 100, offsetMinutes: 0 }] });
-    const { error } = await rescheduleAs(accountUser, appointmentId, hoursFromNow(112));
+    const start18 = safeMorningStart(18);
+    const { appointmentId } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: start18, items: [{ durationMinutes: 30, price: 100, offsetMinutes: 0 }] });
+    const { error } = await rescheduleAs(accountUser, appointmentId, new Date(start18.getTime() + 2 * 3600_000));
     expect(error!.code).toBe("AC006");
   });
 
@@ -445,9 +432,10 @@ describe("policy and cutoff", () => {
 describe("fixed branch/service/staff — revalidated against CURRENT configuration", () => {
   it("AC008: reschedule fails safely if the staff member is no longer assigned to the branch by the time of the request", async () => {
     await setPolicy(tenant.id, { customer_reschedule_enabled: true, customer_reschedule_cutoff_minutes: 0 });
-    const { appointmentId, itemStaffIds } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: hoursFromNow(140), items: [{ durationMinutes: 30, price: 100, offsetMinutes: 0 }] });
+    const start19 = safeMorningStart(19);
+    const { appointmentId, itemStaffIds } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: start19, items: [{ durationMinutes: 30, price: 100, offsetMinutes: 0 }] });
     await testDb`delete from staff_branches where staff_member_id = ${itemStaffIds[0]} and branch_id = ${branchId}`;
-    const { error } = await rescheduleAs(accountUser, appointmentId, hoursFromNow(142));
+    const { error } = await rescheduleAs(accountUser, appointmentId, new Date(start19.getTime() + 2 * 3600_000));
     expect(error!.code).toBe("AC008");
   });
 });
@@ -461,15 +449,16 @@ describe("availability preview (get_my_reschedule_slots)", () => {
 
   it("returns [] when reschedule policy is disabled", async () => {
     await setPolicy(tenant.id, { customer_reschedule_enabled: false });
-    const { appointmentId } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: hoursFromNow(150) });
-    const date = hoursFromNow(150).toISOString().slice(0, 10);
+    const start20 = safeMorningStart(20);
+    const { appointmentId } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: start20 });
+    const date = start20.toISOString().slice(0, 10);
     const { data } = await slotsAs(accountUser, appointmentId, date);
     expect(data).toEqual([]);
   });
 
   it("the appointment's OWN current slot is offered (not falsely blocked by its own items)", async () => {
     await setPolicy(tenant.id, { customer_reschedule_enabled: true, customer_reschedule_cutoff_minutes: 0 });
-    const start = roundDownTo15Min(hoursFromNow(160));
+    const start = safeMorningStart(21);
     const { appointmentId } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start });
     const [row] = await testDb<{ scheduled_start_at: string; timezone: string }[]>`
       select a.scheduled_start_at, t.timezone from appointments a join tenants t on t.id = a.tenant_id where a.id = ${appointmentId}`;
@@ -485,7 +474,7 @@ describe("availability preview (get_my_reschedule_slots)", () => {
 
   it("a candidate blocked by ANOTHER appointment for the same staff is correctly excluded, while the item's own current slot is not", async () => {
     await setPolicy(tenant.id, { customer_reschedule_enabled: true, customer_reschedule_cutoff_minutes: 0 });
-    const start = roundDownTo15Min(hoursFromNow(170));
+    const start = safeMorningStart(22);
     const { appointmentId, itemStaffIds, itemServiceIds } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start });
 
     // Occupy the SAME staff member 3 hours later with a different appointment.
@@ -548,18 +537,19 @@ describe("availability preview (get_my_reschedule_slots)", () => {
 describe("staff authority unchanged", () => {
   it("an authorized staff user can still reschedule even when customer_reschedule_enabled = false", async () => {
     await setPolicy(tenant.id, { customer_reschedule_enabled: false });
-    const { appointmentId, itemStaffIds, itemServiceIds } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: hoursFromNow(190), items: [{ durationMinutes: 30, price: 100, offsetMinutes: 0 }] });
+    const start23 = safeMorningStart(23);
+    const { appointmentId, itemStaffIds, itemServiceIds } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: start23, items: [{ durationMinutes: 30, price: 100, offsetMinutes: 0 }] });
     const client = await signInAs(owner);
     const { error } = await client.rpc("reschedule_appointment", {
       p_appointment_id: appointmentId,
-      p_items: [{ service_id: itemServiceIds[0], staff_member_id: itemStaffIds[0], scheduled_start_at: hoursFromNow(192).toISOString(), sequence: 1 }],
+      p_items: [{ service_id: itemServiceIds[0], staff_member_id: itemStaffIds[0], scheduled_start_at: new Date(start23.getTime() + 2 * 3600_000).toISOString(), sequence: 1 }],
     });
     expect(error).toBeNull();
     await client.auth.signOut();
   });
 
   it("update_appointment_status still works correctly with the new FOR UPDATE lock (no behavior change)", async () => {
-    const { appointmentId } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: hoursFromNow(194) });
+    const { appointmentId } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: safeMorningStart(24) });
     const client = await signInAs(owner);
     const { error } = await client.rpc("update_appointment_status", { p_appointment_id: appointmentId, p_new_status: "confirmed" });
     expect(error).toBeNull();
@@ -596,14 +586,15 @@ describe("audit", () => {
 describe("portal capability + refresh", () => {
   it("canReschedule reflects DB policy authority and updates after a successful reschedule", async () => {
     await setPolicy(tenant.id, { customer_reschedule_enabled: true, customer_reschedule_cutoff_minutes: 0 });
-    const { appointmentId } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: hoursFromNow(210) });
+    const start25 = safeMorningStart(25);
+    const { appointmentId } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: start25 });
 
     const client = await signInAs(accountUser);
     const before = await client.rpc("get_my_appointments");
     const beforeRow = (before.data as Array<{ appointmentId: string; canReschedule: boolean }>).find((r) => r.appointmentId === appointmentId);
     expect(beforeRow!.canReschedule).toBe(true);
 
-    const newStart = hoursFromNow(212);
+    const newStart = new Date(start25.getTime() + 2 * 3600_000);
     await client.rpc("reschedule_my_appointment", { p_appointment_id: appointmentId, p_new_start_at: newStart.toISOString() });
 
     const after = await client.rpc("get_my_appointments");
@@ -616,13 +607,14 @@ describe("portal capability + refresh", () => {
 describe("concurrency", () => {
   it("A) two simultaneous customer reschedules of the SAME appointment to DIFFERENT starts: exactly one succeeds, no corruption", async () => {
     await setPolicy(tenant.id, { customer_reschedule_enabled: true, customer_reschedule_cutoff_minutes: 0 });
-    const { appointmentId } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: hoursFromNow(220) });
+    const start26 = safeMorningStart(26);
+    const { appointmentId } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: start26 });
 
     const clientA = await signInAs(accountUser);
     const clientB = await signInAs(accountUser);
     const [resA, resB] = await Promise.all([
-      clientA.rpc("reschedule_my_appointment", { p_appointment_id: appointmentId, p_new_start_at: hoursFromNow(222).toISOString() }),
-      clientB.rpc("reschedule_my_appointment", { p_appointment_id: appointmentId, p_new_start_at: hoursFromNow(224).toISOString() }),
+      clientA.rpc("reschedule_my_appointment", { p_appointment_id: appointmentId, p_new_start_at: new Date(start26.getTime() + 2 * 3600_000).toISOString() }),
+      clientB.rpc("reschedule_my_appointment", { p_appointment_id: appointmentId, p_new_start_at: new Date(start26.getTime() + 4 * 3600_000).toISOString() }),
     ]);
     await clientA.auth.signOut();
     await clientB.auth.signOut();
@@ -635,12 +627,13 @@ describe("concurrency", () => {
 
   it("B) customer reschedule vs customer cancel: never ends with a cancelled appointment that also has active future slots", async () => {
     await setPolicy(tenant.id, { customer_cancellation_enabled: true, customer_cancellation_cutoff_minutes: 0, customer_reschedule_enabled: true, customer_reschedule_cutoff_minutes: 0 });
-    const { appointmentId } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: hoursFromNow(230) });
+    const start27 = safeMorningStart(27);
+    const { appointmentId } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: start27 });
 
     const clientA = await signInAs(accountUser);
     const clientB = await signInAs(accountUser);
     const [rescheduleRes, cancelRes] = await Promise.all([
-      clientA.rpc("reschedule_my_appointment", { p_appointment_id: appointmentId, p_new_start_at: hoursFromNow(232).toISOString() }),
+      clientA.rpc("reschedule_my_appointment", { p_appointment_id: appointmentId, p_new_start_at: new Date(start27.getTime() + 2 * 3600_000).toISOString() }),
       clientB.rpc("cancel_my_appointment", { p_appointment_id: appointmentId }),
     ]);
     await clientA.auth.signOut();
@@ -660,15 +653,16 @@ describe("concurrency", () => {
 
   it("C) customer reschedule vs staff reschedule: serialized, coherent final state, no partial item replacement", async () => {
     await setPolicy(tenant.id, { customer_reschedule_enabled: true, customer_reschedule_cutoff_minutes: 0 });
-    const { appointmentId, itemStaffIds, itemServiceIds } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: hoursFromNow(240) });
+    const start28 = safeMorningStart(28);
+    const { appointmentId, itemStaffIds, itemServiceIds } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: start28 });
 
     const customerClient = await signInAs(accountUser);
     const staffClient = await signInAs(owner);
     const [custRes, staffRes] = await Promise.all([
-      customerClient.rpc("reschedule_my_appointment", { p_appointment_id: appointmentId, p_new_start_at: hoursFromNow(242).toISOString() }),
+      customerClient.rpc("reschedule_my_appointment", { p_appointment_id: appointmentId, p_new_start_at: new Date(start28.getTime() + 2 * 3600_000).toISOString() }),
       staffClient.rpc("reschedule_appointment", {
         p_appointment_id: appointmentId,
-        p_items: [{ service_id: itemServiceIds[0], staff_member_id: itemStaffIds[0], scheduled_start_at: hoursFromNow(244).toISOString(), sequence: 1 }],
+        p_items: [{ service_id: itemServiceIds[0], staff_member_id: itemStaffIds[0], scheduled_start_at: new Date(start28.getTime() + 4 * 3600_000).toISOString(), sequence: 1 }],
       }),
     ]);
     await customerClient.auth.signOut();
@@ -681,10 +675,10 @@ describe("concurrency", () => {
 
   it("D) reschedule races another booking taking one required shifted slot: fails AC008, original appointment stays intact", async () => {
     await setPolicy(tenant.id, { customer_reschedule_enabled: true, customer_reschedule_cutoff_minutes: 0 });
-    const start = hoursFromNow(250);
+    const start = safeMorningStart(29);
     const { appointmentId, itemStaffIds, itemServiceIds } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start });
 
-    const targetStart = hoursFromNow(252);
+    const targetStart = new Date(start.getTime() + 2 * 3600_000);
     const targetEnd = new Date(targetStart.getTime() + 30 * 60_000);
     const [blockerCustomer] = await testDb<{ id: string }[]>`insert into customers (tenant_id, full_name) values (${tenant.id}, 'Race Blocker') returning id`;
     const [blockerAppt] = await testDb<{ id: string }[]>`
@@ -747,18 +741,19 @@ describe("security", () => {
       expect(grantees).not.toContain("PUBLIC");
     }
 
-    const anonResched = await anonClient().rpc("reschedule_my_appointment", { p_appointment_id: crypto.randomUUID(), p_new_start_at: hoursFromNow(1).toISOString() });
+    const anonResched = await anonClient().rpc("reschedule_my_appointment", { p_appointment_id: crypto.randomUUID(), p_new_start_at: safeMorningStart(30).toISOString() });
     expect(anonResched.error!.code).toBe("42501");
     const anonSlots = await anonClient().rpc("get_my_reschedule_slots", { p_appointment_id: crypto.randomUUID(), p_date: new Date().toISOString().slice(0, 10) });
     expect(anonSlots.error!.code).toBe("42501");
   });
 
   it("customer cannot call staff-side reschedule_appointment/update_appointment_status merely by being authenticated", async () => {
-    const { appointmentId, itemStaffIds, itemServiceIds } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: hoursFromNow(270) });
+    const start31 = safeMorningStart(31);
+    const { appointmentId, itemStaffIds, itemServiceIds } = await createLinkedAppointment({ userId: accountUser.id, status: "scheduled", start: start31 });
     const client = await signInAs(accountUser);
     const { error } = await client.rpc("reschedule_appointment", {
       p_appointment_id: appointmentId,
-      p_items: [{ service_id: itemServiceIds[0], staff_member_id: itemStaffIds[0], scheduled_start_at: hoursFromNow(272).toISOString(), sequence: 1 }],
+      p_items: [{ service_id: itemServiceIds[0], staff_member_id: itemStaffIds[0], scheduled_start_at: new Date(start31.getTime() + 2 * 3600_000).toISOString(), sequence: 1 }],
     });
     expect(error).not.toBeNull();
     await client.auth.signOut();
@@ -786,7 +781,7 @@ describe("security", () => {
   it("create_guest_booking still protected from direct anon execution", async () => {
     const { error } = await anonClient().rpc("create_guest_booking", {
       p_tenant_slug: tenant.slug, p_branch_id: branchId, p_service_id: crypto.randomUUID(),
-      p_scheduled_start_at: hoursFromNow(300).toISOString(), p_customer_full_name: "Blocked", p_customer_phone: "5551234567",
+      p_scheduled_start_at: safeMorningStart(32).toISOString(), p_customer_full_name: "Blocked", p_customer_phone: "5551234567",
     });
     expect(error!.code).toBe("42501");
   });

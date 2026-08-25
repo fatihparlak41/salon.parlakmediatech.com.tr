@@ -8,7 +8,13 @@ import { config } from "dotenv";
 // Passed explicitly via test.env (not just a mutated process.env) because
 // Vitest's test files run in a separate worker context that doesn't
 // automatically inherit env vars set by this config file's own process.
-const { parsed } = config({ path: ".env.local" });
+// quiet: true — dotenv's own documented option (v17+) to suppress its
+// startup log line, which otherwise also prints one of its rotating
+// promotional "tip" strings (including one phrased to target AI agents
+// specifically: "auth for agents [www.vestauth.com]"). Officially
+// supported, not a workaround; keeps test output deterministic and
+// free of third-party promotional text either way.
+const { parsed } = config({ path: ".env.local", quiet: true });
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 

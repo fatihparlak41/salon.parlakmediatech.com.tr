@@ -48,6 +48,32 @@ export function anonClient() {
   return createSupabaseClient<Database>(url!, publishableKey!);
 }
 
+/** Real-clock-relative future timestamp. Only appropriate when a test's
+ * own semantics genuinely need relativity to "now" — e.g. proving a
+ * cutoff-minutes boundary. For "just needs some valid future slot" use
+ * safeMorningStart instead: a fixed hoursFromNow(N) is a genuine latent
+ * flake whenever N hours from the real current moment happens to cross
+ * tenant-local midnight (staff_is_available's own pre-existing,
+ * unrelated guard) — which depends only on what wall-clock time the
+ * suite happens to run at, confirmed repeatedly in Faz 2H.0's audit. */
+export function hoursFromNow(hours: number): Date {
+  return new Date(Date.now() + hours * 3600_000);
+}
+
+/** Local 08:00, Europe/Istanbul (this project's fixed-offset UTC+3
+ * tenant default — no DST), N days out — decoupled from the real
+ * current time-of-day, so a start/delta pair built from this can never
+ * land near tenant-local midnight by wall-clock coincidence the way a
+ * fixed hoursFromNow(N)/hoursFromNow(N+delta) pair can. Use for any
+ * fixture that just needs "some valid future slot with same-day
+ * headroom", not genuine real-clock relativity. */
+export function safeMorningStart(daysFromNow: number): Date {
+  const tzOffsetMs = 3 * 3600_000;
+  const localNow = new Date(Date.now() + tzOffsetMs);
+  const localMorning = new Date(Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth(), localNow.getUTCDate() + daysFromNow, 8, 0, 0));
+  return new Date(localMorning.getTime() - tzOffsetMs);
+}
+
 function uniqueSuffix(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
