@@ -11,6 +11,7 @@ export type StaffListRow = {
   serviceCount: number;
   hasSchedule: boolean;
   hasMembership: boolean;
+  concurrentCapacity: number;
 };
 
 /** List view — one row per staff member, with just enough joined summary
@@ -21,7 +22,7 @@ export async function getStaffList(tenantId: string): Promise<StaffListRow[]> {
   const { data, error } = await supabase
     .from("staff_members")
     .select(
-      `id, full_name, email, phone, status, tenant_membership_id,
+      `id, full_name, email, phone, status, tenant_membership_id, concurrent_capacity,
        staff_branches(branches(name)),
        staff_services(service_id),
        staff_schedules(id)`,
@@ -43,6 +44,7 @@ export async function getStaffList(tenantId: string): Promise<StaffListRow[]> {
     serviceCount: row.staff_services.length,
     hasSchedule: row.staff_schedules.length > 0,
     hasMembership: row.tenant_membership_id !== null,
+    concurrentCapacity: row.concurrent_capacity,
   }));
 }
 
@@ -55,6 +57,7 @@ export type StaffDetail = {
   tenantMembershipId: string | null;
   branchIds: string[];
   serviceIds: string[];
+  concurrentCapacity: number;
 };
 
 export async function getStaffDetail(staffMemberId: string): Promise<StaffDetail | null> {
@@ -62,7 +65,7 @@ export async function getStaffDetail(staffMemberId: string): Promise<StaffDetail
   const { data, error } = await supabase
     .from("staff_members")
     .select(
-      `id, full_name, email, phone, status, tenant_membership_id,
+      `id, full_name, email, phone, status, tenant_membership_id, concurrent_capacity,
        staff_branches(branch_id),
        staff_services(service_id)`,
     )
@@ -81,6 +84,7 @@ export async function getStaffDetail(staffMemberId: string): Promise<StaffDetail
     tenantMembershipId: data.tenant_membership_id,
     branchIds: data.staff_branches.map((b) => b.branch_id),
     serviceIds: data.staff_services.map((s) => s.service_id),
+    concurrentCapacity: data.concurrent_capacity,
   };
 }
 

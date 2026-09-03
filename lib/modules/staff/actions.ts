@@ -25,6 +25,9 @@ function mapWriteError(error: { code?: string; message: string } | null): Action
   if (error?.code === "23505") {
     return fail("CONFLICT", "Bu kayıt zaten mevcut veya çakışıyor");
   }
+  if (error?.code === "23514") {
+    return fail("VALIDATION", "Girilen değer izin verilen aralığın dışında");
+  }
   return fail("UNEXPECTED", "İşlem gerçekleştirilemedi, lütfen tekrar deneyin");
 }
 
@@ -36,6 +39,7 @@ export type CreateStaffInput = {
   phone?: string;
   branchIds: string[];
   tenantMembershipId?: string;
+  concurrentCapacity: number;
 };
 
 export async function createStaffMemberAction(
@@ -58,6 +62,7 @@ export async function createStaffMemberAction(
       email: parsed.data.email || null,
       phone: parsed.data.phone || null,
       tenant_membership_id: parsed.data.tenantMembershipId || null,
+      concurrent_capacity: parsed.data.concurrentCapacity,
     })
     .select("id")
     .single();
@@ -90,6 +95,7 @@ export type UpdateStaffProfileInput = {
   email?: string;
   phone?: string;
   tenantMembershipId?: string;
+  concurrentCapacity: number;
 };
 
 export async function updateStaffProfileAction(
@@ -114,6 +120,7 @@ export async function updateStaffProfileAction(
       email: parsed.data.email || null,
       phone: parsed.data.phone || null,
       tenant_membership_id: parsed.data.tenantMembershipId || null,
+      concurrent_capacity: parsed.data.concurrentCapacity,
     })
     .eq("id", input.staffMemberId);
 

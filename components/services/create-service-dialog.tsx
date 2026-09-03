@@ -118,7 +118,7 @@ export function CreateServiceDialog({
 
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="service-duration">Süre (dakika)</Label>
+                <Label htmlFor="service-duration">Takvim Süresi (dakika)</Label>
                 <Input
                   id="service-duration"
                   type="number"

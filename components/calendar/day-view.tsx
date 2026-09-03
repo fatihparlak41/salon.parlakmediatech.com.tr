@@ -27,11 +27,13 @@ function minutesToTime(min: number): string {
 
 type PositionedItem = { item: CalendarItemRow; startMin: number; endMin: number; lane: number; laneCount: number };
 
-/** Greedy interval-graph-coloring lane assignment — only ever matters
- * when two items for the SAME staff member visually overlap, which the
- * DB exclusion constraint makes essentially impossible for active data.
- * Exists purely so exceptional/historical data is never fully hidden
- * behind another block, not a general-purpose packing engine. */
+/** Greedy interval-graph-coloring lane assignment — renders any number
+ * of items that visually overlap for the SAME staff member side by
+ * side. Before Phase 2I.2B (staff_members.concurrent_capacity) this only
+ * ever mattered for exceptional/historical data, since the DB exclusion
+ * constraint made an active overlap essentially impossible; a staff
+ * member with capacity > 1 now overlaps by design, and this same
+ * general-purpose packing logic handles it with no further changes. */
 function layoutStaffColumn(items: CalendarItemRow[], tenantTimezone: string): PositionedItem[] {
   const withTimes = items
     .map((item) => {

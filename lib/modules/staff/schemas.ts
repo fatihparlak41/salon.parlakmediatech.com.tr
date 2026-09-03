@@ -12,6 +12,15 @@ export const staffProfileSchema = z.object({
   phone: z.string().trim().max(50).optional().or(z.literal("")),
   branchIds: z.array(z.string().uuid()),
   tenantMembershipId: z.string().uuid().optional().or(z.literal("")),
+  // Faz 2I.2B — staff_members.concurrent_capacity (20260902090000). Mirrors
+  // the DB check constraint (1..20) so a bad value is rejected here with a
+  // clear message instead of surfacing as a raw 23514 from Postgres.
+  concurrentCapacity: z.coerce
+    .number()
+    .int("Tam sayı olmalı")
+    .min(1, "En az 1 olmalı")
+    .max(20, "En fazla 20 olabilir")
+    .default(1),
 });
 
 export const staffBranchesSchema = z.object({

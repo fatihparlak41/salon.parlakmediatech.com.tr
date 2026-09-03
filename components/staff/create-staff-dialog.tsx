@@ -48,6 +48,7 @@ export function CreateStaffDialog({
     branches.length === 1 ? [branches[0]!.id] : [],
   );
   const [membershipId, setMembershipId] = useState<string>("");
+  const [concurrentCapacity, setConcurrentCapacity] = useState("1");
 
   // Success handling lives in the action itself, not a useEffect watching
   // `state` — setState belongs in the code that causes the change (the
@@ -65,6 +66,7 @@ export function CreateStaffDialog({
         setPhone("");
         setBranchIds(branches.length === 1 ? [branches[0]!.id] : []);
         setMembershipId("");
+        setConcurrentCapacity("1");
       }
       return result;
     },
@@ -85,6 +87,7 @@ export function CreateStaffDialog({
       phone,
       branchIds,
       tenantMembershipId: membershipId,
+      concurrentCapacity: Number(concurrentCapacity) || 1,
     };
     startTransition(() => formAction(input));
   }
@@ -158,6 +161,23 @@ export function CreateStaffDialog({
                   Şube seçilmezse bu personel hiçbir şubede randevu için müsait görünmez.
                 </p>
               )}
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="staff-concurrent-capacity">Aynı anda bakabileceği müşteri sayısı</Label>
+              <Input
+                id="staff-concurrent-capacity"
+                type="number"
+                min={1}
+                max={20}
+                value={concurrentCapacity}
+                onChange={(e) => setConcurrentCapacity(e.target.value)}
+                className="w-24"
+              />
+              <p className="text-muted-foreground text-xs">
+                Çoğu personel için 1 yeterlidir. Bu personel aynı anda birden fazla müşteriyle
+                ilgilenebiliyorsa (örn. boya sürerken başka bir müşteriyi de alabiliyorsa) artırın.
+              </p>
             </div>
 
             {memberships.length > 0 && (

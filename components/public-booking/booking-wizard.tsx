@@ -354,10 +354,7 @@ export function BookingWizard({
                   <span className="font-medium">{s.name}</span>
                   <span className="text-sm font-semibold">₺{s.price}</span>
                 </div>
-                <div className="text-muted-foreground mt-0.5 text-sm">
-                  {s.category ? `${s.category} · ` : ""}
-                  {s.durationMinutes} {labels.minutesShort}
-                </div>
+                {s.category && <div className="text-muted-foreground mt-0.5 text-sm">{s.category}</div>}
               </button>
             ))}
           </div>
@@ -495,9 +492,7 @@ export function BookingWizard({
             </div>
             <div className="flex justify-between gap-2">
               <span className="text-muted-foreground">{labels.summaryPrice}</span>
-              <span className="font-medium">
-                ₺{service.price} · {service.durationMinutes} {labels.minutesShort}
-              </span>
+              <span className="font-medium">₺{service.price}</span>
             </div>
           </div>
           <TurnstileWidget
@@ -545,9 +540,7 @@ export function BookingWizard({
             </div>
             <div className="flex justify-between gap-2">
               <span className="text-muted-foreground">{labels.summaryPrice}</span>
-              <span className="font-medium">
-                ₺{confirmation.price} · {confirmation.durationMinutes} {labels.minutesShort}
-              </span>
+              <span className="font-medium">₺{confirmation.price}</span>
             </div>
             <div className="border-t pt-2">
               <span className="text-muted-foreground text-xs">{labels.confirmationReference}</span>

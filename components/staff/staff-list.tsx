@@ -50,6 +50,15 @@ export function StaffList({
                     Pasif
                   </Badge>
                 )}
+                {staff.concurrentCapacity > 1 && (
+                  <Badge
+                    variant="outline"
+                    className="shrink-0"
+                    title="Aynı anda bakabileceği müşteri sayısı"
+                  >
+                    Kapasite {staff.concurrentCapacity}
+                  </Badge>
+                )}
                 {staff.branchNames.length === 0 && (
                   <span
                     title={noBranchWarning}

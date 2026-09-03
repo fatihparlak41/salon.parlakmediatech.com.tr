@@ -317,10 +317,17 @@ export async function createBranch(tenantId: string, name: string): Promise<stri
   return row.id;
 }
 
-export async function createStaffMember(tenantId: string, fullName: string): Promise<TestStaffMember> {
+// Faz 2I.2B: concurrentCapacity defaults to 1 (the DB column's own
+// default), so every existing call site keeps today's exact one-at-a-time
+// behavior unchanged; only capacity-specific tests pass a higher value.
+export async function createStaffMember(
+  tenantId: string,
+  fullName: string,
+  concurrentCapacity = 1,
+): Promise<TestStaffMember> {
   const [row] = await testDb<{ id: string }[]>`
-    insert into staff_members (tenant_id, full_name)
-    values (${tenantId}, ${fullName})
+    insert into staff_members (tenant_id, full_name, concurrent_capacity)
+    values (${tenantId}, ${fullName}, ${concurrentCapacity})
     returning id
   `;
   if (!row) throw new Error("failed to create test staff member");

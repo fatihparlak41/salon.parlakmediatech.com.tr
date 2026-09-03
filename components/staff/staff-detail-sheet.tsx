@@ -57,7 +57,7 @@ async function loadStaffData(staffMemberId: string): Promise<Loaded | null> {
     supabase
       .from("staff_members")
       .select(
-        `id, full_name, email, phone, status, tenant_membership_id,
+        `id, full_name, email, phone, status, tenant_membership_id, concurrent_capacity,
          staff_branches(branch_id), staff_services(service_id)`,
       )
       .eq("id", staffMemberId)
@@ -89,6 +89,7 @@ async function loadStaffData(staffMemberId: string): Promise<Loaded | null> {
       tenantMembershipId: d.tenant_membership_id,
       branchIds: d.staff_branches.map((b) => b.branch_id),
       serviceIds: d.staff_services.map((s) => s.service_id),
+      concurrentCapacity: d.concurrent_capacity,
     },
     schedule: (scheduleRes.data ?? []).map((r) => ({
       id: r.id,
@@ -279,6 +280,7 @@ function ProfileTab({
   const [email, setEmail] = useState(detail.email ?? "");
   const [phone, setPhone] = useState(detail.phone ?? "");
   const [membershipId, setMembershipId] = useState(detail.tenantMembershipId ?? "");
+  const [concurrentCapacity, setConcurrentCapacity] = useState(String(detail.concurrentCapacity));
 
   // Success handling (notifying the parent to reload) happens inside the
   // action itself, not a useEffect watching the result afterward.
@@ -367,6 +369,24 @@ function ProfileTab({
         </div>
       </div>
 
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="edit-concurrent-capacity">Aynı anda bakabileceği müşteri sayısı</Label>
+        <Input
+          id="edit-concurrent-capacity"
+          type="number"
+          min={1}
+          max={20}
+          value={concurrentCapacity}
+          onChange={(e) => setConcurrentCapacity(e.target.value)}
+          disabled={!canManage}
+          className="w-24"
+        />
+        <p className="text-muted-foreground text-xs">
+          Çoğu personel için 1 yeterlidir. Bu personel aynı anda birden fazla müşteriyle
+          ilgilenebiliyorsa (örn. boya sürerken başka bir müşteriyi de alabiliyorsa) artırın.
+        </p>
+      </div>
+
       {(memberships.length > 0 || detail.tenantMembershipId) && (
         <div className="flex flex-col gap-1.5">
           <Label>Giriş erişimi</Label>
@@ -407,7 +427,15 @@ function ProfileTab({
         <Button
           onClick={() =>
             startTransition(() =>
-              action({ tenantSlug, staffMemberId, fullName, email, phone, tenantMembershipId: membershipId }),
+              action({
+                tenantSlug,
+                staffMemberId,
+                fullName,
+                email,
+                phone,
+                tenantMembershipId: membershipId,
+                concurrentCapacity: Number(concurrentCapacity) || 1,
+              }),
             )
           }
           disabled={isPending || !fullName.trim()}
