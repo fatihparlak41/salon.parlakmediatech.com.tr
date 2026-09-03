@@ -644,3 +644,37 @@ describe("get_my_reschedule_slots — capacity-aware (customer self-service prev
     await cleanupUsers([accountUser.id]);
   });
 });
+
+describe("capacity is a genuine 1..20 range, not just 1/2/3 — targeted check at 6", () => {
+  // Faz 2I.2C — proves the model isn't secretly hard-coded to the values
+  // exercised above. Write-path only (sequential, not a full UI/race
+  // matrix) — capacity 2 and 3 already cover the concurrency-correctness
+  // question (§10 of the report), so this just needs to show a materially
+  // different N still behaves consistently, without excessive fixtures.
+  it("capacity 6: six overlapping bookings succeed, a seventh is rejected with AP012", async () => {
+    const staff = await createStaffMember(tenantA.id, "Kapasite 6", 6);
+    await linkStaffBranch(staff.id, branchA);
+    await linkStaffService(staff.id, serviceA.id);
+    await fullWeekSchedule(tenantA.id, staff.id);
+    const start = safeMorningStart(44).toISOString();
+    const customers = await Promise.all([1, 2, 3, 4, 5, 6, 7].map((n) => createCustomer(tenantA.id, `Müşteri Kap6 ${n}`)));
+
+    for (let i = 0; i < 6; i++) {
+      const { error } = await ownerAClient.rpc("create_appointment", {
+        p_tenant_id: tenantA.id,
+        p_branch_id: branchA,
+        p_customer_id: customers[i]!.id,
+        p_items: [{ service_id: serviceA.id, staff_member_id: staff.id, scheduled_start_at: plusMinutes(start, i), sequence: 1 }],
+      });
+      expect(error).toBeNull();
+    }
+
+    const seventh = await ownerAClient.rpc("create_appointment", {
+      p_tenant_id: tenantA.id,
+      p_branch_id: branchA,
+      p_customer_id: customers[6]!.id,
+      p_items: [{ service_id: serviceA.id, staff_member_id: staff.id, scheduled_start_at: plusMinutes(start, 15), sequence: 1 }],
+    });
+    expect(seventh.error?.code).toBe("AP012");
+  });
+});

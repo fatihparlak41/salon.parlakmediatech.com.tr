@@ -350,10 +350,7 @@ export function BookingWizard({
                 onClick={() => selectService(s.id)}
                 className="hover:border-primary hover:bg-primary/5 focus-visible:ring-ring rounded-xl border p-4 text-left focus-visible:ring-2 focus-visible:outline-none"
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium">{s.name}</span>
-                  <span className="text-sm font-semibold">₺{s.price}</span>
-                </div>
+                <div className="font-medium">{s.name}</div>
                 {s.category && <div className="text-muted-foreground mt-0.5 text-sm">{s.category}</div>}
               </button>
             ))}
@@ -490,10 +487,6 @@ export function BookingWizard({
                 {dateStr} {timeStr}
               </span>
             </div>
-            <div className="flex justify-between gap-2">
-              <span className="text-muted-foreground">{labels.summaryPrice}</span>
-              <span className="font-medium">₺{service.price}</span>
-            </div>
           </div>
           <TurnstileWidget
             siteKey={turnstileSiteKey}
@@ -537,10 +530,6 @@ export function BookingWizard({
               <span className="font-medium tabular-nums">
                 {formatTenantLocalDateTime(confirmation.scheduledStartAt, confirmation.tenantTimezone)}
               </span>
-            </div>
-            <div className="flex justify-between gap-2">
-              <span className="text-muted-foreground">{labels.summaryPrice}</span>
-              <span className="font-medium">₺{confirmation.price}</span>
             </div>
             <div className="border-t pt-2">
               <span className="text-muted-foreground text-xs">{labels.confirmationReference}</span>
