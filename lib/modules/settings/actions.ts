@@ -67,3 +67,37 @@ export async function updateSelfServicePolicyAction(
     rescheduleCutoffMinutes: data.customer_reschedule_cutoff_minutes,
   });
 }
+
+/**
+ * Faz 2I.2C.1 — tenant_features has no direct write grant at all (it
+ * backs platform/billing-controlled feature overrides, 20260815120012),
+ * so this goes through the narrowly-scoped set_online_booking_enabled
+ * RPC (20260903120000) rather than a table update — that RPC is the
+ * entire write path, checks settings.manage itself, and touches only
+ * the online_booking row for this one tenant. A permission failure
+ * surfaces as a raised Postgres error (not a silently-empty result, this
+ * isn't an RLS-gated table write), mapped to UNAUTHORIZED below.
+ */
+export async function updateOnlineBookingSettingAction(
+  _prevState: ActionResult<boolean> | null,
+  input: { tenantId: string; tenantSlug: string; enabled: boolean },
+): Promise<ActionResult<boolean>> {
+  await requireUser();
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("set_online_booking_enabled", {
+    p_tenant_id: input.tenantId,
+    p_enabled: input.enabled,
+  });
+
+  if (error) {
+    if (error.message.includes("settings.manage required")) {
+      return fail("UNAUTHORIZED", "Bu işlem için yetkiniz yok");
+    }
+    return fail("UNEXPECTED", "İşlem gerçekleştirilemedi, lütfen tekrar deneyin");
+  }
+
+  revalidatePath(`/app/${input.tenantSlug}/settings`);
+
+  return ok(data ?? input.enabled);
+}

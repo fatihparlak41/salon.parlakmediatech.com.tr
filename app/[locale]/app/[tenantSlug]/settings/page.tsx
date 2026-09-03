@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { getTenantAccess, hasPermission } from "@/lib/auth/session";
-import { getSelfServicePolicy } from "@/lib/modules/settings/queries";
+import { getSelfServicePolicy, getOnlineBookingEnabled } from "@/lib/modules/settings/queries";
 import { SelfServicePolicyForm } from "@/components/settings/self-service-policy-form";
+import { OnlineBookingToggle } from "@/components/settings/online-booking-toggle";
 
 export default async function SettingsPage({
   params,
@@ -19,7 +20,10 @@ export default async function SettingsPage({
     redirect(`/app/${tenantSlug}`);
   }
 
-  const policy = await getSelfServicePolicy(access.tenant.id);
+  const [policy, onlineBookingEnabled] = await Promise.all([
+    getSelfServicePolicy(access.tenant.id),
+    getOnlineBookingEnabled(access.tenant.id),
+  ]);
   const t = await getTranslations("Settings");
 
   return (
@@ -28,6 +32,11 @@ export default async function SettingsPage({
         <h1 className="text-xl font-semibold tracking-tight">{t("title")}</h1>
         <p className="text-muted-foreground text-sm">{t("description")}</p>
       </div>
+      <OnlineBookingToggle
+        tenantId={access.tenant.id}
+        tenantSlug={tenantSlug}
+        initialEnabled={onlineBookingEnabled}
+      />
       <SelfServicePolicyForm
         tenantId={access.tenant.id}
         tenantSlug={tenantSlug}

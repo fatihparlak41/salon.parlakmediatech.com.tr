@@ -1622,6 +1622,10 @@ export type Database = {
           table_name: string
         }[]
       }
+      set_online_booking_enabled: {
+        Args: { p_enabled: boolean; p_tenant_id: string }
+        Returns: boolean
+      }
       unlink_salon_assisted_customer_account: {
         Args: { p_customer_id: string }
         Returns: Json

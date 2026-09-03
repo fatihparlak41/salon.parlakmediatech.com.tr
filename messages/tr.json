@@ -300,6 +300,10 @@
   "Settings": {
     "title": "Ayarlar",
     "description": "Salonunuzun operasyonel ayarlarını yönetin.",
+    "onlineBooking": {
+      "heading": "Online Randevu",
+      "description": "Müşteriler internet üzerinden randevu oluşturabilsin."
+    },
     "selfService": {
       "heading": "Müşteri Self-Servis",
       "description": "Müşterilerin /account üzerinden kendi randevularını yönetmesine izin verin.",

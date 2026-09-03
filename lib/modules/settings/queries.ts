@@ -37,3 +37,19 @@ export async function getSelfServicePolicy(tenantId: string): Promise<SelfServic
     rescheduleCutoffMinutes: data.customer_reschedule_cutoff_minutes,
   };
 }
+
+/** Reuses the existing public.has_feature RPC (20260815120010/20260903120000)
+ * — the same function private.resolve_bookable_tenant and every public
+ * booking entry point already check — so this reads exactly the value
+ * that governs real bookability, never a separate/out-of-sync copy. A
+ * failed call (network error, RPC missing) fails closed to false: never
+ * claim online booking is on when we couldn't actually confirm it. */
+export async function getOnlineBookingEnabled(tenantId: string): Promise<boolean> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("has_feature", {
+    p_tenant_id: tenantId,
+    p_feature_key: "online_booking",
+  });
+  if (error || data === null) return false;
+  return data;
+}

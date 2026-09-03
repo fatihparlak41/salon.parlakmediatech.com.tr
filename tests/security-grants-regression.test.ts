@@ -172,6 +172,14 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   "public.link_customer_account_with_code",
   "public.unlink_salon_assisted_customer_account",
   "public.get_customer_account_link_status",
+  // Faz 2I.2C.1 (20260903120000) — tenant-facing online_booking toggle.
+  // Authenticated only, never anon: gated internally by settings.manage
+  // (private.has_permission), touches only the caller's own tenant's
+  // tenant_features row. tenant_features itself keeps zero write grant to
+  // authenticated — this RPC's own SECURITY DEFINER privilege is the
+  // entire write path, same pattern as every other private.*/public.*
+  // pair in this list.
+  "public.set_online_booking_enabled",
 ];
 
 // Phase 2F's public read surface — the only functions anon has ever
