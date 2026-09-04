@@ -312,33 +312,42 @@ export type Database = {
           created_at: string
           deleted_at: string | null
           id: string
+          instagram_handle: string | null
           is_primary: boolean
+          location_url: string | null
           name: string
           phone: string | null
           tenant_id: string
           updated_at: string
+          whatsapp_phone: string | null
         }
         Insert: {
           address?: string | null
           created_at?: string
           deleted_at?: string | null
           id?: string
+          instagram_handle?: string | null
           is_primary?: boolean
+          location_url?: string | null
           name: string
           phone?: string | null
           tenant_id: string
           updated_at?: string
+          whatsapp_phone?: string | null
         }
         Update: {
           address?: string | null
           created_at?: string
           deleted_at?: string | null
           id?: string
+          instagram_handle?: string | null
           is_primary?: boolean
+          location_url?: string | null
           name?: string
           phone?: string | null
           tenant_id?: string
           updated_at?: string
+          whatsapp_phone?: string | null
         }
         Relationships: [
           {

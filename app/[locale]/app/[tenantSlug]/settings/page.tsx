@@ -2,8 +2,10 @@ import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { getTenantAccess, hasPermission } from "@/lib/auth/session";
 import { getSelfServicePolicy, getOnlineBookingEnabled } from "@/lib/modules/settings/queries";
+import { getOwnerManagedBranches } from "@/lib/modules/branches/queries";
 import { SelfServicePolicyForm } from "@/components/settings/self-service-policy-form";
 import { OnlineBookingToggle } from "@/components/settings/online-booking-toggle";
+import { BranchContactForm } from "@/components/settings/branch-contact-form";
 
 export default async function SettingsPage({
   params,
@@ -20,9 +22,10 @@ export default async function SettingsPage({
     redirect(`/app/${tenantSlug}`);
   }
 
-  const [policy, onlineBookingEnabled] = await Promise.all([
+  const [policy, onlineBookingEnabled, branches] = await Promise.all([
     getSelfServicePolicy(access.tenant.id),
     getOnlineBookingEnabled(access.tenant.id),
+    getOwnerManagedBranches(access.tenant.id),
   ]);
   const t = await getTranslations("Settings");
 
@@ -42,6 +45,7 @@ export default async function SettingsPage({
         tenantSlug={tenantSlug}
         initialPolicy={policy}
       />
+      {branches.length > 0 && <BranchContactForm tenantSlug={tenantSlug} branches={branches} />}
     </div>
   );
 }

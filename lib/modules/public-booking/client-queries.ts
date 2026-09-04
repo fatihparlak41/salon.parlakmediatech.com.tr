@@ -38,6 +38,14 @@ export type PublicBookingBranch = {
   id: string;
   name: string;
   address: string | null;
+  // Faz 2I.2F (Batch A, 20260904090000) — owner-managed contact/social
+  // fields, same "null means not configured" convention address already
+  // used. salon-contact-header.tsx hides each action button when its
+  // field is null; never price/duration/capacity, unchanged from before.
+  phone: string | null;
+  whatsappPhone: string | null;
+  instagramHandle: string | null;
+  locationUrl: string | null;
   services: PublicBookingService[];
 };
 

@@ -5,9 +5,9 @@ import { Link } from "@/lib/i18n/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TurnstileWidget } from "@/components/public-booking/turnstile-widget";
+import { SalonContactHeader } from "@/components/public-booking/salon-contact-header";
 import {
   fetchPublicEligibleStaff,
   fetchPublicAvailabilitySlots,
@@ -56,6 +56,10 @@ type Labels = {
   summaryStaff: string;
   summaryDateTime: string;
   summaryPrice: string;
+  // Faz 2I.2F (Batch A) — SalonContactHeader's action-button labels.
+  contactWhatsapp: string;
+  contactInstagram: string;
+  contactDirections: string;
   submit: string;
   submitting: string;
   confirmedTitle: string;
@@ -312,11 +316,15 @@ export function BookingWizard({
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-5 px-4 py-6 sm:max-w-lg sm:py-10">
-      <div className="flex flex-col gap-1 text-center">
-        <Badge variant="secondary" className="mx-auto h-6 px-2.5 text-sm font-semibold">
-          {tenantName}
-        </Badge>
-      </div>
+      <SalonContactHeader
+        tenantName={tenantName}
+        branch={branch}
+        labels={{
+          whatsapp: labels.contactWhatsapp,
+          instagram: labels.contactInstagram,
+          directions: labels.contactDirections,
+        }}
+      />
 
       {step !== "success" && <StepHeader current={step} steps={stepOrder} labels={labels} />}
 

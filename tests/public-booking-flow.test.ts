@@ -234,9 +234,49 @@ describe("public booking context", () => {
     const data = asContext(raw);
     if (!data.bookable) throw new Error("expected bookable:true");
     const b1 = data.branches.find((b) => b.id === branchA1)!;
-    expect(Object.keys(b1).sort()).toEqual(["address", "id", "name", "services"].sort());
+    // Faz 2I.2F (Batch A, 20260904090000) added phone/whatsappPhone/
+    // instagramHandle/locationUrl alongside address — still never
+    // price/duration/capacity, which stay on the services array only.
+    expect(Object.keys(b1).sort()).toEqual(
+      ["address", "id", "instagramHandle", "locationUrl", "name", "phone", "services", "whatsappPhone"].sort(),
+    );
     const svc = b1.services[0]!;
     expect(Object.keys(svc).sort()).toEqual(["category", "durationMinutes", "id", "name", "price"].sort());
+  });
+
+  it("unconfigured contact fields are null, not omitted — lets the client hide that action", async () => {
+    const { data: raw } = await anonClient().rpc("get_public_booking_context", { p_tenant_slug: tenantA.slug });
+    const data = asContext(raw);
+    if (!data.bookable) throw new Error("expected bookable:true");
+    const b1 = data.branches.find((b) => b.id === branchA1)!;
+    expect(b1.phone).toBeNull();
+    expect(b1.whatsappPhone).toBeNull();
+    expect(b1.instagramHandle).toBeNull();
+    expect(b1.locationUrl).toBeNull();
+  });
+
+  it("configured contact fields are returned as stored", async () => {
+    await testDb`update branches set
+        phone = '+90 533 000 0000',
+        whatsapp_phone = '+905330000000',
+        instagram_handle = 'test_salon_ig',
+        location_url = 'https://share.google/EcHzpDuVyTcqqmKYV'
+      where id = ${branchA1}`;
+    try {
+      const { data: raw } = await anonClient().rpc("get_public_booking_context", { p_tenant_slug: tenantA.slug });
+      const data = asContext(raw);
+      if (!data.bookable) throw new Error("expected bookable:true");
+      const b1 = data.branches.find((b) => b.id === branchA1)!;
+      expect(b1.phone).toBe("+90 533 000 0000");
+      expect(b1.whatsappPhone).toBe("+905330000000");
+      expect(b1.instagramHandle).toBe("test_salon_ig");
+      expect(b1.locationUrl).toBe("https://share.google/EcHzpDuVyTcqqmKYV");
+    } finally {
+      // Leaves branchA1 exactly as later tests in this file expect it.
+      await testDb`update branches set
+          phone = null, whatsapp_phone = null, instagram_handle = null, location_url = null
+        where id = ${branchA1}`;
+    }
   });
 });
 
