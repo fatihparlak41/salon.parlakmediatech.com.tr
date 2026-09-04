@@ -11,7 +11,7 @@ declare global {
           sitekey: string;
           callback: (token: string) => void;
           "expired-callback"?: () => void;
-          "error-callback"?: () => void;
+          "error-callback"?: (errorCode?: string) => void;
         },
       ) => string;
       reset: (widgetId?: string) => void;
@@ -68,7 +68,18 @@ export function TurnstileWidget({
         sitekey: siteKey,
         callback: onVerify,
         "expired-callback": onExpire,
-        "error-callback": onExpire,
+        // Diagnostic-only: Cloudflare's own documented client-side error
+        // code (e.g. "300030", "600010" — see
+        // https://developers.cloudflare.com/turnstile/troubleshooting/client-side-errors/),
+        // never anything else — no site key, no secret, no token, no
+        // request payload passes through this callback at all. Behavior
+        // is otherwise identical to before: onExpire still always runs.
+        "error-callback": (errorCode) => {
+          if (errorCode) {
+            console.warn("[turnstile-widget] client-side error", { code: errorCode });
+          }
+          onExpire();
+        },
       });
     });
     return () => {
