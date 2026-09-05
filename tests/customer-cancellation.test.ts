@@ -213,6 +213,69 @@ describe("policy defaults and settings.manage RLS", () => {
   });
 });
 
+/**
+ * Faz 2I.4A — the diagnosis for "cancellation settings not persisting
+ * for a real pilot tenant" found every layer correct in the abstract,
+ * proven by the tests above using createTestTenant's manual SALON_OWNER
+ * clone — but that helper is not how a real signup actually provisions
+ * a tenant. This closes that one open gap: the SAME RLS-gated update,
+ * for an owner created through the REAL onboarding RPC
+ * (create_tenant_with_owner, reached the same way
+ * components/onboarding/create-tenant-form.tsx calls it) rather than
+ * the test helper. The real bug turned out to be client-side (a
+ * disabled cutoff input silently discarding input — see
+ * tests/settings-cutoff.test.ts for that fix's own unit coverage), not
+ * a provisioning gap, but this is still worth keeping green as a
+ * standing guard against the two paths ever actually diverging.
+ */
+describe("settings.manage via the REAL onboarding path (not createTestTenant)", () => {
+  it("an owner from create_tenant_with_owner CAN update policy fields, and a fresh read confirms it actually persisted", async () => {
+    const realOwner = await createTestUser("p2i4a-real-onboarding-owner");
+    const realOwnerClient = await signInAs(realOwner);
+    const slug = `test-p2i4a-real-${crypto.randomUUID().slice(0, 8)}`;
+
+    const { data: tenantId, error: createError } = await realOwnerClient.rpc("create_tenant", {
+      p_name: "Real Onboarding Test Salon",
+      p_slug: slug,
+    });
+    expect(createError).toBeNull();
+    expect(typeof tenantId).toBe("string");
+
+    const { data: updated, error: updateError } = await realOwnerClient
+      .from("tenants")
+      .update({ customer_cancellation_enabled: true, customer_cancellation_cutoff_minutes: 720, customer_reschedule_enabled: false })
+      .eq("id", tenantId as string)
+      .select("customer_cancellation_enabled, customer_cancellation_cutoff_minutes, customer_reschedule_enabled")
+      .maybeSingle();
+    expect(updateError).toBeNull();
+    expect(updated).toEqual({
+      customer_cancellation_enabled: true,
+      customer_cancellation_cutoff_minutes: 720,
+      customer_reschedule_enabled: false,
+    });
+
+    // Persistence/reload check: a completely fresh read (own connection,
+    // not the client that just wrote it) sees the exact same values —
+    // the ground-truth equivalent of "reload the settings page and
+    // confirm it still shows enabled + 12 hours".
+    const [row] = await testDb<{
+      customer_cancellation_enabled: boolean;
+      customer_cancellation_cutoff_minutes: number;
+      customer_reschedule_enabled: boolean;
+    }[]>`select customer_cancellation_enabled, customer_cancellation_cutoff_minutes, customer_reschedule_enabled
+         from tenants where id = ${tenantId as string}`;
+    expect(row).toEqual({
+      customer_cancellation_enabled: true,
+      customer_cancellation_cutoff_minutes: 720,
+      customer_reschedule_enabled: false,
+    });
+
+    await realOwnerClient.auth.signOut();
+    await cleanupTenants([tenantId as string]);
+    await cleanupUsers([realOwner.id]);
+  });
+});
+
 describe("ownership", () => {
   it("AC003: a random, never-existed appointment id", async () => {
     const { error } = await cancelAs(accountUser, crypto.randomUUID());

@@ -51,10 +51,25 @@ export async function updateSelfServicePolicyAction(
     )
     .maybeSingle();
 
+  // Faz 2I.4A — diagnostic-only, server-side (Vercel function logs, never
+  // sent to the client). No PII: tenantId is a UUID, error.code/message
+  // are Postgres/PostgREST diagnostic codes and class names, never
+  // user-entered content. Turns a future occurrence of "settings say
+  // saved but the DB didn't change" into a log lookup instead of a full
+  // code trace — see the Faz 2I.4A diagnosis report for why this branch
+  // previously left zero trace anywhere.
   if (error) {
+    console.error("[updateSelfServicePolicyAction] update failed", {
+      tenantId: parsed.data.tenantId,
+      code: error.code,
+      message: error.message,
+    });
     return fail("UNEXPECTED", "İşlem gerçekleştirilemedi, lütfen tekrar deneyin");
   }
   if (!data) {
+    console.error("[updateSelfServicePolicyAction] RLS matched zero rows (unauthorized or wrong tenant)", {
+      tenantId: parsed.data.tenantId,
+    });
     return fail("UNAUTHORIZED", "Bu işlem için yetkiniz yok");
   }
 
