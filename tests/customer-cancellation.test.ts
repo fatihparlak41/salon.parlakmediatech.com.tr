@@ -276,6 +276,158 @@ describe("settings.manage via the REAL onboarding path (not createTestTenant)", 
   });
 });
 
+/**
+ * Faz 2I.4B — regression coverage for the second real PROD incident:
+ * SelfServicePolicyForm used to send all 4 policy columns on every
+ * save, so a stale tab/session (one that loaded before some OTHER save
+ * happened) would resend its own outdated belief about a field it
+ * never touched and silently revert whatever that other save had just
+ * set. The fix makes the save a genuine partial UPDATE — only the
+ * columns actually present in the request are written, everything else
+ * is left untouched in Postgres. These tests exercise exactly that at
+ * the RLS/DB layer, independent of the client's own dirty-tracking
+ * (covered separately in tests/settings-cutoff.test.ts and by live
+ * DEV browser reproduction — see the Faz 2I.4B report).
+ */
+describe("self-service policy — partial-update regression (Faz 2I.4B)", () => {
+  it("A. both enabled: a partial update touching ONLY reschedule leaves cancellation completely untouched", async () => {
+    await setPolicy(tenant.id, {
+      customer_cancellation_enabled: true,
+      customer_cancellation_cutoff_minutes: 720,
+      customer_reschedule_enabled: true,
+      customer_reschedule_cutoff_minutes: 720,
+    });
+    const client = await signInAs(owner);
+    const { data, error } = await client
+      .from("tenants")
+      .update({ customer_reschedule_enabled: false }) // exactly what the fixed client now sends — only the changed column
+      .eq("id", tenant.id)
+      .select(
+        "customer_cancellation_enabled, customer_cancellation_cutoff_minutes, customer_reschedule_enabled, customer_reschedule_cutoff_minutes",
+      )
+      .maybeSingle();
+    expect(error).toBeNull();
+    expect(data).toEqual({
+      customer_cancellation_enabled: true,
+      customer_cancellation_cutoff_minutes: 720,
+      customer_reschedule_enabled: false,
+      customer_reschedule_cutoff_minutes: 720,
+    });
+    await client.auth.signOut();
+  });
+
+  it("B. both enabled (reverse): a partial update touching ONLY cancellation leaves reschedule completely untouched", async () => {
+    await setPolicy(tenant.id, {
+      customer_cancellation_enabled: true,
+      customer_cancellation_cutoff_minutes: 720,
+      customer_reschedule_enabled: true,
+      customer_reschedule_cutoff_minutes: 720,
+    });
+    const client = await signInAs(owner);
+    const { data, error } = await client
+      .from("tenants")
+      .update({ customer_cancellation_enabled: false })
+      .eq("id", tenant.id)
+      .select(
+        "customer_cancellation_enabled, customer_cancellation_cutoff_minutes, customer_reschedule_enabled, customer_reschedule_cutoff_minutes",
+      )
+      .maybeSingle();
+    expect(error).toBeNull();
+    expect(data).toEqual({
+      customer_cancellation_enabled: false,
+      customer_cancellation_cutoff_minutes: 720,
+      customer_reschedule_enabled: true,
+      customer_reschedule_cutoff_minutes: 720,
+    });
+    await client.auth.signOut();
+  });
+
+  it("C. stale-session simulation: two independent partial writes (session A never sees session B's write, or vice versa) still both land correctly", async () => {
+    await setPolicy(tenant.id, {
+      customer_cancellation_enabled: false,
+      customer_cancellation_cutoff_minutes: 0,
+      customer_reschedule_enabled: false,
+      customer_reschedule_cutoff_minutes: 0,
+    });
+    const sessionA = await signInAs(owner);
+    const sessionB = await signInAs(owner); // same owner, independent session — models a second stale tab exactly
+
+    const { error: errA } = await sessionA
+      .from("tenants")
+      .update({ customer_cancellation_enabled: true, customer_cancellation_cutoff_minutes: 720 })
+      .eq("id", tenant.id);
+    expect(errA).toBeNull();
+
+    // Session B never re-reads after session A's write — it sends only
+    // the reschedule fields it changed, exactly what the fixed client
+    // now does regardless of how stale its own local snapshot is.
+    const { error: errB } = await sessionB
+      .from("tenants")
+      .update({ customer_reschedule_enabled: true, customer_reschedule_cutoff_minutes: 720 })
+      .eq("id", tenant.id);
+    expect(errB).toBeNull();
+
+    const [row] = await testDb<{
+      customer_cancellation_enabled: boolean;
+      customer_cancellation_cutoff_minutes: number;
+      customer_reschedule_enabled: boolean;
+      customer_reschedule_cutoff_minutes: number;
+    }[]>`select customer_cancellation_enabled, customer_cancellation_cutoff_minutes,
+               customer_reschedule_enabled, customer_reschedule_cutoff_minutes
+         from tenants where id = ${tenant.id}`;
+    expect(row).toEqual({
+      customer_cancellation_enabled: true,
+      customer_cancellation_cutoff_minutes: 720,
+      customer_reschedule_enabled: true,
+      customer_reschedule_cutoff_minutes: 720,
+    });
+
+    await sessionA.auth.signOut();
+    await sessionB.auth.signOut();
+  });
+
+  it("D. stale-session simulation, reverse order: the reschedule write landing first changes nothing about the outcome", async () => {
+    await setPolicy(tenant.id, {
+      customer_cancellation_enabled: false,
+      customer_cancellation_cutoff_minutes: 0,
+      customer_reschedule_enabled: false,
+      customer_reschedule_cutoff_minutes: 0,
+    });
+    const sessionA = await signInAs(owner);
+    const sessionB = await signInAs(owner);
+
+    const { error: errB } = await sessionB
+      .from("tenants")
+      .update({ customer_reschedule_enabled: true, customer_reschedule_cutoff_minutes: 720 })
+      .eq("id", tenant.id);
+    expect(errB).toBeNull();
+
+    const { error: errA } = await sessionA
+      .from("tenants")
+      .update({ customer_cancellation_enabled: true, customer_cancellation_cutoff_minutes: 720 })
+      .eq("id", tenant.id);
+    expect(errA).toBeNull();
+
+    const [row] = await testDb<{
+      customer_cancellation_enabled: boolean;
+      customer_cancellation_cutoff_minutes: number;
+      customer_reschedule_enabled: boolean;
+      customer_reschedule_cutoff_minutes: number;
+    }[]>`select customer_cancellation_enabled, customer_cancellation_cutoff_minutes,
+               customer_reschedule_enabled, customer_reschedule_cutoff_minutes
+         from tenants where id = ${tenant.id}`;
+    expect(row).toEqual({
+      customer_cancellation_enabled: true,
+      customer_cancellation_cutoff_minutes: 720,
+      customer_reschedule_enabled: true,
+      customer_reschedule_cutoff_minutes: 720,
+    });
+
+    await sessionA.auth.signOut();
+    await sessionB.auth.signOut();
+  });
+});
+
 describe("ownership", () => {
   it("AC003: a random, never-existed appointment id", async () => {
     const { error } = await cancelAs(accountUser, crypto.randomUUID());

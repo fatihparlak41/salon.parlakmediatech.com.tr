@@ -17,16 +17,34 @@ import type { SelfServicePolicy } from "./queries";
  * ground-truth check for that — `data === null` means "RLS silently
  * blocked this", which must never be read as success just because
  * `error` was also null.
+ *
+ * Faz 2I.4B — PARTIAL update by construction: `input` (and therefore
+ * `parsed.data`) carries only whichever policy fields the client
+ * actually changed since its own last successful save (see
+ * SelfServicePolicyForm's dirty-tracking) — never all four unconditionally.
+ * The `columns` object below is built from only the keys actually
+ * present in the validated input, so an omitted field is never part of
+ * the UPDATE statement at all and is left completely untouched in
+ * Postgres. This is the fix for the real PROD incident where a stale
+ * browser tab, holding an outdated snapshot of a field it never
+ * touched, resent that stale value and silently reverted a different,
+ * more recent save — see the Faz 2I.4B diagnosis report. `.select()`
+ * still requests all four columns regardless of which were written, so
+ * the returned row is always the complete, authoritative current state
+ * — the caller (SelfServicePolicyForm) resyncs its ENTIRE local display
+ * from this, not just the fields it wrote, which also self-heals any
+ * field this same tab had a stale view of without ever having written
+ * to it.
  */
 export async function updateSelfServicePolicyAction(
   _prevState: ActionResult<SelfServicePolicy> | null,
   input: {
     tenantId: string;
     tenantSlug: string;
-    cancellationEnabled: boolean;
-    cancellationCutoffMinutes: number;
-    rescheduleEnabled: boolean;
-    rescheduleCutoffMinutes: number;
+    cancellationEnabled?: boolean;
+    cancellationCutoffMinutes?: number;
+    rescheduleEnabled?: boolean;
+    rescheduleCutoffMinutes?: number;
   },
 ): Promise<ActionResult<SelfServicePolicy>> {
   await requireUser();
@@ -36,15 +54,21 @@ export async function updateSelfServicePolicyAction(
     return fail("VALIDATION", parsed.error.issues[0]?.message ?? "Geçersiz form");
   }
 
+  const columns: {
+    customer_cancellation_enabled?: boolean;
+    customer_cancellation_cutoff_minutes?: number;
+    customer_reschedule_enabled?: boolean;
+    customer_reschedule_cutoff_minutes?: number;
+  } = {};
+  if (parsed.data.cancellationEnabled !== undefined) columns.customer_cancellation_enabled = parsed.data.cancellationEnabled;
+  if (parsed.data.cancellationCutoffMinutes !== undefined) columns.customer_cancellation_cutoff_minutes = parsed.data.cancellationCutoffMinutes;
+  if (parsed.data.rescheduleEnabled !== undefined) columns.customer_reschedule_enabled = parsed.data.rescheduleEnabled;
+  if (parsed.data.rescheduleCutoffMinutes !== undefined) columns.customer_reschedule_cutoff_minutes = parsed.data.rescheduleCutoffMinutes;
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("tenants")
-    .update({
-      customer_cancellation_enabled: parsed.data.cancellationEnabled,
-      customer_cancellation_cutoff_minutes: parsed.data.cancellationCutoffMinutes,
-      customer_reschedule_enabled: parsed.data.rescheduleEnabled,
-      customer_reschedule_cutoff_minutes: parsed.data.rescheduleCutoffMinutes,
-    })
+    .update(columns)
     .eq("id", parsed.data.tenantId)
     .select(
       "customer_cancellation_enabled, customer_cancellation_cutoff_minutes, customer_reschedule_enabled, customer_reschedule_cutoff_minutes",

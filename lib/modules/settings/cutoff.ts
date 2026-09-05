@@ -12,8 +12,8 @@ export const UNIT_MINUTES: Record<Unit, number> = { minutes: 1, hours: 60, days:
 /** A sensible starting point suggested ONLY in local, unsaved form state
  * — see resolveCutoffOnToggle. Never written anywhere until the owner
  * explicitly saves, and never applied over a cutoff the owner has
- * actually configured (touched this session, or already persisted
- * nonzero). */
+ * actually changed since the last successful save, or that's already
+ * persisted nonzero. */
 export const SUGGESTED_CUTOFF_MINUTES = 720; // 12 hours
 
 /** Picks the coarsest unit that divides evenly into the stored minute
@@ -30,25 +30,35 @@ export function toMinutes(amount: number, unit: Unit): number {
 }
 
 /**
- * Faz 2I.4A — diagnosed root cause fix. Decides what cutoff value to
- * carry forward when the enable toggle changes state.
+ * Faz 2I.4A (fix), Faz 2I.4B (dirty-tracking integration) — decides the
+ * cutoff value to carry forward when the enable toggle changes state,
+ * and whether that change should mark the cutoff dirty (i.e. included
+ * in the next save) as part of the SAME operation.
  *
- * Only ever substitutes SUGGESTED_CUTOFF_MINUTES when turning the
- * toggle ON *and* the cutoff is still exactly its untouched 0 default —
- * never when turning off, never when the owner has already interacted
- * with the cutoff this session (even to explicitly choose 0, a
+ * Only ever substitutes SUGGESTED_CUTOFF_MINUTES — and only ever
+ * reports the cutoff as newly dirty — when turning the toggle ON *and*
+ * the cutoff is still exactly its untouched-since-last-save 0 default.
+ * Never when turning off, never when the owner has already changed the
+ * cutoff since the last successful save (even to explicitly choose 0, a
  * meaningful choice in its own right — "up to the appointment start
  * itself"), and never when the value is already nonzero (an existing,
  * deliberately-configured tenant setting must never be silently
- * overwritten by re-toggling).
+ * overwritten by re-toggling, and turning the feature off must never
+ * erase it either — see the Faz 2I.4B report's toggle/cutoff pairing
+ * rules).
+ *
+ * `cutoffDirty` here means precisely "changed since the last successful
+ * save" (SelfServicePolicyForm's `dirty` set), never "touched at some
+ * point in this component's lifetime" — the exact distinction the Faz
+ * 2I.4B fix's dirty-state model depends on throughout.
  */
 export function resolveCutoffOnToggle(params: {
   turningOn: boolean;
   currentMinutes: number;
-  touched: boolean;
-}): number {
-  if (params.turningOn && params.currentMinutes === 0 && !params.touched) {
-    return SUGGESTED_CUTOFF_MINUTES;
+  cutoffDirty: boolean;
+}): { minutes: number; suggested: boolean } {
+  if (params.turningOn && params.currentMinutes === 0 && !params.cutoffDirty) {
+    return { minutes: SUGGESTED_CUTOFF_MINUTES, suggested: true };
   }
-  return params.currentMinutes;
+  return { minutes: params.currentMinutes, suggested: false };
 }

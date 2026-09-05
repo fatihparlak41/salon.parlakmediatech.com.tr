@@ -92,6 +92,25 @@ function CutoffInput({
   );
 }
 
+type PolicyField = keyof SelfServicePolicy;
+
+/**
+ * Faz 2I.4B — the real PROD incident this fixes: SelfServicePolicyForm
+ * used to send all 4 policy fields on every save, unconditionally. A
+ * stale tab/window — one that loaded before some OTHER save happened
+ * elsewhere (another tab, another device) — would resend its own
+ * outdated belief about a field it never touched, silently reverting
+ * whatever that other, more recent save had set. Reproduced exactly on
+ * DEV with two tabs (see the Faz 2I.4B diagnosis report).
+ *
+ * `dirty` is the fix: the set of fields that differ from the last
+ * *successful save* this component instance made — never "touched at
+ * some point in this component's lifetime". A field leaves `dirty` the
+ * moment a save containing it succeeds, and `handleSave` sends only
+ * whatever is currently in `dirty` — so a stale tab that never touched
+ * a field never sends it, and can no longer clobber it. `useState`, not
+ * `useRef`: the Save button's disabled state depends on it.
+ */
 export function SelfServicePolicyForm({
   tenantId,
   tenantSlug,
@@ -103,40 +122,49 @@ export function SelfServicePolicyForm({
 }) {
   const t = useTranslations("Settings.selfService");
   const [policy, setPolicy] = useState(initialPolicy);
+  const [dirty, setDirty] = useState<Set<PolicyField>>(new Set());
+
   const [state, action, isPending] = useActionState(
     async (
       prevState: Awaited<ReturnType<typeof updateSelfServicePolicyAction>> | null,
       input: Parameters<typeof updateSelfServicePolicyAction>[1],
     ) => {
       const result = await updateSelfServicePolicyAction(prevState, input);
-      if (result.success) setPolicy(result.data);
+      if (result.success) {
+        // The returned row is the complete, authoritative state right
+        // after the write — resync ALL 4 fields from it, not just the
+        // ones this particular save sent. That also self-heals any
+        // field this same tab had a stale view of, without this save
+        // ever having written to it. Dirty resets to empty: a LATER
+        // save from this tab must never resend anything from this one
+        // merely because it was touched earlier in the tab's lifetime.
+        setPolicy(result.data);
+        setDirty(new Set());
+      }
+      // On failure: policy/dirty are deliberately left untouched above
+      // — unsaved edits and what still needs to be sent both survive a
+      // failed attempt, per spec.
       return result;
     },
     null,
   );
 
-  // Faz 2I.4A — distinguishes "this cutoff is still exactly its
-  // untouched, as-loaded value" from "the owner explicitly typed/picked
-  // this value, including possibly 0" — the two are otherwise
-  // indistinguishable by value alone (0 is itself a valid, meaningful
-  // choice: "up to the appointment start itself"). Only ever read by
-  // resolveCutoffOnToggle to decide whether the toggle-on suggestion is
-  // allowed to touch the cutoff; never affects what actually gets saved
-  // beyond that.
-  const cancellationCutoffTouched = useRef(false);
-  const rescheduleCutoffTouched = useRef(false);
+  function markDirty(...fields: PolicyField[]) {
+    setDirty((d) => {
+      const next = new Set(d);
+      for (const f of fields) next.add(f);
+      return next;
+    });
+  }
 
   function handleSave() {
-    startTransition(() =>
-      action({
-        tenantId,
-        tenantSlug,
-        cancellationEnabled: policy.cancellationEnabled,
-        cancellationCutoffMinutes: policy.cancellationCutoffMinutes,
-        rescheduleEnabled: policy.rescheduleEnabled,
-        rescheduleCutoffMinutes: policy.rescheduleCutoffMinutes,
-      }),
-    );
+    if (isPending || dirty.size === 0) return; // never send an empty update
+    const payload: Parameters<typeof updateSelfServicePolicyAction>[1] = { tenantId, tenantSlug };
+    if (dirty.has("cancellationEnabled")) payload.cancellationEnabled = policy.cancellationEnabled;
+    if (dirty.has("cancellationCutoffMinutes")) payload.cancellationCutoffMinutes = policy.cancellationCutoffMinutes;
+    if (dirty.has("rescheduleEnabled")) payload.rescheduleEnabled = policy.rescheduleEnabled;
+    if (dirty.has("rescheduleCutoffMinutes")) payload.rescheduleCutoffMinutes = policy.rescheduleCutoffMinutes;
+    startTransition(() => action(payload));
   }
 
   return (
@@ -154,17 +182,15 @@ export function SelfServicePolicyForm({
           <Switch
             id="cancellation-enabled"
             checked={policy.cancellationEnabled}
-            onCheckedChange={(checked) =>
-              setPolicy((p) => ({
-                ...p,
-                cancellationEnabled: checked,
-                cancellationCutoffMinutes: resolveCutoffOnToggle({
-                  turningOn: checked,
-                  currentMinutes: p.cancellationCutoffMinutes,
-                  touched: cancellationCutoffTouched.current,
-                }),
-              }))
-            }
+            onCheckedChange={(checked) => {
+              const { minutes, suggested } = resolveCutoffOnToggle({
+                turningOn: checked,
+                currentMinutes: policy.cancellationCutoffMinutes,
+                cutoffDirty: dirty.has("cancellationCutoffMinutes"),
+              });
+              setPolicy((p) => ({ ...p, cancellationEnabled: checked, cancellationCutoffMinutes: minutes }));
+              markDirty("cancellationEnabled", ...(suggested ? (["cancellationCutoffMinutes"] as const) : []));
+            }}
           />
         </div>
         <CutoffInput
@@ -172,8 +198,8 @@ export function SelfServicePolicyForm({
           totalMinutes={policy.cancellationCutoffMinutes}
           inactive={!policy.cancellationEnabled}
           onChange={(minutes) => {
-            cancellationCutoffTouched.current = true;
             setPolicy((p) => ({ ...p, cancellationCutoffMinutes: minutes }));
+            markDirty("cancellationCutoffMinutes");
           }}
         />
       </div>
@@ -186,17 +212,15 @@ export function SelfServicePolicyForm({
           <Switch
             id="reschedule-enabled"
             checked={policy.rescheduleEnabled}
-            onCheckedChange={(checked) =>
-              setPolicy((p) => ({
-                ...p,
-                rescheduleEnabled: checked,
-                rescheduleCutoffMinutes: resolveCutoffOnToggle({
-                  turningOn: checked,
-                  currentMinutes: p.rescheduleCutoffMinutes,
-                  touched: rescheduleCutoffTouched.current,
-                }),
-              }))
-            }
+            onCheckedChange={(checked) => {
+              const { minutes, suggested } = resolveCutoffOnToggle({
+                turningOn: checked,
+                currentMinutes: policy.rescheduleCutoffMinutes,
+                cutoffDirty: dirty.has("rescheduleCutoffMinutes"),
+              });
+              setPolicy((p) => ({ ...p, rescheduleEnabled: checked, rescheduleCutoffMinutes: minutes }));
+              markDirty("rescheduleEnabled", ...(suggested ? (["rescheduleCutoffMinutes"] as const) : []));
+            }}
           />
         </div>
         <CutoffInput
@@ -204,8 +228,8 @@ export function SelfServicePolicyForm({
           totalMinutes={policy.rescheduleCutoffMinutes}
           inactive={!policy.rescheduleEnabled}
           onChange={(minutes) => {
-            rescheduleCutoffTouched.current = true;
             setPolicy((p) => ({ ...p, rescheduleCutoffMinutes: minutes }));
+            markDirty("rescheduleCutoffMinutes");
           }}
         />
       </div>
@@ -217,7 +241,7 @@ export function SelfServicePolicyForm({
       ) : null}
       {state?.success ? <p className="text-sm text-green-600 dark:text-green-500">{t("saved")}</p> : null}
 
-      <Button type="button" onClick={handleSave} disabled={isPending} className="w-fit">
+      <Button type="button" onClick={handleSave} disabled={isPending || dirty.size === 0} className="w-fit">
         {isPending ? t("saving") : t("save")}
       </Button>
     </div>
