@@ -622,7 +622,11 @@ describe("reschedule_appointment and update_appointment_status", () => {
       p_customer_id: customerA.id,
       p_items: [{ service_id: serviceA1.id, staff_member_id: staffA1.id, scheduled_start_at: start, sequence: 1 }],
     });
-    await ownerAClient.rpc("update_appointment_status", { p_appointment_id: appointmentId, p_new_status: "completed" });
+    // Faz 5A.2: update_appointment_status no longer accepts 'completed'
+    // (closed completion bypass, Option A) — this test's own concern is
+    // the terminal-state guard against a SECOND status change, not which
+    // RPC reached 'completed' in the first place.
+    await ownerAClient.rpc("complete_appointment", { p_appointment_id: appointmentId });
 
     const { error } = await ownerAClient.rpc("update_appointment_status", {
       p_appointment_id: appointmentId,

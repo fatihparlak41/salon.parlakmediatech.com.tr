@@ -17,14 +17,28 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { ActionResult } from "@/lib/errors";
 import type { AppointmentDetail, ServiceForBranch } from "@/lib/modules/appointments/queries";
-import { fetchServicesForBranch } from "@/lib/modules/appointments/client-queries";
+import {
+  fetchServicesForBranch,
+  fetchEligibleStaff,
+  fetchActiveStaffCount,
+  type StaffOption,
+} from "@/lib/modules/appointments/client-queries";
 import {
   updateAppointmentStatusAction,
   rescheduleAppointmentAction,
+  completeAppointmentAction,
   type UpdateAppointmentStatusInput,
   type RescheduleAppointmentInput,
+  type CompleteAppointmentInput,
 } from "@/lib/modules/appointments/actions";
 import {
   STATUS_LABELS_TR,
@@ -57,15 +71,16 @@ async function loadAppointmentDetail(appointmentId: string): Promise<Appointment
   const { data, error } = await supabase
     .from("appointments")
     .select(
-      // Bridge (compatibility): staff_members!appointment_items_staff_member_id_fkey
-      // names the real, existing FK constraint explicitly — see
-      // lib/modules/appointments/queries.ts's matching comment on its own
+      // Faz 5A.1: staff_members!appointment_items_staff_member_id_fkey is
+      // required, not stylistic. Faz 5A.2 adds a second, aliased embed
+      // for the actual performer — see
+      // lib/modules/appointments/queries.ts's comment on its own
       // (server-side) mirror of this exact query for the full reasoning.
-      // Still booked-staff only; no actual-performer embed here.
       `id, status, scheduled_start_at, scheduled_end_at, notes, created_at,
        customers(id, full_name), branches(id, name),
        appointment_items(id, sequence, scheduled_start_at, scheduled_end_at, duration_minutes, price,
-         services(id, name), staff_members!appointment_items_staff_member_id_fkey(id, full_name))`,
+         services(id, name), staff_members!appointment_items_staff_member_id_fkey(id, full_name),
+         actual_staff_members:staff_members!appointment_items_actual_staff_member_id_fkey(id, full_name))`,
     )
     .eq("id", appointmentId)
     .maybeSingle();
@@ -89,6 +104,7 @@ async function loadAppointmentDetail(appointmentId: string): Promise<Appointment
       price: string;
       services: { id: string; name: string } | null;
       staff_members: { id: string; full_name: string } | null;
+      actual_staff_members: { id: string; full_name: string } | null;
     }[];
   };
   // customers is null (not an error) when the caller has appointments.view
@@ -118,6 +134,7 @@ async function loadAppointmentDetail(appointmentId: string): Promise<Appointment
         price: String(i.price),
         service: { id: i.services!.id, name: i.services!.name },
         staffMember: { id: i.staff_members!.id, fullName: i.staff_members!.full_name },
+        actualStaffMember: i.actual_staff_members ? { id: i.actual_staff_members.id, fullName: i.actual_staff_members.full_name } : null,
       })),
   };
 }
@@ -185,6 +202,11 @@ function AppointmentDetailBody({
 }) {
   const [detail, setDetail] = useState<AppointmentDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  // Faz 5A.2 — fetched once per sheet-open, not per click: the "solo
+  // salon, skip the performer-selection step entirely" decision must be
+  // instant when the owner clicks Tamamlandı (see StatusActions), not
+  // gated behind its own network round trip at that moment.
+  const [soloStaffCount, setSoloStaffCount] = useState<number | null>(null);
 
   async function reload() {
     const result = await loadAppointmentDetail(appointmentId);
@@ -193,11 +215,12 @@ function AppointmentDetailBody({
   }
 
   useEffect(() => {
-    loadAppointmentDetail(appointmentId).then((result) => {
+    Promise.all([loadAppointmentDetail(appointmentId), fetchActiveStaffCount(tenantId)]).then(([result, count]) => {
       setDetail(result);
+      setSoloStaffCount(count);
       setLoading(false);
     });
-  }, [appointmentId]);
+  }, [appointmentId, tenantId]);
 
   if (loading || !detail) {
     return (
@@ -244,8 +267,16 @@ function AppointmentDetailBody({
               <StatusActions
                 appointmentId={appointmentId}
                 tenantSlug={tenantSlug}
+                branchId={detail.branch.id}
+                items={detail.items}
                 otherTransitions={canUpdate ? otherTransitions : []}
                 canCancelNow={canCancelNow}
+                // null (still loading) is treated as NOT solo — the
+                // instant it resolves this only ever narrows behavior
+                // toward showing the (always-correct) confirmation panel,
+                // never toward silently skipping it before we actually
+                // know the tenant's real staff count.
+                isSoloSalon={soloStaffCount !== null && soloStaffCount <= 1}
                 onSaved={reload}
               />
             ) : null}
@@ -262,7 +293,21 @@ function AppointmentDetailBody({
                     </span>
                   </div>
                   <div className="text-muted-foreground flex items-center justify-between text-xs">
-                    <span>{item.staffMember.fullName}</span>
+                    {/* Faz 5A.2 — booked vs actual performer only ever
+                        shown as two lines when they genuinely differ; a
+                        not-yet-completed item (actualStaffMember null) or
+                        one where they match renders exactly as before
+                        Faz 5A.2 existed. Never editable here — completion
+                        is the only path that ever sets this, and only
+                        once (see the RPC's own terminal-state guard). */}
+                    {item.actualStaffMember && item.actualStaffMember.id !== item.staffMember.id ? (
+                      <span className="flex flex-col gap-0.5">
+                        <span>Randevu Personeli: {item.staffMember.fullName}</span>
+                        <span className="font-medium">Uygulayan: {item.actualStaffMember.fullName}</span>
+                      </span>
+                    ) : (
+                      <span>{item.staffMember.fullName}</span>
+                    )}
                     <span>
                       {item.durationMinutes} dk · ₺{item.price}
                     </span>
@@ -303,20 +348,41 @@ function AppointmentDetailBody({
   );
 }
 
+/**
+ * Faz 5A.2 — every transition except "completed" is unchanged: one
+ * generic button per target, straight through updateAppointmentStatusAction.
+ * "completed" is special-cased (update_appointment_status no longer
+ * accepts it at all — closed completion bypass, Option A):
+ *   - solo salon (isSoloSalon): completes immediately with zero
+ *     overrides, same one-click feel as every other transition here —
+ *     no panel, no dropdown, just a (very slightly slower, one extra
+ *     round trip) "Tamamlandı" click.
+ *   - multi-staff salon: opens CompletionPanel instead of completing
+ *     immediately, so the owner can correct the actual performer per
+ *     item before confirming.
+ */
 function StatusActions({
   appointmentId,
   tenantSlug,
+  branchId,
+  items,
   otherTransitions,
   canCancelNow,
+  isSoloSalon,
   onSaved,
 }: {
   appointmentId: string;
   tenantSlug: string;
+  branchId: string;
+  items: AppointmentDetail["items"];
   otherTransitions: AppointmentTransitionTarget[];
   canCancelNow: boolean;
+  isSoloSalon: boolean;
   onSaved: () => void;
 }) {
-  const [state, action, isPending] = useActionState(
+  const [showCompletionPanel, setShowCompletionPanel] = useState(false);
+
+  const [statusState, statusAction, statusPending] = useActionState(
     async (prevState: ActionResult<null> | null, input: UpdateAppointmentStatusInput) => {
       const result = await updateAppointmentStatusAction(prevState, input);
       if (result.success) onSaved();
@@ -325,30 +391,207 @@ function StatusActions({
     null,
   );
 
+  const [completeState, completeAction, completePending] = useActionState(
+    async (prevState: ActionResult<null> | null, input: CompleteAppointmentInput) => {
+      const result = await completeAppointmentAction(prevState, input);
+      if (result.success) onSaved();
+      return result;
+    },
+    null,
+  );
+
   function transition(status: UpdateAppointmentStatusInput["status"]) {
-    startTransition(() => action({ tenantSlug, appointmentId, status }));
+    startTransition(() => statusAction({ tenantSlug, appointmentId, status }));
+  }
+
+  function handleCompleteClick() {
+    if (isSoloSalon) {
+      startTransition(() => completeAction({ tenantSlug, appointmentId, performerOverrides: [] }));
+    } else {
+      setShowCompletionPanel(true);
+    }
+  }
+
+  const nonCompletionTransitions = otherTransitions.filter(
+    (s): s is Exclude<AppointmentTransitionTarget, "completed"> => s !== "completed",
+  );
+  const canComplete = otherTransitions.includes("completed");
+
+  if (showCompletionPanel) {
+    return (
+      <CompletionPanel
+        appointmentId={appointmentId}
+        tenantSlug={tenantSlug}
+        branchId={branchId}
+        items={items}
+        onCancel={() => setShowCompletionPanel(false)}
+        onCompleted={() => {
+          setShowCompletionPanel(false);
+          onSaved();
+        }}
+      />
+    );
   }
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-2">
-        {otherTransitions.map((status) => (
-          <Button key={status} type="button" variant="outline" size="sm" disabled={isPending} onClick={() => transition(status)}>
+        {nonCompletionTransitions.map((status) => (
+          <Button key={status} type="button" variant="outline" size="sm" disabled={statusPending} onClick={() => transition(status)}>
             {STATUS_LABELS_TR[status]}
           </Button>
         ))}
+        {canComplete && (
+          <Button type="button" variant="outline" size="sm" disabled={completePending} onClick={handleCompleteClick}>
+            {completePending ? "Kaydediliyor…" : STATUS_LABELS_TR.completed}
+          </Button>
+        )}
         {canCancelNow && (
-          <Button type="button" variant="destructive" size="sm" disabled={isPending} onClick={() => transition("cancelled")}>
+          <Button type="button" variant="destructive" size="sm" disabled={statusPending} onClick={() => transition("cancelled")}>
             <X />
             İptal et
           </Button>
         )}
       </div>
+      {statusState && !statusState.success && (
+        <p className="text-destructive text-sm" role="alert">
+          {statusState.error.message}
+        </p>
+      )}
+      {completeState && !completeState.success && (
+        <p className="text-destructive text-sm" role="alert">
+          {completeState.error.message}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Faz 5A.2 — shown only for a multi-staff salon (see isSoloSalon above).
+ * One row per service item: booked staff for reference, an actual-
+ * performer selector defaulted to that same booked staff so the owner
+ * only ever touches a dropdown when reality genuinely differed from the
+ * booking. Candidates come from the same eligibility rule booking
+ * already uses (fetchEligibleStaff — active, this branch, this service):
+ * the smallest rule that reflects who could plausibly have performed
+ * this exact service here, without inventing a second staff-query
+ * concept. The booked staff is always included even if no longer
+ * eligible (inactive, or since unassigned from this service/branch) —
+ * the default selection must never be missing from its own list.
+ */
+function CompletionPanel({
+  appointmentId,
+  tenantSlug,
+  branchId,
+  items,
+  onCancel,
+  onCompleted,
+}: {
+  appointmentId: string;
+  tenantSlug: string;
+  branchId: string;
+  items: AppointmentDetail["items"];
+  onCancel: () => void;
+  onCompleted: () => void;
+}) {
+  const [performerByItem, setPerformerByItem] = useState<Record<string, string>>(() =>
+    Object.fromEntries(items.map((item) => [item.id, item.staffMember.id])),
+  );
+  const [candidatesByItem, setCandidatesByItem] = useState<Record<string, StaffOption[]>>({});
+
+  useEffect(() => {
+    let active = true;
+    Promise.all(
+      items.map(async (item) => {
+        const eligible = await fetchEligibleStaff(item.service.id, branchId);
+        const candidates = eligible.some((s) => s.id === item.staffMember.id)
+          ? eligible
+          : [...eligible, { id: item.staffMember.id, fullName: item.staffMember.fullName }];
+        return [item.id, candidates] as const;
+      }),
+    ).then((entries) => {
+      if (active) setCandidatesByItem(Object.fromEntries(entries));
+    });
+    return () => {
+      active = false;
+    };
+  }, [items, branchId]);
+
+  const [state, action, isPending] = useActionState(
+    async (prevState: ActionResult<null> | null, input: CompleteAppointmentInput) => {
+      const result = await completeAppointmentAction(prevState, input);
+      if (result.success) onCompleted();
+      return result;
+    },
+    null,
+  );
+
+  function handleConfirm() {
+    startTransition(() =>
+      action({
+        tenantSlug,
+        appointmentId,
+        performerOverrides: items.map((item) => ({
+          appointmentItemId: item.id,
+          actualStaffMemberId: performerByItem[item.id] ?? item.staffMember.id,
+        })),
+      }),
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border p-3">
+      <p className="text-sm font-medium">İşlemi Tamamla</p>
+      <div className="flex flex-col gap-3">
+        {items.map((item) => {
+          const candidates = candidatesByItem[item.id] ?? [{ id: item.staffMember.id, fullName: item.staffMember.fullName }];
+          const selected = performerByItem[item.id] ?? item.staffMember.id;
+          return (
+            <div key={item.id} className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">{item.service.name}</span>
+                <span className="text-muted-foreground text-xs">Randevu Personeli: {item.staffMember.fullName}</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs">Gerçek Uygulayan</Label>
+                <Select
+                  key={selected}
+                  value={selected}
+                  onValueChange={(v) => setPerformerByItem((prev) => ({ ...prev, [item.id]: v as string }))}
+                  disabled={isPending}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue>{(value: string | null) => candidates.find((c) => c.id === value)?.fullName ?? item.staffMember.fullName}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {candidates.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.fullName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
       {state && !state.success && (
         <p className="text-destructive text-sm" role="alert">
           {state.error.message}
         </p>
       )}
+
+      <div className="flex gap-2">
+        <Button type="button" size="sm" disabled={isPending} onClick={handleConfirm}>
+          {isPending ? "Kaydediliyor…" : "İşlemi Tamamla"}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" disabled={isPending} onClick={onCancel}>
+          Vazgeç
+        </Button>
+      </div>
     </div>
   );
 }

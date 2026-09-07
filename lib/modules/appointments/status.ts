@@ -1,11 +1,17 @@
 /**
- * Mirrors private.update_appointment_status's actual transition rule
- * (20260819052733, untouched by 20260822090000's error-code addition) —
- * not a second, independently-invented state machine. The DB logic is
- * exactly: completed/cancelled are terminal (reject any change); every
- * other status may move to any of the five target statuses. This module
- * exists so the UI shows only sensible buttons; the RPC call this feeds
- * remains the actual authority regardless of what this computes.
+ * Availability, not routing: this still answers "which statuses can this
+ * appointment move to next" (completed/cancelled are terminal; every
+ * other status may move to any of the five targets), matching
+ * private.update_appointment_status's terminal-state rule exactly. As of
+ * Faz 5A.2, "completed" being available here no longer means
+ * update_appointment_status will accept it — that RPC now rejects
+ * 'completed' unconditionally (AP017, 20260905150000, closed completion
+ * bypass); reaching it goes only through complete_appointment
+ * (Faz 5A.1). getAvailableStatusTransitions still correctly drives
+ * whether the UI's "Tamamlandı" control renders at all
+ * (appointment-detail-sheet.tsx's StatusActions), it just no longer
+ * implies which RPC a click on it should call — that split is the
+ * caller's job now, not this module's.
  */
 export const APPOINTMENT_STATUSES = [
   "scheduled",

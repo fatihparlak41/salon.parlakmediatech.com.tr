@@ -1,7 +1,8 @@
 /**
  * Maps the stable AP0nn SQLSTATE codes (20260822090000) to operator-facing
  * Turkish messages. One taxonomy for both the authoritative write-path
- * RPCs (create_appointment/reschedule_appointment/update_appointment_status)
+ * RPCs (create_appointment/reschedule_appointment/update_appointment_status,
+ * plus complete_appointment as of Faz 5A.1 — AP016)
  * and the advisory check_appointment_availability read path
  * (20260822091500) — never string-match the raw English exception text,
  * which is not a stable contract and can't safely distinguish the
@@ -24,6 +25,8 @@ export const APPOINTMENT_ERROR_MESSAGES: Record<string, string> = {
   AP013: "Randevu bulunamadı.",
   AP014: "Bu randevu tamamlanmış veya iptal edilmiş, değiştirilemez.",
   AP015: "Geçersiz durum.",
+  AP016: "Bu hizmet kalemi bu randevuya ait değil.",
+  AP017: "Randevuyu tamamlamak için farklı bir işlem gereklidir.",
 };
 
 const DEFAULT_MESSAGE = "İşlem gerçekleştirilemedi, lütfen tekrar deneyin.";

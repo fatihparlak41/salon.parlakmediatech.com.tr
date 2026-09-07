@@ -32,10 +32,13 @@ import {
  * request context anyway).
  */
 
-// Bridge (compatibility): kept byte-identical to
-// lib/modules/appointments/client-queries.ts's own CALENDAR_ITEM_SELECT
-// (this test file's whole point) — see that file's comment for why the
-// explicit FK name is required, not stylistic.
+// Faz 5A.1: appointment_items gained two more relationships to
+// staff_members (actual_staff_member_id's plain + composite tenant-safety
+// FKs), so the embed below must now be disambiguated the same way
+// lib/modules/appointments/{queries,client-queries}.ts were updated —
+// keeping this literally byte-identical to client-queries.ts's own
+// CALENDAR_ITEM_SELECT is this test file's whole point (see the header
+// comment above).
 const CALENDAR_ITEM_SELECT = `
   id, appointment_id, sequence, scheduled_start_at, scheduled_end_at, appointment_status,
   services(name),
@@ -297,7 +300,11 @@ describe("calendar status behavior", () => {
       p_customer_id: customerA.id,
       p_items: [{ service_id: serviceA1.id, staff_member_id: staffA1.id, scheduled_start_at: start, sequence: 1 }],
     });
-    await ownerAClient.rpc("update_appointment_status", { p_appointment_id: appointmentId, p_new_status: "completed" });
+    // Faz 5A.2: update_appointment_status no longer accepts 'completed'
+    // (closed completion bypass, Option A) — complete_appointment is now
+    // the only path, regardless of which RPC this test cares about
+    // exercising (the calendar query, not completion itself).
+    await ownerAClient.rpc("complete_appointment", { p_appointment_id: appointmentId });
 
     const rangeStart = plusMinutes(start, -30);
     const rangeEnd = plusMinutes(start, 60);

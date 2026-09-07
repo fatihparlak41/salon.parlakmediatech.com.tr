@@ -41,6 +41,7 @@ export type Database = {
     Tables: {
       appointment_items: {
         Row: {
+          actual_staff_member_id: string | null
           appointment_id: string
           appointment_status: string
           created_at: string
@@ -56,6 +57,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          actual_staff_member_id?: string | null
           appointment_id: string
           appointment_status?: string
           created_at?: string
@@ -71,6 +73,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          actual_staff_member_id?: string | null
           appointment_id?: string
           appointment_status?: string
           created_at?: string
@@ -86,6 +89,20 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "appointment_items_actual_staff_member_id_fkey"
+            columns: ["actual_staff_member_id"]
+            isOneToOne: false
+            referencedRelation: "staff_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointment_items_actual_staff_same_tenant"
+            columns: ["actual_staff_member_id", "tenant_id"]
+            isOneToOne: false
+            referencedRelation: "staff_members"
+            referencedColumns: ["id", "tenant_id"]
+          },
           {
             foreignKeyName: "appointment_items_appointment_id_fkey"
             columns: ["appointment_id"]
@@ -1430,6 +1447,10 @@ export type Database = {
       claim_my_recent_booking: {
         Args: { p_claim_ref: string; p_claim_secret_hash: string }
         Returns: Json
+      }
+      complete_appointment: {
+        Args: { p_appointment_id: string; p_performer_overrides?: Json }
+        Returns: undefined
       }
       create_appointment: {
         Args: {

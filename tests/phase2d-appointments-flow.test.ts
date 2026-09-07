@@ -337,7 +337,11 @@ describe("reschedule_appointment / update_appointment_status — stable AP0nn er
       p_customer_id: customerA.id,
       p_items: [{ service_id: serviceA1.id, staff_member_id: staffA1.id, scheduled_start_at: start, sequence: 1 }],
     });
-    await ownerAClient.rpc("update_appointment_status", { p_appointment_id: appointmentId, p_new_status: "completed" });
+    // Faz 5A.2: update_appointment_status no longer accepts 'completed'
+    // (closed completion bypass, Option A) — this test cares about
+    // reschedule's own AP014 terminal-state guard, not which RPC reached
+    // 'completed', so complete_appointment is used for setup here.
+    await ownerAClient.rpc("complete_appointment", { p_appointment_id: appointmentId });
 
     // Full-permission owner client — isolates the terminal-state check
     // (AP014) from the separate permission check (AP002), since

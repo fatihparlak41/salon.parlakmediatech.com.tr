@@ -40,10 +40,11 @@ type Labels = {
 // — that module is server-only, so the browser-side list/filter/pagination
 // path (same "one query shape for browse and filter" rule as Phase 2C's
 // customer search) needs its own copy here, the only client call site.
-// Bridge (compatibility): staff_members!appointment_items_staff_member_id_fkey
-// names the real, existing FK constraint explicitly — see
-// lib/modules/appointments/queries.ts's matching comment for the full
-// reasoning. Keep this in sync with that file's own LIST_SELECT.
+// Faz 5A.1: staff_members!appointment_items_staff_member_id_fkey is
+// required — appointment_items now has three relationships to
+// staff_members, so an unqualified embed is ambiguous to PostgREST. Keep
+// this in sync with lib/modules/appointments/queries.ts's own
+// LIST_SELECT (see its comment for the full explanation).
 const LIST_SELECT = `
   id, status, scheduled_start_at, scheduled_end_at,
   customers(full_name),

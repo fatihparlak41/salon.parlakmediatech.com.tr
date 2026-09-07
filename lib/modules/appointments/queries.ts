@@ -15,16 +15,14 @@ export type AppointmentListRow = {
 
 export type AppointmentListScope = "upcoming" | "today" | "all";
 
-// Bridge (compatibility): appointment_items_staff_member_id_fkey is the
-// real, existing constraint name Postgres auto-generated for
-// appointment_items.staff_member_id's inline `references` clause
-// (20260819052514) — naming it explicitly here changes nothing about
-// what this embed returns today, but makes it resilient to a second
-// appointment_items -> staff_members relationship being introduced later
-// (Faz 5A's actual_staff_member_id), which would otherwise make this
-// exact embed ambiguous to PostgREST ("more than one relationship was
-// found") the moment that column exists. This file does not query
-// actual_staff_member_id and does not depend on any Faz 5A migration.
+// Faz 5A.1 added actual_staff_member_id (plus a composite tenant-safety
+// FK) on appointment_items, both also pointing at staff_members — every
+// staff_members(...) embed below now needs the explicit
+// !appointment_items_staff_member_id_fkey hint, or PostgREST can no
+// longer tell which of the now-three relationships to use and errors
+// with "more than one relationship was found". These embeds are, and
+// must remain, about the BOOKED staff only (staff_member_id) — actual
+// performer has no display surface yet (Faz 5A.2).
 const LIST_SELECT = `
   id, status, scheduled_start_at, scheduled_end_at,
   customers(full_name),
@@ -118,6 +116,12 @@ export type AppointmentDetail = {
     price: string;
     service: { id: string; name: string };
     staffMember: { id: string; fullName: string };
+    /** Faz 5A.2 — null until the item is completed (or completed via the
+     * legacy pre-5A.1 path, deliberately never backfilled). Display only:
+     * never write this from a read. Render exactly like staffMember when
+     * null or equal to it — only surface "Uygulayan" separately when it
+     * genuinely differs (see appointment-detail-sheet.tsx). */
+    actualStaffMember: { id: string; fullName: string } | null;
   }[];
 };
 
@@ -126,14 +130,18 @@ export async function getAppointmentDetail(appointmentId: string): Promise<Appoi
   const { data, error } = await supabase
     .from("appointments")
     .select(
-      // Bridge (compatibility): same explicit-FK-name reasoning as
-      // LIST_SELECT above — see that comment. This embed still only
-      // returns the booked staff (staff_members(id, full_name)) exactly
-      // as before; no actual-performer column/embed is added here.
+      // Faz 5A.2: a second, aliased embed of staff_members via the
+      // actual_staff_member_id FK — same disambiguation requirement as
+      // the booked-staff embed (see the Faz 5A.1 comment two lines
+      // below), just a different relationship of the three now
+      // available. actual_staff_members is nullable per row (LEFT-join
+      // shaped by the FK itself being nullable) — a not-yet-completed or
+      // legacy item correctly comes back null, never an error.
       `id, status, scheduled_start_at, scheduled_end_at, notes, created_at,
        customers(id, full_name), branches(id, name),
        appointment_items(id, sequence, scheduled_start_at, scheduled_end_at, duration_minutes, price,
-         services(id, name), staff_members!appointment_items_staff_member_id_fkey(id, full_name))`,
+         services(id, name), staff_members!appointment_items_staff_member_id_fkey(id, full_name),
+         actual_staff_members:staff_members!appointment_items_actual_staff_member_id_fkey(id, full_name))`,
     )
     .eq("id", appointmentId)
     .maybeSingle();
@@ -157,6 +165,7 @@ export async function getAppointmentDetail(appointmentId: string): Promise<Appoi
       price: string;
       services: { id: string; name: string } | null;
       staff_members: { id: string; full_name: string } | null;
+      actual_staff_members: { id: string; full_name: string } | null;
     }[];
   };
 
@@ -183,6 +192,7 @@ export async function getAppointmentDetail(appointmentId: string): Promise<Appoi
         price: String(i.price),
         service: { id: i.services!.id, name: i.services!.name },
         staffMember: { id: i.staff_members!.id, fullName: i.staff_members!.full_name },
+        actualStaffMember: i.actual_staff_members ? { id: i.actual_staff_members.id, fullName: i.actual_staff_members.full_name } : null,
       })),
   };
 }
@@ -218,8 +228,6 @@ export type CalendarItemRow = {
   customerName: string;
 };
 
-// Bridge (compatibility): same explicit-FK-name reasoning as LIST_SELECT
-// above — see that comment for the full explanation.
 const CALENDAR_ITEM_SELECT = `
   id, appointment_id, sequence, scheduled_start_at, scheduled_end_at, appointment_status,
   services(name),

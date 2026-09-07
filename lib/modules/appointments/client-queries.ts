@@ -45,16 +45,13 @@ export async function fetchEligibleStaff(serviceId: string, branchId: string): P
   return (data ?? []).map((s) => ({ id: s.id, fullName: s.full_name }));
 }
 
-// Bridge (compatibility): appointment_items_staff_member_id_fkey is the
-// real, existing constraint name Postgres auto-generated for
-// appointment_items.staff_member_id's inline `references` clause
-// (20260819052514) — naming it explicitly here changes nothing about
-// what this embed returns today, but makes it resilient to a second
-// appointment_items -> staff_members relationship being introduced later
-// (Faz 5A's actual_staff_member_id), which would otherwise make this
-// exact embed ambiguous to PostgREST the moment that column exists. Mirror
+// Faz 5A.1: staff_members!appointment_items_staff_member_id_fkey is
+// required, not stylistic — appointment_items now has three
+// relationships to staff_members (staff_member_id, plus
+// actual_staff_member_id's plain and composite tenant-safety FKs), so an
+// unqualified staff_members(...) embed is ambiguous to PostgREST. Mirror
 // this exact hint in queries.ts's own CALENDAR_ITEM_SELECT if either
-// ever changes.
+// ever changes — see that file's comment for the full explanation.
 const CALENDAR_ITEM_SELECT = `
   id, appointment_id, sequence, scheduled_start_at, scheduled_end_at, appointment_status,
   services(name),
@@ -138,4 +135,27 @@ export async function fetchBranchStaff(tenantId: string, branchId: string): Prom
     .order("full_name", { ascending: true });
 
   return (data ?? []).map((s) => ({ id: s.id, fullName: s.full_name }));
+}
+
+/**
+ * Faz 5A.2 — the exact, documented "solo salon" condition: a plain,
+ * unambiguous tenant-wide count of active, non-deleted staff_members.
+ * Deliberately NOT scoped to a branch or service (a per-appointment
+ * eligibility count could vary item-to-item within the same appointment,
+ * which would make "is this solo" an inconsistent answer across its own
+ * items) and deliberately NOT a heuristic over schedules/roles/logins —
+ * a solo salon like Emel Beauty Bar has exactly one row here, full stop.
+ * Used once per sheet-open (see appointment-detail-sheet.tsx) to decide
+ * whether "Tamamlandı" completes immediately or opens the multi-staff
+ * performer-correction panel.
+ */
+export async function fetchActiveStaffCount(tenantId: string): Promise<number> {
+  const supabase = createClient();
+  const { count } = await supabase
+    .from("staff_members")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("status", "active")
+    .is("deleted_at", null);
+  return count ?? 0;
 }

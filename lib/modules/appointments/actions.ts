@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/auth/session";
 import { fail, ok, type ActionResult } from "@/lib/errors";
 import { mapAppointmentErrorCode } from "./error-codes";
-import { createAppointmentSchema, rescheduleAppointmentSchema, appointmentStatusSchema } from "./schemas";
+import { createAppointmentSchema, rescheduleAppointmentSchema, appointmentStatusSchema, completeAppointmentSchema } from "./schemas";
 
 /** Every appointment RPC failure carries a stable AP0nn code
  * (20260822090000) — map that, never the raw message. Falls back to a
@@ -89,10 +89,11 @@ export async function rescheduleAppointmentAction(
   return ok(null);
 }
 
+/** Faz 5A.2: "completed" deliberately excluded — see appointmentStatusSchema. */
 export type UpdateAppointmentStatusInput = {
   tenantSlug: string;
   appointmentId: string;
-  status: "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
+  status: "confirmed" | "in_progress" | "cancelled" | "no_show";
 };
 
 export async function updateAppointmentStatusAction(
@@ -110,6 +111,51 @@ export async function updateAppointmentStatusAction(
   const { error } = await supabase.rpc("update_appointment_status", {
     p_appointment_id: parsed.data.appointmentId,
     p_new_status: parsed.data.status,
+  });
+
+  if (error) return mapRpcError(error);
+
+  revalidatePath(`/app/${input.tenantSlug}/appointments`);
+  return ok(null);
+}
+
+/**
+ * Faz 5A.1 (added) / Faz 5A.2 (now the ONLY path to 'completed' — wired
+ * into the completion UI, and update_appointment_status was changed to
+ * reject 'completed' outright). Every field here is either an id the
+ * server re-derives everything else from (appointmentId — tenant,
+ * branch, booked staff all come from the DB row, never the browser) or
+ * an explicit correction the owner made (performerOverrides) — nothing
+ * about tenant/eligibility/permission is trusted from the client; see
+ * private.complete_appointment for the actual authority.
+ */
+export type CompleteAppointmentInput = {
+  tenantSlug: string;
+  appointmentId: string;
+  performerOverrides?: { appointmentItemId: string; actualStaffMemberId: string }[];
+};
+
+export async function completeAppointmentAction(
+  _prevState: ActionResult<null> | null,
+  input: CompleteAppointmentInput,
+): Promise<ActionResult<null>> {
+  await requireUser();
+
+  const parsed = completeAppointmentSchema.safeParse({
+    appointmentId: input.appointmentId,
+    performerOverrides: input.performerOverrides ?? [],
+  });
+  if (!parsed.success) {
+    return fail("VALIDATION", parsed.error.issues[0]?.message ?? "Geçersiz form");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("complete_appointment", {
+    p_appointment_id: parsed.data.appointmentId,
+    p_performer_overrides: parsed.data.performerOverrides.map((o) => ({
+      appointment_item_id: o.appointmentItemId,
+      actual_staff_member_id: o.actualStaffMemberId,
+    })),
   });
 
   if (error) return mapRpcError(error);

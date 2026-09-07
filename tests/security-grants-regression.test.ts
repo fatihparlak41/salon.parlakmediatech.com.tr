@@ -180,6 +180,12 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   // entire write path, same pattern as every other private.*/public.*
   // pair in this list.
   "public.set_online_booking_enabled",
+  // Faz 5A.1 (20260905090000) — the narrow, atomic completion path that
+  // records actual performers. Authenticated only, never anon: gated
+  // internally by appointments.update (private.has_permission), same
+  // pattern as update_appointment_status above, which it deliberately
+  // does not replace or expand.
+  "public.complete_appointment",
 ];
 
 // Phase 2F's public read surface — the only functions anon has ever
