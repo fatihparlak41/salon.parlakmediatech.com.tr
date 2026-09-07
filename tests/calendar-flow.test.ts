@@ -32,10 +32,14 @@ import {
  * request context anyway).
  */
 
+// Bridge (compatibility): kept byte-identical to
+// lib/modules/appointments/client-queries.ts's own CALENDAR_ITEM_SELECT
+// (this test file's whole point) — see that file's comment for why the
+// explicit FK name is required, not stylistic.
 const CALENDAR_ITEM_SELECT = `
   id, appointment_id, sequence, scheduled_start_at, scheduled_end_at, appointment_status,
   services(name),
-  staff_members(id, full_name),
+  staff_members!appointment_items_staff_member_id_fkey(id, full_name),
   appointments!inner(branch_id, customers(full_name))
 `;
 

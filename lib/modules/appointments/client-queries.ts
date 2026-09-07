@@ -45,10 +45,20 @@ export async function fetchEligibleStaff(serviceId: string, branchId: string): P
   return (data ?? []).map((s) => ({ id: s.id, fullName: s.full_name }));
 }
 
+// Bridge (compatibility): appointment_items_staff_member_id_fkey is the
+// real, existing constraint name Postgres auto-generated for
+// appointment_items.staff_member_id's inline `references` clause
+// (20260819052514) — naming it explicitly here changes nothing about
+// what this embed returns today, but makes it resilient to a second
+// appointment_items -> staff_members relationship being introduced later
+// (Faz 5A's actual_staff_member_id), which would otherwise make this
+// exact embed ambiguous to PostgREST the moment that column exists. Mirror
+// this exact hint in queries.ts's own CALENDAR_ITEM_SELECT if either
+// ever changes.
 const CALENDAR_ITEM_SELECT = `
   id, appointment_id, sequence, scheduled_start_at, scheduled_end_at, appointment_status,
   services(name),
-  staff_members(id, full_name),
+  staff_members!appointment_items_staff_member_id_fkey(id, full_name),
   appointments!inner(branch_id, customers(full_name))
 `;
 

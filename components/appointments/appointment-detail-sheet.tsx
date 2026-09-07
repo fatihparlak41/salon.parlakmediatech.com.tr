@@ -57,10 +57,15 @@ async function loadAppointmentDetail(appointmentId: string): Promise<Appointment
   const { data, error } = await supabase
     .from("appointments")
     .select(
+      // Bridge (compatibility): staff_members!appointment_items_staff_member_id_fkey
+      // names the real, existing FK constraint explicitly — see
+      // lib/modules/appointments/queries.ts's matching comment on its own
+      // (server-side) mirror of this exact query for the full reasoning.
+      // Still booked-staff only; no actual-performer embed here.
       `id, status, scheduled_start_at, scheduled_end_at, notes, created_at,
        customers(id, full_name), branches(id, name),
        appointment_items(id, sequence, scheduled_start_at, scheduled_end_at, duration_minutes, price,
-         services(id, name), staff_members(id, full_name))`,
+         services(id, name), staff_members!appointment_items_staff_member_id_fkey(id, full_name))`,
     )
     .eq("id", appointmentId)
     .maybeSingle();

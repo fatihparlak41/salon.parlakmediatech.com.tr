@@ -15,11 +15,21 @@ export type AppointmentListRow = {
 
 export type AppointmentListScope = "upcoming" | "today" | "all";
 
+// Bridge (compatibility): appointment_items_staff_member_id_fkey is the
+// real, existing constraint name Postgres auto-generated for
+// appointment_items.staff_member_id's inline `references` clause
+// (20260819052514) — naming it explicitly here changes nothing about
+// what this embed returns today, but makes it resilient to a second
+// appointment_items -> staff_members relationship being introduced later
+// (Faz 5A's actual_staff_member_id), which would otherwise make this
+// exact embed ambiguous to PostgREST ("more than one relationship was
+// found") the moment that column exists. This file does not query
+// actual_staff_member_id and does not depend on any Faz 5A migration.
 const LIST_SELECT = `
   id, status, scheduled_start_at, scheduled_end_at,
   customers(full_name),
   branches(name),
-  appointment_items(services(name), staff_members(full_name))
+  appointment_items(services(name), staff_members!appointment_items_staff_member_id_fkey(full_name))
 `;
 
 type RawAppointmentRow = {
@@ -116,10 +126,14 @@ export async function getAppointmentDetail(appointmentId: string): Promise<Appoi
   const { data, error } = await supabase
     .from("appointments")
     .select(
+      // Bridge (compatibility): same explicit-FK-name reasoning as
+      // LIST_SELECT above — see that comment. This embed still only
+      // returns the booked staff (staff_members(id, full_name)) exactly
+      // as before; no actual-performer column/embed is added here.
       `id, status, scheduled_start_at, scheduled_end_at, notes, created_at,
        customers(id, full_name), branches(id, name),
        appointment_items(id, sequence, scheduled_start_at, scheduled_end_at, duration_minutes, price,
-         services(id, name), staff_members(id, full_name))`,
+         services(id, name), staff_members!appointment_items_staff_member_id_fkey(id, full_name))`,
     )
     .eq("id", appointmentId)
     .maybeSingle();
@@ -204,10 +218,12 @@ export type CalendarItemRow = {
   customerName: string;
 };
 
+// Bridge (compatibility): same explicit-FK-name reasoning as LIST_SELECT
+// above — see that comment for the full explanation.
 const CALENDAR_ITEM_SELECT = `
   id, appointment_id, sequence, scheduled_start_at, scheduled_end_at, appointment_status,
   services(name),
-  staff_members(id, full_name),
+  staff_members!appointment_items_staff_member_id_fkey(id, full_name),
   appointments!inner(branch_id, customers(full_name))
 `;
 
