@@ -153,3 +153,41 @@ export function getTenantWeekRangeUtc(
   const { endUtc } = getTenantDayRangeUtc(tenantTz, days[6]!);
   return { days, startUtc, endUtc };
 }
+
+/** Faz 5A.3C — the tenant-local calendar MONTH containing "YYYY-MM-DD",
+ * as a UTC [startUtc, endUtc) range from that month's 1st through the
+ * following month's 1st. Same "compute local calendar boundaries as date
+ * strings, then convert each through getTenantDayRangeUtc" shape as
+ * getTenantWeekRangeUtc above — deliberately not a list of every day in
+ * the month (reports don't need per-day buckets, only the outer range;
+ * the RPCs themselves do any day-level work). */
+export function getTenantMonthRangeUtc(
+  tenantTz: string,
+  dateStr: string,
+): { startUtc: string; endUtc: string } {
+  const [y, m] = dateStr.split("-").map(Number) as [number, number];
+  const startDateStr = `${y}-${String(m).padStart(2, "0")}-01`;
+  const nextY = m === 12 ? y + 1 : y;
+  const nextM = m === 12 ? 1 : m + 1;
+  const endDateStr = `${nextY}-${String(nextM).padStart(2, "0")}-01`;
+  const { startUtc } = getTenantDayRangeUtc(tenantTz, startDateStr);
+  const { endUtc } = getTenantDayRangeUtc(tenantTz, endDateStr);
+  return { startUtc, endUtc };
+}
+
+/** Faz 5A.3C — the last N tenant-local calendar days, INCLUSIVE of today
+ * (so n=30 covers today and the 29 days before it) — "Son 30 Gün" as a
+ * salon operator reads it, not an exclusive rolling window. Reuses
+ * getTenantTodayRangeUtc for both today's own date string and its own
+ * endUtc, so this and "Bugün" always agree on where "today" ends. */
+export function getTenantLastNDaysRangeUtc(
+  tenantTz: string,
+  n: number,
+): { startUtc: string; endUtc: string } {
+  const { today, endUtc } = getTenantTodayRangeUtc(tenantTz);
+  const [y, m, d] = today.split("-").map(Number) as [number, number, number];
+  const startDt = new Date(Date.UTC(y, m - 1, d - (n - 1)));
+  const startDateStr = `${startDt.getUTCFullYear()}-${String(startDt.getUTCMonth() + 1).padStart(2, "0")}-${String(startDt.getUTCDate()).padStart(2, "0")}`;
+  const { startUtc } = getTenantDayRangeUtc(tenantTz, startDateStr);
+  return { startUtc, endUtc };
+}

@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { LayoutDashboard, Users, Scissors, Contact, CalendarClock, CalendarDays, Settings as SettingsIcon } from "lucide-react";
+import { LayoutDashboard, Users, Scissors, Contact, CalendarClock, CalendarDays, ChartColumn, Settings as SettingsIcon } from "lucide-react";
 import { getTenantAccess, hasPermission } from "@/lib/auth/session";
 import { TenantAppShell, type TenantNavItem } from "@/components/tenant-app/app-shell";
 
@@ -27,13 +27,21 @@ export default async function TenantAppLayout({
   // what actually enforces access on every query these pages make; a
   // direct URL hit on a hidden route still resolves through the same
   // has_permission-gated policies, same as always.
-  const [canViewStaff, canViewServices, canViewCustomers, canViewAppointments, canManageSettings] = await Promise.all([
-    hasPermission(access.tenant.id, "staff.view"),
-    hasPermission(access.tenant.id, "services.view"),
-    hasPermission(access.tenant.id, "customers.view"),
-    hasPermission(access.tenant.id, "appointments.view"),
-    hasPermission(access.tenant.id, "settings.manage"),
-  ]);
+  const [canViewStaff, canViewServices, canViewCustomers, canViewAppointments, canManageSettings, canViewReports] =
+    await Promise.all([
+      hasPermission(access.tenant.id, "staff.view"),
+      hasPermission(access.tenant.id, "services.view"),
+      hasPermission(access.tenant.id, "customers.view"),
+      hasPermission(access.tenant.id, "appointments.view"),
+      hasPermission(access.tenant.id, "settings.manage"),
+      // Faz 5A.3C — reports.staff is a distinct permission, not implied
+      // by staff.view or any other permission checked above (confirmed
+      // against the role_template_permissions seed: STYLIST holds
+      // appointments.view/update, customers.view, services.view,
+      // schedules.view — never staff.view or reports.staff). It is the
+      // only gate for this nav entry, matching the RPCs' own check.
+      hasPermission(access.tenant.id, "reports.staff"),
+    ]);
 
   const navItems: TenantNavItem[] = [
     { href: "", label: t("dashboard"), icon: <LayoutDashboard className="size-4" /> },
@@ -55,6 +63,9 @@ export default async function TenantAppLayout({
       : []),
     ...(canViewServices
       ? [{ href: "/services", label: t("services"), icon: <Scissors className="size-4" /> }]
+      : []),
+    ...(canViewReports
+      ? [{ href: "/reports/staff", label: t("reports"), icon: <ChartColumn className="size-4" /> }]
       : []),
     ...(canManageSettings
       ? [{ href: "/settings", label: t("settings"), icon: <SettingsIcon className="size-4" /> }]

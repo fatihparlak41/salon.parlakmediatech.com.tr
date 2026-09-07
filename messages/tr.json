@@ -78,6 +78,7 @@
       "appointments": "Randevular",
       "staff": "Personel",
       "services": "Hizmetler",
+      "reports": "Raporlar",
       "settings": "Ayarlar"
     },
     "dashboard": {
@@ -175,6 +176,64 @@
     "countLabel": "Toplam hizmet",
     "activeCountLabel": "Aktif",
     "noBranchWarning": "Bu hizmet hiçbir şubede sunulmuyor — randevu için görünmeyecek."
+  },
+  "Reports": {
+    "staff": {
+      "title": "Personel Performansı",
+      "description": "Salon genelinde tamamlanan işleri, müşteri dağılımını ve personel kapasitesinin kullanımını görüntüleyin.",
+      "filters": {
+        "dateLabel": "Tarih",
+        "branchLabel": "Şube",
+        "staffLabel": "Personel",
+        "serviceLabel": "Hizmet",
+        "rangeToday": "Bugün",
+        "rangeWeek": "Bu Hafta",
+        "rangeMonth": "Bu Ay",
+        "rangeLast30": "Son 30 Gün",
+        "rangeCustom": "Özel Tarih",
+        "customStartLabel": "Başlangıç",
+        "customEndLabel": "Bitiş",
+        "allBranches": "Tüm şubeler",
+        "allStaffPlaceholder": "Tüm personel",
+        "allServicesPlaceholder": "Tüm hizmetler",
+        "staffSelectedCount": "{count} personel seçili",
+        "serviceSelectedCount": "{count} hizmet seçili",
+        "serviceFilterHelper": "Doluluk, personelin toplam çalışma kapasitesine göre hesaplanır."
+      },
+      "summary": {
+        "completedServiceItems": "Tamamlanan Hizmet",
+        "uniqueCustomers": "Hizmet Verilen Müşteri",
+        "newCustomers": "Yeni Müşteri",
+        "returningCustomersSuffix": "geri dönen",
+        "utilization": "Doluluk"
+      },
+      "table": {
+        "staffColumn": "Personel",
+        "completedServiceItemsColumn": "Tamamlanan Hizmet",
+        "customersColumn": "Müşteri",
+        "customersBreakdown": "{newCount} yeni · {returningCount} geri dönen",
+        "completedMinutesColumn": "Tamamlanan Süre",
+        "utilizationColumn": "Doluluk",
+        "cancelledColumn": "İptal",
+        "noShowColumn": "Gelmedi",
+        "serviceMixColumn": "Hizmet Dağılımı",
+        "serviceMixMore": "+{count} daha"
+      },
+      "utilization": {
+        "unavailable": "—",
+        "noScheduleHelper": "Çalışma programı tanımlanmamış",
+        "tooltip": "Doluluk, tamamlanan hizmetlerin planlanan sürelerinin mevcut çalışma kapasitesine oranıdır."
+      },
+      "emptyFiltered": {
+        "title": "Bu filtrelerle eşleşen veri bulunamadı.",
+        "description": "Farklı bir tarih aralığı veya filtre seçmeyi deneyin."
+      },
+      "error": {
+        "title": "Rapor yüklenemedi",
+        "description": "Rapor verileri şu anda getirilemedi. Lütfen tekrar deneyin."
+      },
+      "minutesFormat": "{hours}s {minutes}dk"
+    }
   },
   "PublicBooking": {
     "unavailableTitle": "Online randevu şu anda kullanılamıyor.",

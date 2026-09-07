@@ -1,6 +1,13 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
-import type { StaffPerformanceSummaryInput, StaffUtilizationInput } from "./schemas";
+import {
+  getTenantTodayRangeUtc,
+  getTenantWeekRangeUtc,
+  getTenantMonthRangeUtc,
+  getTenantLastNDaysRangeUtc,
+  getTenantDayRangeUtc,
+} from "@/lib/modules/appointments/timezone";
+import type { StaffPerformanceSummaryInput, StaffUtilizationInput, ReportsStaffFilters } from "./schemas";
 
 /**
  * Faz 5A.3A — the smallest query layer needed to call
@@ -143,4 +150,185 @@ export async function getStaffUtilization(
   }
 
   return { data: data as unknown as StaffUtilizationSummary, error: null };
+}
+
+/**
+ * Faz 5A.3C — resolves a URL-derived ReportsStaffFilters + the tenant's
+ * own timezone into the actual [startAt, endAt) UTC instants both RPCs
+ * take. Pure date arithmetic, reusing the existing tenant-timezone
+ * helpers exactly as-is — this function does NOT clip to now() itself;
+ * that stays exclusively inside get_staff_utilization (see its migration
+ * header comment), so getStaffPerformanceSummary and getStaffUtilization
+ * are always called with the identical, unclipped [startAt, endAt) window
+ * regardless of which one internally narrows it.
+ */
+export function resolveReportsDateRangeUtc(
+  filters: ReportsStaffFilters,
+  tenantTz: string,
+): { startAt: string; endAt: string } {
+  switch (filters.range) {
+    case "custom": {
+      // parseReportsStaffFilters already guarantees both are set and
+      // start < end whenever range === "custom" survives parsing.
+      const { startUtc } = getTenantDayRangeUtc(tenantTz, filters.customStart!);
+      const { endUtc } = getTenantDayRangeUtc(tenantTz, filters.customEnd!); // inclusive end date
+      return { startAt: startUtc, endAt: endUtc };
+    }
+    case "today": {
+      const { startUtc, endUtc } = getTenantTodayRangeUtc(tenantTz);
+      return { startAt: startUtc, endAt: endUtc };
+    }
+    case "week": {
+      const { today } = getTenantTodayRangeUtc(tenantTz);
+      const { startUtc, endUtc } = getTenantWeekRangeUtc(tenantTz, today);
+      return { startAt: startUtc, endAt: endUtc };
+    }
+    case "last30": {
+      const { startUtc, endUtc } = getTenantLastNDaysRangeUtc(tenantTz, 30);
+      return { startAt: startUtc, endAt: endUtc };
+    }
+    case "month":
+    default: {
+      const { today } = getTenantTodayRangeUtc(tenantTz);
+      const { startUtc, endUtc } = getTenantMonthRangeUtc(tenantTz, today);
+      return { startAt: startUtc, endAt: endUtc };
+    }
+  }
+}
+
+/**
+ * Faz 5A.3C — the one UI-facing view model this page needs: summary and
+ * utilization staff rows merged by staffId. A genuine simplification, not
+ * a duplicated contract — the two RPCs deliberately have DIFFERENT
+ * population rules (summary: anyone with any appointment-item activity in
+ * range; utilization: active roster ∪ historical completers — see each
+ * migration's own header comment), so a staff member can legitimately
+ * appear in only one side. Missing fields default to the same "no data"
+ * values each RPC itself would show for that side (zero counts,
+ * capacityMinutes=0/utilization=null). totals are taken directly from
+ * each RPC's own independently-computed totals object — never re-derived
+ * by summing the merged staff[] here, for the exact non-additivity
+ * reasons documented in personnel-performance-reports.test.ts.
+ */
+export type StaffReportRow = {
+  staffId: string;
+  staffName: string;
+  completedServiceItems: number;
+  uniqueCustomers: number;
+  newCustomers: number;
+  returningCustomers: number;
+  completedMinutes: number;
+  cancelledAppointments: number;
+  noShowAppointments: number;
+  serviceMix: StaffPerformanceServiceMixRow[];
+  concurrentCapacity: number;
+  scheduledMinutes: number;
+  capacityMinutes: number;
+  utilizedMinutes: number;
+  utilization: number | null;
+};
+
+export type StaffReportTotals = {
+  completedServiceItems: number;
+  uniqueCustomers: number;
+  newCustomers: number;
+  returningCustomers: number;
+  completedMinutes: number;
+  cancelledAppointments: number;
+  noShowAppointments: number;
+  utilization: number | null;
+};
+
+export type StaffReportData = {
+  totals: StaffReportTotals;
+  staff: StaffReportRow[];
+};
+
+function emptyPerformanceFields() {
+  return {
+    completedServiceItems: 0,
+    uniqueCustomers: 0,
+    newCustomers: 0,
+    returningCustomers: 0,
+    completedMinutes: 0,
+    cancelledAppointments: 0,
+    noShowAppointments: 0,
+  };
+}
+
+function emptyUtilizationFields() {
+  return {
+    concurrentCapacity: 1,
+    scheduledMinutes: 0,
+    capacityMinutes: 0,
+    utilizedMinutes: 0,
+    utilization: null as number | null,
+  };
+}
+
+export function mergeStaffReportData(
+  summary: StaffPerformanceSummary,
+  utilization: StaffUtilizationSummary,
+): StaffReportData {
+  const byId = new Map<string, StaffReportRow>();
+
+  for (const s of summary.staff) {
+    byId.set(s.staffId, {
+      staffId: s.staffId,
+      staffName: s.staffName,
+      completedServiceItems: s.completedServiceItems,
+      uniqueCustomers: s.uniqueCustomers,
+      newCustomers: s.newCustomers,
+      returningCustomers: s.returningCustomers,
+      completedMinutes: s.completedMinutes,
+      cancelledAppointments: s.cancelledAppointments,
+      noShowAppointments: s.noShowAppointments,
+      serviceMix: [],
+      ...emptyUtilizationFields(),
+    });
+  }
+
+  for (const u of utilization.staff) {
+    const existing = byId.get(u.staffId);
+    if (existing) {
+      existing.concurrentCapacity = u.concurrentCapacity;
+      existing.scheduledMinutes = u.scheduledMinutes;
+      existing.capacityMinutes = u.capacityMinutes;
+      existing.utilizedMinutes = u.utilizedMinutes;
+      existing.utilization = u.utilization;
+    } else {
+      byId.set(u.staffId, {
+        staffId: u.staffId,
+        staffName: u.staffName,
+        ...emptyPerformanceFields(),
+        serviceMix: [],
+        concurrentCapacity: u.concurrentCapacity,
+        scheduledMinutes: u.scheduledMinutes,
+        capacityMinutes: u.capacityMinutes,
+        utilizedMinutes: u.utilizedMinutes,
+        utilization: u.utilization,
+      });
+    }
+  }
+
+  for (const mix of summary.serviceMix) {
+    const row = byId.get(mix.staffId);
+    if (row) row.serviceMix.push(mix);
+  }
+
+  const staff = Array.from(byId.values()).sort((a, b) => a.staffName.localeCompare(b.staffName, "tr"));
+
+  return {
+    totals: {
+      completedServiceItems: summary.totals.completedServiceItems,
+      uniqueCustomers: summary.totals.uniqueCustomers,
+      newCustomers: summary.totals.newCustomers,
+      returningCustomers: summary.totals.returningCustomers,
+      completedMinutes: summary.totals.completedMinutes,
+      cancelledAppointments: summary.totals.cancelledAppointments,
+      noShowAppointments: summary.totals.noShowAppointments,
+      utilization: utilization.totals.utilization,
+    },
+    staff,
+  };
 }
