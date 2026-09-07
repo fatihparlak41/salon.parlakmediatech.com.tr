@@ -201,6 +201,26 @@ describe("resolveReportsDateRangeUtc", () => {
     expect(spanHours).toBe(49);
   });
 
+  it("Faz 5A.3D: Europe/Nicosia fall-back on the OTHER real 2026 transition date (2026-10-25) resolves identically to 49h", () => {
+    // A second, independent direct helper-level check against the actual
+    // upcoming 2026 transition (as opposed to 2025-10-26 above, chosen
+    // there specifically to stay safely in the past relative to when the
+    // full RPC-level tests run — see personnel-performance-utilization
+    // .test.ts's own DST tests for why that distinction matters at the
+    // RPC layer). resolveReportsDateRangeUtc is pure date arithmetic with
+    // no now()-dependency for a custom range (proven by the "never
+    // duplicates now()-clipping" test above), so testing a future date
+    // here is exactly as valid as testing a past one — this does NOT
+    // change production semantics, it only broadens which real calendar
+    // date the existing, unmodified logic is exercised against. The
+    // 2025-10-26 test above is left completely unchanged.
+    const filters: ReportsStaffFilters = { range: "custom", customStart: "2026-10-25", customEnd: "2026-10-26", branchId: null, staffIds: [], serviceIds: [] };
+    const { startAt, endAt } = resolveReportsDateRangeUtc(filters, "Europe/Nicosia");
+    expect(new Date(startAt).getTime()).toBeLessThan(new Date(endAt).getTime());
+    const spanHours = (new Date(endAt).getTime() - new Date(startAt).getTime()) / 3600_000;
+    expect(spanHours).toBe(49);
+  });
+
   it("never duplicates get_staff_utilization's own now()-clipping: a far-future custom range still resolves to its full, unclipped nominal span", () => {
     // The RPC itself clips to now() (Faz 5A.3B) — the UI's own date math
     // must NOT also clip, or the two would double-clip / disagree.
@@ -401,6 +421,7 @@ describe("messages/tr.json Reports.staff -- no competitive/financial language", 
 // --- DB-integration: permission gating + the cross-RPC service-filter contract ---
 
 let owner: TestUser;
+let managerUser: TestUser;
 let stylistUser: TestUser;
 let noPermUser: TestUser;
 let tenant: TestTenant;
@@ -410,6 +431,7 @@ let serviceB: { id: string; name: string };
 
 beforeAll(async () => {
   owner = await createTestUser("p5a3c-owner");
+  managerUser = await createTestUser("p5a3c-manager");
   stylistUser = await createTestUser("p5a3c-stylist");
   noPermUser = await createTestUser("p5a3c-no-perm");
 
@@ -419,6 +441,7 @@ beforeAll(async () => {
   serviceB = await createService(tenant.id, "Boya", 60, 800);
   await testDb`insert into service_branches (service_id, branch_id) values (${serviceA.id}, ${branchId}), (${serviceB.id}, ${branchId})`;
 
+  await createTestMembershipFromTemplate(tenant.id, managerUser.id, "SALON_MANAGER");
   await createTestMembershipFromTemplate(tenant.id, stylistUser.id, "STYLIST");
   const noPermRoleId = await createRoleForTenant(tenant.id, "No Perm", []);
   await addMembership(tenant.id, noPermUser.id, noPermRoleId);
@@ -426,7 +449,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await cleanupTenants([tenant.id]);
-  await cleanupUsers([owner.id, stylistUser.id, noPermUser.id]);
+  await cleanupUsers([owner.id, managerUser.id, stylistUser.id, noPermUser.id]);
 });
 
 /** Direct .rpc() calls via a signed-in client — the same pattern
@@ -456,6 +479,14 @@ async function utilizationRpc(user: TestUser, args: Record<string, unknown>) {
 describe("nav/route permission gate (reports.staff)", () => {
   it("an owner (reports.staff via SALON_OWNER) is granted -- nav entry shown, route allowed", async () => {
     const client = await signInAs(owner);
+    const { data, error } = await client.rpc("has_permission", { p_tenant_id: tenant.id, p_permission_key: "reports.staff" });
+    await client.auth.signOut();
+    expect(error).toBeNull();
+    expect(data).toBe(true);
+  });
+
+  it("Faz 5A.3D: SALON_MANAGER (reports.staff via the template's own 'everything except settings.manage' grant) is granted -- nav entry shown, route allowed", async () => {
+    const client = await signInAs(managerUser);
     const { data, error } = await client.rpc("has_permission", { p_tenant_id: tenant.id, p_permission_key: "reports.staff" });
     await client.auth.signOut();
     expect(error).toBeNull();
