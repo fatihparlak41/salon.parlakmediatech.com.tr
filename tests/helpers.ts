@@ -387,20 +387,46 @@ export async function linkStaffService(staffMemberId: string, serviceId: string)
 }
 
 /** weekday: 0=Sunday..6=Saturday (Postgres EXTRACT(DOW) convention, see
- * 20260819052446). startTime/endTime: "HH:MM" 24h. */
+ * 20260819052446). startTime/endTime: "HH:MM" 24h. branchId: omitted/null
+ * (the default, matching every existing call site) means the row's own
+ * branch_id stays NULL — "applies at every branch this staff member is
+ * assigned to" per staff_is_available's own semantics (Faz 5A.3B). */
 export async function createStaffSchedule(
   tenantId: string,
   staffMemberId: string,
   weekday: number,
   startTime: string,
   endTime: string,
+  branchId: string | null = null,
 ): Promise<string> {
   const [row] = await testDb<{ id: string }[]>`
-    insert into staff_schedules (tenant_id, staff_member_id, weekday, start_time, end_time)
-    values (${tenantId}, ${staffMemberId}, ${weekday}, ${startTime}, ${endTime})
+    insert into staff_schedules (tenant_id, staff_member_id, weekday, start_time, end_time, branch_id)
+    values (${tenantId}, ${staffMemberId}, ${weekday}, ${startTime}, ${endTime}, ${branchId})
     returning id
   `;
   if (!row) throw new Error("failed to create test staff schedule");
+  return row.id;
+}
+
+/** Faz 5A.3B: a date-specific override for one staff member — a day off
+ * (type="unavailable", startTime/endTime omitted) or different-than-usual
+ * hours (type="custom_hours", both required). exceptionDate: "YYYY-MM-DD".
+ * Staff-wide by design — staff_schedule_exceptions has no branch_id
+ * column (see 20260819052446). */
+export async function createScheduleException(
+  tenantId: string,
+  staffMemberId: string,
+  exceptionDate: string,
+  type: "unavailable" | "custom_hours",
+  startTime?: string,
+  endTime?: string,
+): Promise<string> {
+  const [row] = await testDb<{ id: string }[]>`
+    insert into staff_schedule_exceptions (tenant_id, staff_member_id, exception_date, type, start_time, end_time)
+    values (${tenantId}, ${staffMemberId}, ${exceptionDate}, ${type}, ${startTime ?? null}, ${endTime ?? null})
+    returning id
+  `;
+  if (!row) throw new Error("failed to create test schedule exception");
   return row.id;
 }
 

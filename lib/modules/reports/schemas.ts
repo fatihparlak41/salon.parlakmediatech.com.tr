@@ -26,3 +26,24 @@ export const staffPerformanceSummaryInputSchema = z
   });
 
 export type StaffPerformanceSummaryInput = z.infer<typeof staffPerformanceSummaryInputSchema>;
+
+/**
+ * Faz 5A.3B — input shape for get_staff_utilization. Deliberately has NO
+ * serviceIds field: there is no service-specific schedule/capacity
+ * denominator anywhere in the schema, so a service-filtered numerator
+ * divided by a staff-wide capacity would be structurally misleading. See
+ * the migration's own header comment.
+ */
+export const staffUtilizationInputSchema = z
+  .object({
+    tenantId: z.string().uuid(),
+    startAt: z.string().datetime({ offset: true }),
+    endAt: z.string().datetime({ offset: true }),
+    branchId: z.string().uuid().optional(),
+    staffIds: z.array(z.string().uuid()).optional(),
+  })
+  .refine((v) => new Date(v.startAt).getTime() < new Date(v.endAt).getTime(), {
+    message: "Başlangıç tarihi bitiş tarihinden önce olmalıdır.",
+  });
+
+export type StaffUtilizationInput = z.infer<typeof staffUtilizationInputSchema>;

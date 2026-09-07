@@ -192,6 +192,13 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   // its own explicit revoke from public, same pattern as every other
   // private.*/public.* pair in this list.
   "public.get_staff_performance_summary",
+  // Faz 5A.3B (20260907090000) — read-only staff utilization. Same
+  // reports.staff-gated, authenticated-only pattern as
+  // get_staff_performance_summary above; private.tenant_day_bounds_utc
+  // and private.get_staff_utilization both carry their own explicit
+  // revoke from public and are never granted to authenticated directly —
+  // only this public wrapper is.
+  "public.get_staff_utilization",
 ];
 
 // Phase 2F's public read surface — the only functions anon has ever

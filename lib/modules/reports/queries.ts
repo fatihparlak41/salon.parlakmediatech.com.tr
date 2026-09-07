@@ -1,6 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
-import type { StaffPerformanceSummaryInput } from "./schemas";
+import type { StaffPerformanceSummaryInput, StaffUtilizationInput } from "./schemas";
 
 /**
  * Faz 5A.3A — the smallest query layer needed to call
@@ -80,4 +80,67 @@ export async function getStaffPerformanceSummary(
   }
 
   return { data: data as unknown as StaffPerformanceSummary, error: null };
+}
+
+/**
+ * Faz 5A.3B — get_staff_utilization. A deliberately separate metric from
+ * getStaffPerformanceSummary above, not an extension of it: population is
+ * roster-plus-history rather than activity-driven (see the migration's
+ * own header comment), and the numerator (utilizedMinutes) is an
+ * elapsed-overlap calculation, never the full duration_minutes
+ * completedMinutes uses — two different questions ("how much did this
+ * person do" vs "how much of their available time was used") that only
+ * look similar because they both read appointment_item_performance.
+ */
+
+/** utilization is a raw ratio (utilizedMinutes / capacityMinutes), not a
+ * x100 percentage — null when capacityMinutes is 0, never capped above
+ * 1.0. Matches Intl.NumberFormat's own {style:"percent"} input
+ * convention, so a future UI can format it directly. */
+export type StaffUtilizationTotals = {
+  scheduledMinutes: number;
+  capacityMinutes: number;
+  utilizedMinutes: number;
+  utilization: number | null;
+};
+
+export type StaffUtilizationStaffRow = {
+  staffId: string;
+  staffName: string;
+  concurrentCapacity: number;
+  scheduledMinutes: number;
+  capacityMinutes: number;
+  utilizedMinutes: number;
+  utilization: number | null;
+};
+
+/** Unlike StaffPerformanceSummary's totals, these ARE the sum of staff[]
+ * (scheduled/capacity/utilized minutes never fan out across performers
+ * the way a shared customer or appointment can — a minute of one staff
+ * member's own schedule is never simultaneously credited to another).
+ * totals.utilization is still independently recomputed
+ * (utilizedMinutes/capacityMinutes), never averaged from staff[]
+ * percentages. */
+export type StaffUtilizationSummary = {
+  totals: StaffUtilizationTotals;
+  staff: StaffUtilizationStaffRow[];
+};
+
+export async function getStaffUtilization(
+  input: StaffUtilizationInput,
+): Promise<{ data: StaffUtilizationSummary; error: null } | { data: null; error: ReportsRpcError }> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("get_staff_utilization", {
+    p_tenant_id: input.tenantId,
+    p_start_at: input.startAt,
+    p_end_at: input.endAt,
+    p_branch_id: input.branchId ?? null,
+    p_staff_ids: input.staffIds ?? null,
+  });
+
+  if (error || !data) {
+    return { data: null, error: error ?? { message: "no data returned" } };
+  }
+
+  return { data: data as unknown as StaffUtilizationSummary, error: null };
 }
