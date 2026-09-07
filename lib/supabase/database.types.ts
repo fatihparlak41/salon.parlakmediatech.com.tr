@@ -1532,6 +1532,17 @@ export type Database = {
         }
         Returns: Json
       }
+      get_staff_performance_summary: {
+        Args: {
+          p_branch_id?: string | null
+          p_end_at: string
+          p_service_ids?: string[] | null
+          p_staff_ids?: string[] | null
+          p_start_at: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
       has_feature: {
         Args: { p_feature_key: string; p_tenant_id: string }
         Returns: boolean

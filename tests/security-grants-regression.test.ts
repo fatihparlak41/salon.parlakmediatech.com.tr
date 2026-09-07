@@ -186,6 +186,12 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   // pattern as update_appointment_status above, which it deliberately
   // does not replace or expand.
   "public.complete_appointment",
+  // Faz 5A.3A (20260907070000) — read-only staff performance summary.
+  // Authenticated only, never anon: gated internally by reports.staff
+  // (private.has_permission). The private.* function it wraps carries
+  // its own explicit revoke from public, same pattern as every other
+  // private.*/public.* pair in this list.
+  "public.get_staff_performance_summary",
 ];
 
 // Phase 2F's public read surface — the only functions anon has ever
