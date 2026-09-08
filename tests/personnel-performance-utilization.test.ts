@@ -433,6 +433,108 @@ describe("branch semantics", () => {
   });
 });
 
+describe("Faz 5A.3E — tenant-wide reports must include branch-specific schedule rows", () => {
+  // Regression coverage for a real PROD defect: (ss.branch_id is null or
+  // ss.branch_id = p_branch_id) collapses to just "ss.branch_id is null"
+  // whenever p_branch_id is NULL (SQL three-valued logic makes
+  // "x = NULL" never TRUE regardless of x), so a tenant-wide report was
+  // silently excluding every branch-specific schedule row. Every existing
+  // tenant-wide test above happens to use a NULL-branch schedule, and the
+  // one branch-specific test above always pairs it with an explicit,
+  // matching branch filter — neither combination exercises the bug. These
+  // tests specifically combine "branch-specific schedule row" with "no
+  // branch filter", the exact shape the real PROD tenant's data has.
+
+  it("1. tenant-wide, one branch-specific 08:00-17:00 schedule => scheduledMinutes=540", async () => {
+    const date = pastDateStr(80);
+    const staff = await activeStaff("5A3E Single Branch Specific Staff", [branchId]);
+    await createStaffSchedule(tenant.id, staff, weekdayOf(date), "08:00", "17:00", branchId);
+    const { start, end } = windowFor(date);
+    const { data } = await utilizationAs(owner, { startAt: start, endAt: end, staffIds: [staff] }); // no branchId => tenant-wide
+    expect(data.staff.find((s) => s.staffId === staff)?.scheduledMinutes).toBe(540);
+  });
+
+  it("2. tenant-wide, two non-overlapping branch-specific rows (branch A 08-12, branch B 13-17) => scheduledMinutes=480", async () => {
+    const date = pastDateStr(81);
+    const staff = await activeStaff("5A3E Two Branch Staff", [branchId, branchId2]);
+    await createStaffSchedule(tenant.id, staff, weekdayOf(date), "08:00", "12:00", branchId);
+    await createStaffSchedule(tenant.id, staff, weekdayOf(date), "13:00", "17:00", branchId2);
+    const { start, end } = windowFor(date);
+    const { data } = await utilizationAs(owner, { startAt: start, endAt: end, staffIds: [staff] });
+    expect(data.staff.find((s) => s.staffId === staff)?.scheduledMinutes).toBe(480);
+  });
+
+  it("3. tenant-wide, two OVERLAPPING branch-specific rows (branch A 08-12, branch B 08-12) => scheduledMinutes=240, NOT 480 (UNION of wall-clock capacity, not SUM)", async () => {
+    const date = pastDateStr(82);
+    const staff = await activeStaff("5A3E Overlap Branch Staff", [branchId, branchId2]);
+    await createStaffSchedule(tenant.id, staff, weekdayOf(date), "08:00", "12:00", branchId);
+    await createStaffSchedule(tenant.id, staff, weekdayOf(date), "08:00", "12:00", branchId2);
+    const { start, end } = windowFor(date);
+    const { data } = await utilizationAs(owner, { startAt: start, endAt: end, staffIds: [staff] });
+    expect(data.staff.find((s) => s.staffId === staff)?.scheduledMinutes).toBe(240);
+  });
+
+  it("4. tenant-wide, NULL-branch schedule still works unchanged (no regression from the fix)", async () => {
+    const date = pastDateStr(83);
+    const staff = await activeStaff("5A3E Null Still Works Staff", [branchId]);
+    await createStaffSchedule(tenant.id, staff, weekdayOf(date), "08:00", "17:00"); // NULL branch
+    const { start, end } = windowFor(date);
+    const { data } = await utilizationAs(owner, { startAt: start, endAt: end, staffIds: [staff] });
+    expect(data.staff.find((s) => s.staffId === staff)?.scheduledMinutes).toBe(540);
+  });
+
+  it("5. branch A filter includes a NULL-branch row and a branch-A row, excludes a branch-B-only row", async () => {
+    const date = pastDateStr(84);
+    const staff = await activeStaff("5A3E Filter Mix A Staff", [branchId, branchId2]);
+    await createStaffSchedule(tenant.id, staff, weekdayOf(date), "08:00", "09:00", null); // NULL branch, 60min
+    await createStaffSchedule(tenant.id, staff, weekdayOf(date), "10:00", "11:00", branchId); // branch A, 60min
+    await createStaffSchedule(tenant.id, staff, weekdayOf(date), "12:00", "13:00", branchId2); // branch B only, 60min
+    const { start, end } = windowFor(date);
+    const { data } = await utilizationAs(owner, { startAt: start, endAt: end, branchId, staffIds: [staff] });
+    expect(data.staff.find((s) => s.staffId === staff)?.scheduledMinutes).toBe(120); // NULL + A, not B
+  });
+
+  it("6. branch B filter includes a NULL-branch row and a branch-B row, excludes a branch-A-only row", async () => {
+    const date = pastDateStr(85);
+    const staff = await activeStaff("5A3E Filter Mix B Staff", [branchId, branchId2]);
+    await createStaffSchedule(tenant.id, staff, weekdayOf(date), "08:00", "09:00", null); // NULL branch, 60min
+    await createStaffSchedule(tenant.id, staff, weekdayOf(date), "10:00", "11:00", branchId); // branch A only, 60min
+    await createStaffSchedule(tenant.id, staff, weekdayOf(date), "12:00", "13:00", branchId2); // branch B, 60min
+    const { start, end } = windowFor(date);
+    const { data } = await utilizationAs(owner, { startAt: start, endAt: end, branchId: branchId2, staffIds: [staff] });
+    expect(data.staff.find((s) => s.staffId === staff)?.scheduledMinutes).toBe(120); // NULL + B, not A
+  });
+
+  it("7. a foreign-tenant branch id still returns empty safely with branch-specific schedules present", async () => {
+    const date = pastDateStr(86);
+    const staff = await activeStaff("5A3E Foreign Branch Safety Staff", [branchId]);
+    await createStaffSchedule(tenant.id, staff, weekdayOf(date), "08:00", "17:00", branchId);
+    const { start, end } = windowFor(date);
+    const { data, error } = await utilizationAs(owner, { startAt: start, endAt: end, branchId: otherBranchId, staffIds: [staff] });
+    expect(error).toBeNull();
+    expect(data.staff).toEqual([]);
+    expect(data.totals.scheduledMinutes).toBe(0);
+  });
+
+  it("8. Gökhan production shape: active staff with branch-specific-only schedules, no branch filter => capacityMinutes>0 and utilization is NOT null once completed work exists", async () => {
+    const date = pastDateStr(87);
+    const staff = await activeStaff("5A3E Production Shape Staff", [branchId]);
+    await createStaffSchedule(tenant.id, staff, weekdayOf(date), "09:00", "18:00", branchId); // 540 min, branch-specific only
+    await createAppointment({
+      status: "completed",
+      scheduledStartAt: new Date(`${date}T09:00:00Z`),
+      items: [{ staffMemberId: staff, durationMinutes: 30 }],
+    });
+    const { start, end } = windowFor(date);
+    const { data } = await utilizationAs(owner, { startAt: start, endAt: end, staffIds: [staff] }); // tenant-wide, matching the real PROD Raporlar default
+    const row = data.staff.find((s) => s.staffId === staff)!;
+    expect(row.scheduledMinutes).toBe(540);
+    expect(row.capacityMinutes).toBeGreaterThan(0);
+    expect(row.utilization).not.toBeNull();
+    expect(row.utilization).toBeCloseTo(30 / 540, 10);
+  });
+});
+
 describe("overlapping schedule rows: UNION, not SUM", () => {
   it("two exact-duplicate schedule rows dedupe to one interval's worth of minutes", async () => {
     const date = pastDateStr(72);
