@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronDown, ChartColumn } from "lucide-react";
+import { useTransition } from "react";
+import { ChevronDown, ChartColumn, Loader2 } from "lucide-react";
 import { useRouter, usePathname } from "@/lib/i18n/navigation";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -17,7 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { BranchOption, ServiceOption } from "@/lib/modules/staff/queries";
 import type { StaffReportData } from "@/lib/modules/reports/queries";
-import type { ReportsStaffFilters, DateRangePreset } from "@/lib/modules/reports/schemas";
+import { buildFilterUrl, type ReportsStaffFilters, type DateRangePreset } from "@/lib/modules/reports/schemas";
 import { fillTemplate } from "@/lib/modules/reports/format";
 import { ReportsSummaryCards } from "@/components/reports/reports-summary-cards";
 import { ReportsStaffComparison } from "@/components/reports/reports-staff-comparison";
@@ -45,6 +46,7 @@ type Labels = {
     staffSelectedCountTemplate: string;
     serviceSelectedCountTemplate: string;
     serviceFilterHelper: string;
+    updating: string;
   };
   summary: {
     completedServiceItems: string;
@@ -85,24 +87,31 @@ type Labels = {
  * page, so the report stays refreshable/shareable (Faz 5A.3C's URL
  * filter contract). No client-side data-fetching library: every change
  * here triggers a normal Next.js navigation, which re-runs the Server
- * Component with the new searchParams and hands back fresh RPC data. */
+ * Component with the new searchParams and hands back fresh RPC data.
+ *
+ * Faz PERF.2 — the router.push itself is now wrapped in useTransition.
+ * PERF.1 measured ~986ms for this navigation with zero visual feedback;
+ * wrapping it here means React keeps rendering the CURRENT reportData
+ * (old props) for the whole transition instead of an abrupt loading
+ * flash, while isPending flips true immediately on tap so the caller
+ * can show a subtle "updating" indicator and disable the filter
+ * controls — the same tap-to-feedback gap PERF.1 flagged as the worst
+ * perceived-latency case in the whole audit. Does not change what URL
+ * gets pushed or when the RSC payload is requested, only when React is
+ * allowed to show it. */
 function useFilterNavigation() {
   const router = useRouter();
   const pathname = usePathname();
+  const [isPending, startTransition] = useTransition();
 
-  return (updates: Record<string, string | string[] | null>) => {
-    const params = new URLSearchParams(window.location.search);
-    for (const [key, value] of Object.entries(updates)) {
-      const isEmpty = value === null || value === "" || (Array.isArray(value) && value.length === 0);
-      if (isEmpty) {
-        params.delete(key);
-      } else {
-        params.set(key, Array.isArray(value) ? value.join(",") : value);
-      }
-    }
-    const qs = params.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname);
+  const navigate = (updates: Record<string, string | string[] | null>) => {
+    const url = buildFilterUrl(pathname, window.location.search, updates);
+    startTransition(() => {
+      router.push(url);
+    });
   };
+
+  return { navigate, isPending };
 }
 
 function MultiSelectFilter({
@@ -112,6 +121,7 @@ function MultiSelectFilter({
   options,
   selectedIds,
   onChange,
+  disabled,
 }: {
   label: string;
   placeholder: string;
@@ -119,6 +129,7 @@ function MultiSelectFilter({
   options: { id: string; label: string }[];
   selectedIds: string[];
   onChange: (ids: string[]) => void;
+  disabled?: boolean;
 }) {
   const toggle = (id: string) => {
     const next = selectedIds.includes(id) ? selectedIds.filter((s) => s !== id) : [...selectedIds, id];
@@ -133,8 +144,9 @@ function MultiSelectFilter({
       <Label className="text-muted-foreground text-xs font-medium">{label}</Label>
       <DropdownMenu>
         <DropdownMenuTrigger
+          disabled={disabled}
           render={
-            <Button variant="outline" className="min-w-40 justify-between font-normal">
+            <Button variant="outline" disabled={disabled} className="min-w-40 justify-between font-normal">
               <span className="truncate">{triggerText}</span>
               <ChevronDown className="text-muted-foreground size-4 shrink-0" />
             </Button>
@@ -182,7 +194,7 @@ export function ReportsStaffPageClient({
   hasError: boolean;
   labels: Labels;
 }) {
-  const navigate = useFilterNavigation();
+  const { navigate, isPending } = useFilterNavigation();
 
   const rangeOptions: { value: DateRangePreset; label: string }[] = [
     { value: "today", label: labels.filters.rangeToday },
@@ -198,17 +210,37 @@ export function ReportsStaffPageClient({
         <div className="bg-muted flex size-10 shrink-0 items-center justify-center rounded-lg">
           <ChartColumn className="text-muted-foreground size-5" />
         </div>
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{labels.title}</h1>
+        <div className="flex-1">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h1 className="text-2xl font-semibold tracking-tight">{labels.title}</h1>
+            {/* Faz PERF.2 — the one visible signal that a filter tap
+                registered. Subtle by design (small muted text + a
+                slowly-spinning icon, no overlay) since the report below
+                stays exactly as-is underneath it — see useFilterNavigation's
+                own comment for why nothing else needs to change here. */}
+            {isPending && (
+              <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
+                <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                {labels.filters.updating}
+              </span>
+            )}
+          </div>
           <p className="text-muted-foreground mt-1 text-sm">{labels.description}</p>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="mt-6 flex flex-wrap items-end gap-3 sm:gap-4">
+      <div
+        className="mt-6 flex flex-wrap items-end gap-3 sm:gap-4"
+        aria-busy={isPending}
+      >
         <div className="flex flex-col gap-1.5">
           <Label className="text-muted-foreground text-xs font-medium">{labels.filters.dateLabel}</Label>
-          <Select value={filters.range} onValueChange={(v) => navigate({ range: v, start: null, end: null })}>
+          <Select
+            value={filters.range}
+            onValueChange={(v) => navigate({ range: v, start: null, end: null })}
+            disabled={isPending}
+          >
             <SelectTrigger className="min-w-36">
               {/* Base UI's Select.Value shows the raw stored value unless
                   given an explicit label-lookup render function — same
@@ -236,6 +268,7 @@ export function ReportsStaffPageClient({
                 value={filters.customStart ?? ""}
                 max={filters.customEnd ?? undefined}
                 onChange={(e) => navigate({ range: "custom", start: e.target.value })}
+                disabled={isPending}
                 className="w-40"
               />
             </div>
@@ -246,6 +279,7 @@ export function ReportsStaffPageClient({
                 value={filters.customEnd ?? ""}
                 min={filters.customStart ?? undefined}
                 onChange={(e) => navigate({ range: "custom", end: e.target.value })}
+                disabled={isPending}
                 className="w-40"
               />
             </div>
@@ -258,6 +292,7 @@ export function ReportsStaffPageClient({
             <Select
               value={filters.branchId ?? "__all__"}
               onValueChange={(v) => navigate({ branch: v === "__all__" ? null : v })}
+              disabled={isPending}
             >
               <SelectTrigger className="min-w-40">
                 <SelectValue>
@@ -285,6 +320,7 @@ export function ReportsStaffPageClient({
           options={staffOptions.map((s) => ({ id: s.id, label: s.fullName }))}
           selectedIds={filters.staffIds}
           onChange={(ids) => navigate({ staff: ids })}
+          disabled={isPending}
         />
 
         <MultiSelectFilter
@@ -294,6 +330,7 @@ export function ReportsStaffPageClient({
           options={services.map((s) => ({ id: s.id, label: s.name }))}
           selectedIds={filters.serviceIds}
           onChange={(ids) => navigate({ service: ids })}
+          disabled={isPending}
         />
       </div>
 
@@ -301,8 +338,12 @@ export function ReportsStaffPageClient({
         <p className="text-muted-foreground mt-3 text-xs">{labels.filters.serviceFilterHelper}</p>
       )}
 
-      {/* Content */}
-      <div className="mt-6">
+      {/* Content — stays exactly as-is while isPending (React keeps the
+          old props mounted for the whole transition; see
+          useFilterNavigation's comment), just dimmed slightly so the
+          "updating" signal above isn't the only cue. Never hidden,
+          never replaced with a spinner overlay. */}
+      <div className="mt-6 transition-opacity" style={isPending ? { opacity: 0.6 } : undefined}>
         {hasError ? (
           <div className="border-border flex flex-col items-center gap-2 rounded-xl border border-dashed px-6 py-16 text-center">
             <h2 className="text-base font-medium">{labels.error.title}</h2>

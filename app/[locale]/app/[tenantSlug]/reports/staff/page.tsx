@@ -112,6 +112,7 @@ export default async function ReportsStaffPage({
           staffSelectedCountTemplate: t("filters.staffSelectedCount", { count: "{count}" }),
           serviceSelectedCountTemplate: t("filters.serviceSelectedCount", { count: "{count}" }),
           serviceFilterHelper: t("filters.serviceFilterHelper"),
+          updating: t("filters.updating"),
         },
         summary: {
           completedServiceItems: t("summary.completedServiceItems"),

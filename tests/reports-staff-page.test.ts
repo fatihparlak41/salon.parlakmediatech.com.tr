@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   parseReportsStaffFilters,
+  buildFilterUrl,
   DEFAULT_RANGE_PRESET,
   type ReportsStaffFilters,
 } from "@/lib/modules/reports/schemas";
@@ -589,5 +590,98 @@ describe("cross-RPC service-filter contract (the one new composed behavior this 
     // (staffUtilizationInputSchema has no serviceIds field, and
     // get_staff_utilization's own SQL signature has no p_service_ids
     // parameter — see supabase/migrations/20260907090000).
+  });
+});
+
+/**
+ * Faz PERF.2 — buildFilterUrl is the pure URL-building step
+ * useFilterNavigation() calls in reports-staff-page-client.tsx. It lives
+ * in lib/modules/reports/schemas.ts (next to parseReportsStaffFilters,
+ * its exact inverse) rather than in the client component itself,
+ * because that component transitively imports next-intl's navigation
+ * wrapper, which cannot be resolved under plain Vitest (confirmed:
+ * importing it here failed to resolve next/navigation) — schemas.ts has
+ * no such dependency. This project also has no React
+ * component-rendering test infrastructure at all — same conclusion this
+ * file's own header comment already reached about jsdom/@testing-library.
+ * These tests cover exactly what changed in Faz PERF.2 (the router.push
+ * call is now wrapped in useTransition) and exactly what did NOT change
+ * (this URL-building logic, moved verbatim) — i.e. "final URL remains
+ * correct" and "no regression to filter semantics" for the date, staff,
+ * and service filters specifically named in that phase's spec. The
+ * pending-state UI itself (isPending, aria-busy, disabled controls, the
+ * "Güncelleniyor…" indicator) has no automated coverage for the same
+ * reason — it was verified via a live DEV walkthrough instead (see the
+ * Faz PERF.2 final report).
+ */
+describe("buildFilterUrl (Faz PERF.2)", () => {
+  const path = "/app/salon-x/reports/staff";
+
+  it("date filter: setting a range preset also clears start/end in the same navigation", () => {
+    const url = buildFilterUrl(path, "?range=custom&start=2026-01-01&end=2026-01-05", {
+      range: "week",
+      start: null,
+      end: null,
+    });
+    expect(url).toBe(`${path}?range=week`);
+  });
+
+  it("date filter: switching to custom range with no dates yet produces a bare range param", () => {
+    const url = buildFilterUrl(path, "", { range: "custom", start: null, end: null });
+    expect(url).toBe(`${path}?range=custom`);
+  });
+
+  it("date filter: setting a custom start preserves the existing range and end", () => {
+    const url = buildFilterUrl(path, "?range=custom&end=2026-01-10", { range: "custom", start: "2026-01-05" });
+    const params = new URLSearchParams(url.split("?")[1]);
+    expect(params.get("range")).toBe("custom");
+    expect(params.get("start")).toBe("2026-01-05");
+    expect(params.get("end")).toBe("2026-01-10");
+  });
+
+  it("staff filter: selecting staff ids joins them and preserves an unrelated existing param", () => {
+    const url = buildFilterUrl(path, "?branch=b1", { staff: ["s1", "s2"] });
+    const params = new URLSearchParams(url.split("?")[1]);
+    expect(params.get("branch")).toBe("b1");
+    expect(params.get("staff")).toBe("s1,s2");
+  });
+
+  it("staff filter: clearing back to an empty selection removes the param entirely", () => {
+    const url = buildFilterUrl(path, "?staff=s1,s2&branch=b1", { staff: [] });
+    const params = new URLSearchParams(url.split("?")[1]);
+    expect(params.has("staff")).toBe(false);
+    expect(params.get("branch")).toBe("b1");
+  });
+
+  it("service filter: selecting service ids joins them and preserves an unrelated existing param", () => {
+    const url = buildFilterUrl(path, "?range=month", { service: ["svc-a", "svc-b"] });
+    const params = new URLSearchParams(url.split("?")[1]);
+    expect(params.get("range")).toBe("month");
+    expect(params.get("service")).toBe("svc-a,svc-b");
+  });
+
+  it("service filter: clearing back to an empty selection removes the param entirely, independent of staff", () => {
+    const url = buildFilterUrl(path, "?service=svc-a&staff=s1", { service: [] });
+    const params = new URLSearchParams(url.split("?")[1]);
+    expect(params.has("service")).toBe(false);
+    expect(params.get("staff")).toBe("s1");
+  });
+
+  it("branch filter: null clears the param (the \"__all__\" sentinel is resolved before this function is called)", () => {
+    const url = buildFilterUrl(path, "?branch=b1&range=week", { branch: null });
+    const params = new URLSearchParams(url.split("?")[1]);
+    expect(params.has("branch")).toBe(false);
+    expect(params.get("range")).toBe("week");
+  });
+
+  it("no params left at all -> bare pathname with no trailing '?'", () => {
+    const url = buildFilterUrl(path, "?staff=s1", { staff: [] });
+    expect(url).toBe(path);
+  });
+
+  it("is a pure function of its inputs — same inputs, same output, no shared state across calls", () => {
+    const a = buildFilterUrl(path, "?range=month", { staff: ["s1"] });
+    const b = buildFilterUrl(path, "?range=month", { staff: ["s1"] });
+    expect(a).toBe(b);
   });
 });

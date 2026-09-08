@@ -150,19 +150,36 @@ export const getTenantAccess = cache(
   },
 );
 
-/** Wraps the public.has_permission RPC (see architecture report section D). */
-export async function hasPermission(
-  tenantId: string,
-  permissionKey: string,
-): Promise<boolean> {
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("has_permission", {
-    p_tenant_id: tenantId,
-    p_permission_key: permissionKey,
-  });
-  if (error) return false;
-  return data === true;
-}
+/**
+ * Wraps the public.has_permission RPC (see architecture report section D).
+ *
+ * Wrapped in React's cache() — same pattern and same reason as
+ * getCurrentUser/getTenantAccess above (Faz PERF.2): the tenant-app
+ * layout checks a handful of permission keys to build the nav, and most
+ * pages below it check an overlapping set (at minimum the same
+ * "*.view" key the layout already checked) to decide their own
+ * canCreate/canUpdate/canManage flags. Without this, every one of those
+ * page-level checks was a second, un-deduplicated RPC round trip for a
+ * (tenantId, permissionKey) pair the layout had already resolved
+ * moments earlier in the same request. cache() keys by argument
+ * identity, so a different tenantId or a different permissionKey is
+ * still a fresh call — only an exact repeat within the same request is
+ * ever collapsed. This is per-request only (React's cache() is scoped
+ * to a single render pass and is torn down after it): no cross-request
+ * memoization, no TTL, nothing that could serve a stale authorization
+ * answer into a later request.
+ */
+export const hasPermission = cache(
+  async (tenantId: string, permissionKey: string): Promise<boolean> => {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("has_permission", {
+      p_tenant_id: tenantId,
+      p_permission_key: permissionKey,
+    });
+    if (error) return false;
+    return data === true;
+  },
+);
 
 export const isPlatformAdmin = cache(async (): Promise<boolean> => {
   const user = await getCurrentUser();

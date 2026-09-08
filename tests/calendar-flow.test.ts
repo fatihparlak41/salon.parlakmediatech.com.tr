@@ -388,3 +388,134 @@ describe("quick-create-from-calendar correctness", () => {
     expect(error).toBeNull();
   });
 });
+
+/**
+ * Faz PERF.2 — fetchBranchStaff (lib/modules/appointments/client-queries.ts)
+ * collapsed from two sequential round trips (staff_branches by branch,
+ * then staff_members by the resulting ids) into one embedded-select:
+ * staff_branches?select=staff_members!inner(id,full_name), filtered on
+ * the embedded staff_members.tenant_id/status/deleted_at and ordered on
+ * the embedded staff_members.display_order/full_name. Own dedicated
+ * fixtures (not the file's shared tenantA/staffA1/staffA2 above) because
+ * this specifically needs an inactive staff member, a deleted staff
+ * member, and controlled display_order values, none of which the shared
+ * fixture set above needs or should be mutated to provide for the other
+ * describe blocks in this file.
+ *
+ * Same "verify the actual query behavior, not the TypeScript wrapper"
+ * convention as the rest of this file (see its header comment) — the
+ * query below is kept byte-identical to client-queries.ts's own.
+ */
+describe("fetchBranchStaff embedded-select collapse (Faz PERF.2)", () => {
+  async function queryBranchStaff(client: SupabaseClient, branchId: string, tenantId: string) {
+    const { data, error } = await client
+      .from("staff_branches")
+      .select("staff_members!inner(id, full_name)")
+      .eq("branch_id", branchId)
+      .eq("staff_members.tenant_id", tenantId)
+      .eq("staff_members.status", "active")
+      .is("staff_members.deleted_at", null)
+      .order("display_order", { ascending: true, referencedTable: "staff_members" })
+      .order("full_name", { ascending: true, referencedTable: "staff_members" });
+    if (error) throw error;
+    return (data as unknown as { staff_members: { id: string; full_name: string } | null }[])
+      .map((r) => r.staff_members)
+      .filter((s): s is NonNullable<typeof s> => !!s);
+  }
+
+  let tenant1: TestTenant;
+  let tenant2: TestTenant;
+  let owner1: TestUser;
+  let ownerOther: TestUser;
+  let owner1Client: SupabaseClient;
+  let branch1: string;
+  let otherBranch1: string;
+  let branch2: string;
+
+  let active1: { id: string; fullName: string };
+  let active2: { id: string; fullName: string };
+  let inactiveStaff: { id: string; fullName: string };
+  let deletedStaff: { id: string; fullName: string };
+  let wrongBranchStaff: { id: string; fullName: string };
+  let otherTenantStaff: { id: string; fullName: string };
+
+  beforeAll(async () => {
+    owner1 = await createTestUser("perf2-fbs-owner1");
+    ownerOther = await createTestUser("perf2-fbs-owner2");
+
+    tenant1 = await createTestTenant("perf2-fbs-tenant1", owner1.id);
+    tenant2 = await createTestTenant("perf2-fbs-tenant2", ownerOther.id);
+
+    branch1 = await createBranch(tenant1.id, "Branch 1");
+    otherBranch1 = await createBranch(tenant1.id, "Other Branch (tenant 1)");
+    branch2 = await createBranch(tenant2.id, "Branch (tenant 2)");
+
+    // Deliberately created "Z" then "A" — display_order (set below) must
+    // win over full_name, proving ordering isn't accidentally just
+    // alphabetical.
+    active1 = await createStaffMember(tenant1.id, "Z Active One");
+    active2 = await createStaffMember(tenant1.id, "A Active Two");
+    inactiveStaff = await createStaffMember(tenant1.id, "Inactive Staff");
+    deletedStaff = await createStaffMember(tenant1.id, "Deleted Staff");
+    wrongBranchStaff = await createStaffMember(tenant1.id, "Wrong Branch Staff");
+    otherTenantStaff = await createStaffMember(tenant2.id, "Other Tenant Staff");
+
+    await linkStaffBranch(active1.id, branch1);
+    await linkStaffBranch(active2.id, branch1);
+    await linkStaffBranch(inactiveStaff.id, branch1);
+    await linkStaffBranch(deletedStaff.id, branch1);
+    await linkStaffBranch(wrongBranchStaff.id, otherBranch1);
+    await linkStaffBranch(otherTenantStaff.id, branch2);
+
+    // display_order: active2 ("A Active Two") sorts AFTER active1
+    // ("Z Active One") once display_order is set, the opposite of what
+    // full_name alone would produce — this is what proves the
+    // referencedTable ordering actually reached staff_members.display_order
+    // and isn't silently falling back to full_name-only order.
+    await testDb`update staff_members set display_order = 1 where id = ${active1.id}`;
+    await testDb`update staff_members set display_order = 2 where id = ${active2.id}`;
+    await testDb`update staff_members set status = 'inactive' where id = ${inactiveStaff.id}`;
+    await testDb`update staff_members set deleted_at = now() where id = ${deletedStaff.id}`;
+
+    owner1Client = await signInAs(owner1);
+  });
+
+  afterAll(async () => {
+    await cleanupTenants([tenant1.id, tenant2.id]);
+    await cleanupUsers([owner1.id, ownerOther.id]);
+  });
+
+  it("returns active, non-deleted staff assigned to the branch, ordered by display_order then full_name", async () => {
+    const result = await queryBranchStaff(owner1Client, branch1, tenant1.id);
+    expect(result.map((s) => s.id)).toEqual([active1.id, active2.id]);
+  });
+
+  it("excludes an inactive staff member assigned to the branch", async () => {
+    const result = await queryBranchStaff(owner1Client, branch1, tenant1.id);
+    expect(result.some((s) => s.id === inactiveStaff.id)).toBe(false);
+  });
+
+  it("excludes a soft-deleted staff member assigned to the branch", async () => {
+    const result = await queryBranchStaff(owner1Client, branch1, tenant1.id);
+    expect(result.some((s) => s.id === deletedStaff.id)).toBe(false);
+  });
+
+  it("excludes a staff member assigned to a different branch in the same tenant", async () => {
+    const result = await queryBranchStaff(owner1Client, branch1, tenant1.id);
+    expect(result.some((s) => s.id === wrongBranchStaff.id)).toBe(false);
+
+    const otherBranchResult = await queryBranchStaff(owner1Client, otherBranch1, tenant1.id);
+    expect(otherBranchResult.map((s) => s.id)).toEqual([wrongBranchStaff.id]);
+  });
+
+  it("never returns a staff member from a different tenant, even given that tenant's own branch id", async () => {
+    const result = await queryBranchStaff(owner1Client, branch2, tenant1.id);
+    expect(result).toEqual([]);
+  });
+
+  it("returns an empty array for a branch with no assigned staff at all", async () => {
+    const emptyBranch = await createBranch(tenant1.id, "Empty Branch");
+    const result = await queryBranchStaff(owner1Client, emptyBranch, tenant1.id);
+    expect(result).toEqual([]);
+  });
+});

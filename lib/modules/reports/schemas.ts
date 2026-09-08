@@ -136,3 +136,35 @@ export function parseReportsStaffFilters(
     serviceIds: parseUuidListFromCsv(firstParam(searchParams.service)),
   };
 }
+
+/**
+ * Faz PERF.2 — the inverse direction: filters -> URL. Lives here (not in
+ * reports-staff-page-client.tsx, where it's called from) so it can be
+ * unit tested directly — that file is a "use client" component that
+ * transitively imports next-intl's navigation wrapper, which cannot be
+ * resolved outside Next's own bundler (confirmed: importing it under
+ * plain Vitest fails to resolve next/navigation). This function itself
+ * has no such dependency — plain string/URLSearchParams manipulation
+ * only — so it belongs next to parseReportsStaffFilters above, its exact
+ * inverse, both owning the one URL filter contract from either
+ * direction. Given the CURRENT query string and a set of {key: value}
+ * updates: null/""/[] clears a key, everything else sets it (arrays
+ * joined with ","), every other existing param is left untouched.
+ */
+export function buildFilterUrl(
+  pathname: string,
+  currentSearch: string,
+  updates: Record<string, string | string[] | null>,
+): string {
+  const params = new URLSearchParams(currentSearch);
+  for (const [key, value] of Object.entries(updates)) {
+    const isEmpty = value === null || value === "" || (Array.isArray(value) && value.length === 0);
+    if (isEmpty) {
+      params.delete(key);
+    } else {
+      params.set(key, Array.isArray(value) ? value.join(",") : value);
+    }
+  }
+  const qs = params.toString();
+  return qs ? `${pathname}?${qs}` : pathname;
+}

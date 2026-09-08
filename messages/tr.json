@@ -198,7 +198,8 @@
         "allServicesPlaceholder": "Tüm hizmetler",
         "staffSelectedCount": "{count} personel seçili",
         "serviceSelectedCount": "{count} hizmet seçili",
-        "serviceFilterHelper": "Doluluk, personelin toplam çalışma kapasitesine göre hesaplanır."
+        "serviceFilterHelper": "Doluluk, personelin toplam çalışma kapasitesine göre hesaplanır.",
+        "updating": "Güncelleniyor…"
       },
       "summary": {
         "completedServiceItems": "Tamamlanan Hizmet",

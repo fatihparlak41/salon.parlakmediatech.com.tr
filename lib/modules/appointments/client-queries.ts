@@ -116,25 +116,43 @@ export async function fetchCalendarItems(
     .filter((r): r is CalendarItemRow => r !== null);
 }
 
+type RawBranchStaffRow = {
+  staff_members: { id: string; full_name: string } | null;
+};
+
 /** Client mirror of queries.ts's getBranchStaff — used when the operator
- * switches branch client-side without a page reload. */
+ * switches branch client-side without a page reload.
+ *
+ * Faz PERF.2 — collapsed from two sequential round trips (staff_branches
+ * by branch, then staff_members by the resulting ids — PERF.1 measured
+ * ~172ms then another ~130ms, purely serial because the second query
+ * needed the first's ids) into one embedded-select round trip.
+ * staff_branches has exactly one FK to staff_members
+ * (staff_branches_staff_member_id_fkey, confirmed in
+ * lib/supabase/database.types.ts) — unlike appointment_items elsewhere
+ * in this file, there is no second relationship to staff_members here,
+ * so the embed is unambiguous and needs no explicit FK-name hint.
+ * `!inner` turns the embed into an inner join so a staff_branches row
+ * whose staff member fails the tenant/status/deleted_at filter is
+ * dropped from the result entirely, matching the old two-query
+ * version's behavior exactly (that staff member never appeared before
+ * either) rather than being returned with a null staff_members field. */
 export async function fetchBranchStaff(tenantId: string, branchId: string): Promise<CalendarStaffOption[]> {
   const supabase = createClient();
-  const { data: links } = await supabase.from("staff_branches").select("staff_member_id").eq("branch_id", branchId);
-  const staffIds = (links ?? []).map((l) => l.staff_member_id);
-  if (staffIds.length === 0) return [];
-
   const { data } = await supabase
-    .from("staff_members")
-    .select("id, full_name")
-    .eq("tenant_id", tenantId)
-    .eq("status", "active")
-    .is("deleted_at", null)
-    .in("id", staffIds)
-    .order("display_order", { ascending: true })
-    .order("full_name", { ascending: true });
+    .from("staff_branches")
+    .select("staff_members!inner(id, full_name)")
+    .eq("branch_id", branchId)
+    .eq("staff_members.tenant_id", tenantId)
+    .eq("staff_members.status", "active")
+    .is("staff_members.deleted_at", null)
+    .order("display_order", { ascending: true, referencedTable: "staff_members" })
+    .order("full_name", { ascending: true, referencedTable: "staff_members" });
 
-  return (data ?? []).map((s) => ({ id: s.id, fullName: s.full_name }));
+  return ((data ?? []) as unknown as RawBranchStaffRow[])
+    .map((r) => r.staff_members)
+    .filter((s): s is NonNullable<typeof s> => !!s)
+    .map((s) => ({ id: s.id, fullName: s.full_name }));
 }
 
 /**
