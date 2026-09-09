@@ -253,6 +253,13 @@ export async function createTestMembershipFromTemplate(
 export async function cleanupTenants(tenantIds: string[]): Promise<void> {
   if (tenantIds.length === 0) return;
 
+  // notification_events (Faz NOTIF.2B): appointment_id already cascades
+  // from appointments, but deleted explicitly and early anyway, matching
+  // this function's own established convention of never relying on a
+  // cascade alone for tenant-level teardown. tenant_id itself is a plain
+  // NO ACTION FK (like every other tenant-scoped table here), so this
+  // must run before the tenants delete regardless.
+  await testDb`delete from notification_events where tenant_id in ${testDb(tenantIds)}`;
   // booking_account_claims: NO ACTION on both its composite FKs
   // (appointment_id, tenant_id) and (customer_id, tenant_id) — a claim
   // row still pointing at either blocks the deletes just below, same

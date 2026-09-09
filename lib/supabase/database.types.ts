@@ -558,6 +558,51 @@ export type Database = {
         }
         Relationships: []
       }
+      notification_events: {
+        Row: {
+          actor_user_id: string | null
+          appointment_id: string
+          created_at: string
+          event_data: Json
+          event_type: string
+          id: string
+          tenant_id: string
+        }
+        Insert: {
+          actor_user_id?: string | null
+          appointment_id: string
+          created_at?: string
+          event_data?: Json
+          event_type: string
+          id?: string
+          tenant_id: string
+        }
+        Update: {
+          actor_user_id?: string | null
+          appointment_id?: string
+          created_at?: string
+          event_data?: Json
+          event_type?: string
+          id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_events_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_preferences: {
         Row: {
           assignment_change: boolean
