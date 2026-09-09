@@ -35,6 +35,18 @@ let tenant: { id: string; slug: string };
 let branchId: string;
 let serviceId: string;
 let staffId: string;
+// Faz NOTIF.2A.2 — extra per-test users whose OWN action (a real
+// cancel_my_appointment RPC call, signed in as them) writes an audit_logs
+// row via private.log_audit_event — audit_logs.actor_user_id has no
+// cascade, so deleting one of these users can only ever happen AFTER
+// cleanupTenants below has already deleted this tenant's audit_logs rows,
+// never inline inside the test itself (root cause confirmed by reading
+// audit_logs' own FK: `actor_user_id uuid references auth.users (id)`,
+// no ON DELETE clause — Postgres's default NO ACTION — see
+// 20260815120013). Collected here instead of a bespoke per-test
+// cleanupUsers call, matching the order this file's own afterAll already
+// uses correctly for owner/manager/accountUser/otherUser.
+const extraAuditActorUsers: string[] = [];
 
 function hoursFromNow(hours: number): Date {
   return new Date(Date.now() + hours * 3600_000);
@@ -141,7 +153,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await testDb`delete from customer_account_links where tenant_id = ${tenant.id}`;
   await cleanupTenants([tenant.id]);
-  await cleanupUsers([owner.id, manager.id, accountUser.id, otherUser.id]);
+  await cleanupUsers([owner.id, manager.id, accountUser.id, otherUser.id, ...extraAuditActorUsers]);
 });
 
 describe("policy defaults and settings.manage RLS", () => {
@@ -454,7 +466,11 @@ describe("ownership", () => {
     const { data, error } = await cancelAs(primaryUser, appointmentId);
     expect(error).toBeNull();
     expect(data).toMatchObject({ status: "cancelled" });
-    await cleanupUsers([primaryUser.id]);
+    // NOT cleaned up here: the cancel call just above wrote an audit_logs
+    // row (actor_user_id = primaryUser.id) that only this file's own
+    // afterAll's cleanupTenants can remove first — see
+    // extraAuditActorUsers' own comment above.
+    extraAuditActorUsers.push(primaryUser.id);
   });
 
   it("a NON-primary (historical) linked appointment is also manageable — all active links count, not only primary", async () => {

@@ -38,6 +38,15 @@ let tenantB: TestTenant;
 let ownerA: TestUser;
 let limitedA: TestUser; // staff.view/services.view/schedules.view only
 let secondUserA: TestUser; // for same-tenant membership linking
+// Faz NOTIF.2A.2 — hoisted to module scope (was a local `const` inside
+// beforeAll). ownerB exists only to bootstrap tenantB via
+// createTestTenant(slug, ownerB.id), which also creates a
+// tenant_memberships row for ownerB in tenantB — that row (and tenantB
+// itself) aren't gone until the outer afterAll's cleanupTenants call
+// below, so ownerB can't be deleted until AFTER that call, not inline
+// inside beforeAll (root cause: deleting an auth user while a
+// tenant_memberships row still references it fails).
+let ownerB: TestUser;
 let ownerAClient: SupabaseClient;
 let limitedAClient: SupabaseClient;
 
@@ -49,7 +58,7 @@ beforeAll(async () => {
   ownerA = await createTestUser("p2b-owner-a");
   limitedA = await createTestUser("p2b-limited-a");
   secondUserA = await createTestUser("p2b-second-a");
-  const ownerB = await createTestUser("p2b-owner-b");
+  ownerB = await createTestUser("p2b-owner-b");
 
   tenantA = await createTestTenant("test-p2b-a", ownerA.id);
   tenantB = await createTestTenant("test-p2b-b", ownerB.id);
@@ -76,13 +85,11 @@ beforeAll(async () => {
 
   ownerAClient = await signInAs(ownerA);
   limitedAClient = await signInAs(limitedA);
-
-  await cleanupUsers([ownerB.id]);
 }, 45000);
 
 afterAll(async () => {
   await cleanupTenants([tenantA.id, tenantB.id]);
-  await cleanupUsers([ownerA.id, limitedA.id, secondUserA.id]);
+  await cleanupUsers([ownerA.id, limitedA.id, secondUserA.id, ownerB.id]);
 }, 45000);
 
 describe("staff — same-tenant membership linking", () => {

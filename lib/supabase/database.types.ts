@@ -558,6 +558,41 @@ export type Database = {
         }
         Relationships: []
       }
+      notification_preferences: {
+        Row: {
+          assignment_change: boolean
+          cancellation: boolean
+          new_appointment: boolean
+          reschedule: boolean
+          tenant_membership_id: string
+          updated_at: string
+        }
+        Insert: {
+          assignment_change?: boolean
+          cancellation?: boolean
+          new_appointment?: boolean
+          reschedule?: boolean
+          tenant_membership_id: string
+          updated_at?: string
+        }
+        Update: {
+          assignment_change?: boolean
+          cancellation?: boolean
+          new_appointment?: boolean
+          reschedule?: boolean
+          tenant_membership_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_preferences_tenant_membership_id_fkey"
+            columns: ["tenant_membership_id"]
+            isOneToOne: true
+            referencedRelation: "tenant_memberships"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       permissions: {
         Row: {
           category: string
@@ -719,6 +754,53 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      push_subscriptions: {
+        Row: {
+          auth_key: string
+          created_at: string
+          device_label: string | null
+          endpoint: string
+          id: string
+          last_seen_at: string
+          p256dh: string
+          revoked_at: string | null
+          tenant_membership_id: string
+          updated_at: string
+        }
+        Insert: {
+          auth_key: string
+          created_at?: string
+          device_label?: string | null
+          endpoint: string
+          id?: string
+          last_seen_at?: string
+          p256dh: string
+          revoked_at?: string | null
+          tenant_membership_id: string
+          updated_at?: string
+        }
+        Update: {
+          auth_key?: string
+          created_at?: string
+          device_label?: string | null
+          endpoint?: string
+          id?: string
+          last_seen_at?: string
+          p256dh?: string
+          revoked_at?: string | null
+          tenant_membership_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_subscriptions_tenant_membership_id_fkey"
+            columns: ["tenant_membership_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_memberships"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       role_permissions: {
         Row: {
@@ -1506,6 +1588,10 @@ export type Database = {
         Args: { p_tenant_slug: string }
         Returns: Json
       }
+      get_my_notification_preferences: {
+        Args: { p_tenant_id: string }
+        Returns: Json
+      }
       get_my_reschedule_slots: {
         Args: { p_appointment_id: string; p_date: string }
         Returns: Json
@@ -1566,12 +1652,30 @@ export type Database = {
         Args: { p_code_hash: string; p_customer_id: string }
         Returns: Json
       }
+      list_my_devices: {
+        Args: { p_tenant_id: string }
+        Returns: Json
+      }
+      remove_push_subscription: {
+        Args: { p_subscription_id: string }
+        Returns: undefined
+      }
       reschedule_appointment: {
         Args: { p_appointment_id: string; p_items: Json }
         Returns: undefined
       }
       reschedule_my_appointment: {
         Args: { p_appointment_id: string; p_new_start_at: string }
+        Returns: Json
+      }
+      save_push_subscription: {
+        Args: {
+          p_auth_key: string
+          p_device_label?: string | null
+          p_endpoint: string
+          p_p256dh: string
+          p_tenant_id: string
+        }
         Returns: Json
       }
       search_customers: {
@@ -1691,6 +1795,16 @@ export type Database = {
       }
       update_my_account_profile: {
         Args: { p_full_name: string; p_phone?: string }
+        Returns: Json
+      }
+      update_my_notification_preferences: {
+        Args: {
+          p_assignment_change?: boolean | null
+          p_cancellation?: boolean | null
+          p_new_appointment?: boolean | null
+          p_reschedule?: boolean | null
+          p_tenant_id: string
+        }
         Returns: Json
       }
       update_role_permissions: {

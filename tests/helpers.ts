@@ -284,6 +284,22 @@ export async function cleanupTenants(tenantIds: string[]): Promise<void> {
 
   await testDb`delete from audit_logs where tenant_id in ${testDb(tenantIds)}`;
   await testDb`delete from branches where tenant_id in ${testDb(tenantIds)}`;
+
+  // Faz NOTIF.2A: push_subscriptions/notification_preferences have no
+  // tenant_id column of their own (see that migration's own header for
+  // why) — only reachable here via tenant_memberships, so their ids
+  // must be collected before the tenant_memberships delete just below,
+  // same "collect child ids first" shape as the staff_services block
+  // above.
+  const memberships = await testDb<{ id: string }[]>`
+    select id from tenant_memberships where tenant_id in ${testDb(tenantIds)}
+  `;
+  const membershipIds = memberships.map((m) => m.id);
+  if (membershipIds.length > 0) {
+    await testDb`delete from push_subscriptions where tenant_membership_id in ${testDb(membershipIds)}`;
+    await testDb`delete from notification_preferences where tenant_membership_id in ${testDb(membershipIds)}`;
+  }
+
   await testDb`delete from tenant_memberships where tenant_id in ${testDb(tenantIds)}`;
   // tenant_features: not written by any fixture helper above (no
   // createXxx wrapper for it) — Faz 2F is the first test file to insert
@@ -430,9 +446,55 @@ export async function createScheduleException(
   return row.id;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Faz NOTIF.2A.1 — hardens a real defect NOTIF.2A's own cumulative test
+ * load surfaced: this function used to call
+ * admin.auth.admin.deleteUser(id) and discard its {error} entirely, so
+ * a transient/rate-limited admin-API failure was silently swallowed —
+ * the calling test still reported PASS while the fixture user was left
+ * behind (9 were found orphaned in DEV after NOTIF.2A's own repeated
+ * full-suite reruns). Every deleteUser call's error is now inspected.
+ * "User not found" is treated as the benign case it actually is — the
+ * end state (no such user) is exactly what cleanup wants, whether this
+ * call or an earlier one achieved it — and is neither retried nor
+ * thrown. Any OTHER error (rate limit, transient network failure, etc.)
+ * gets a small bounded number of retries with real backoff between
+ * them; if every attempt still fails, this throws — loudly, on
+ * purpose, so the test run itself fails rather than reporting a false
+ * PASS with a fixture user still in DEV. No infinite retry: 4 attempts
+ * total per user, capped backoff, never open-ended.
+ */
+async function deleteUserWithRetry(userId: string): Promise<void> {
+  const maxAttempts = 4;
+  const backoffMs = [500, 1500, 4000];
+  let lastError: string | undefined;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const { error } = await admin.auth.admin.deleteUser(userId);
+    if (!error) return;
+
+    // Already gone (e.g. a test's own inline cleanup already deleted it,
+    // or a previous attempt in this same loop actually succeeded but
+    // the response was lost) — this IS cleanup's desired end state, not
+    // a failure to report or retry. "user_not_found" is GoTrue's own
+    // precise error code for this — checked directly, not inferred from
+    // matching the message text.
+    if (error.code === "user_not_found") return;
+
+    lastError = error.message;
+    if (attempt < maxAttempts) await sleep(backoffMs[attempt - 1]);
+  }
+
+  throw new Error(`cleanupUsers: failed to delete user ${userId} after ${maxAttempts} attempts: ${lastError}`);
+}
+
 export async function cleanupUsers(userIds: string[]): Promise<void> {
   for (const id of userIds) {
-    await admin.auth.admin.deleteUser(id);
+    await deleteUserWithRetry(id);
   }
 }
 

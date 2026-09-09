@@ -35,6 +35,19 @@ import {
 let owner: TestUser;
 let tenant: { id: string; slug: string };
 let branchId: string;
+// Faz NOTIF.2A.2 — extra per-test users whose OWN action (a real
+// reschedule/cancel RPC call, signed in as them) writes an audit_logs
+// row via private.log_audit_event — audit_logs.actor_user_id has no
+// cascade, so deleting one of these users can only ever happen AFTER
+// cleanupTenants below has already deleted this tenant's audit_logs
+// rows, never inline inside the test itself (root cause confirmed by
+// reading audit_logs' own FK: `actor_user_id uuid references
+// auth.users (id)`, no ON DELETE clause — Postgres's default NO ACTION
+// — see 20260815120013). Collected here instead of a bespoke per-test
+// cleanupUsers call, matching the existing cleanupTenants-then-
+// cleanupUsers order this file's own afterAll already uses correctly
+// for `owner`.
+const extraAuditActorUsers: string[] = [];
 
 // Faz 2H.0 — every fixture below uses safeMorningStart (hoisted into
 // helpers.ts), not a fixed hoursFromNow(N): none of these tests assert
@@ -66,7 +79,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await cleanupTenants([tenant.id]);
-  await cleanupUsers([owner.id]);
+  await cleanupUsers([owner.id, ...extraAuditActorUsers]);
 });
 
 describe("new staff booking — create_appointment cannot be repriced by the caller", () => {
@@ -243,7 +256,11 @@ describe("customer reschedule — no field exists to inject a snapshot through",
     expect(item!.duration_minutes).toBe(30);
     expect(Number(item!.price)).toBe(200);
 
-    await cleanupUsers([custAuth.id]);
+    // NOT cleaned up here: the reschedule call just above wrote an
+    // audit_logs row (actor_user_id = custAuth.id) that only this
+    // file's own afterAll's cleanupTenants can remove first — see
+    // extraAuditActorUsers' own comment above.
+    extraAuditActorUsers.push(custAuth.id);
   });
 });
 

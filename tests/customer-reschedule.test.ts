@@ -33,6 +33,18 @@ let accountUser: TestUser;
 let otherUser: TestUser;
 let tenant: { id: string; slug: string };
 let branchId: string;
+// Faz NOTIF.2A.2 — extra per-test users whose OWN action (a real
+// reschedule_my_appointment RPC call, signed in as them) writes an
+// audit_logs row via private.log_audit_event — audit_logs.actor_user_id
+// has no cascade, so deleting one of these users can only ever happen
+// AFTER cleanupTenants below has already deleted this tenant's audit_logs
+// rows, never inline inside the test itself (root cause confirmed by
+// reading audit_logs' own FK: `actor_user_id uuid references auth.users
+// (id)`, no ON DELETE clause — Postgres's default NO ACTION — see
+// 20260815120013). Collected here instead of a bespoke per-test
+// cleanupUsers call, matching the order this file's own afterAll already
+// uses correctly for owner/accountUser/otherUser.
+const extraAuditActorUsers: string[] = [];
 
 // hoursFromNow/safeMorningStart now live in helpers.ts (Faz 2H.0 —
 // hoisted so every test file reaches for the same two, instead of each
@@ -149,7 +161,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await testDb`delete from customer_account_links where tenant_id = ${tenant.id}`;
   await cleanupTenants([tenant.id]);
-  await cleanupUsers([owner.id, accountUser.id, otherUser.id]);
+  await cleanupUsers([owner.id, accountUser.id, otherUser.id, ...extraAuditActorUsers]);
 });
 
 describe("no stale overload after the signature changes", () => {
@@ -354,7 +366,11 @@ describe("ownership", () => {
     const { appointmentId } = await createLinkedAppointment({ userId: primaryUser.id, status: "scheduled", start: start15, items: [{ durationMinutes: 30, price: 100, offsetMinutes: 0 }], isPrimary: true });
     const { error } = await rescheduleAs(primaryUser, appointmentId, new Date(start15.getTime() + 2 * 3600_000));
     expect(error).toBeNull();
-    await cleanupUsers([primaryUser.id]);
+    // NOT cleaned up here: the reschedule call just above wrote an
+    // audit_logs row (actor_user_id = primaryUser.id) that only this
+    // file's own afterAll's cleanupTenants can remove first — see
+    // extraAuditActorUsers' own comment above.
+    extraAuditActorUsers.push(primaryUser.id);
   });
 
   it("a NON-primary linked appointment is also manageable — all active links count", async () => {

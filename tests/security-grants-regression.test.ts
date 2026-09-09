@@ -199,6 +199,21 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   // revoke from public and are never granted to authenticated directly —
   // only this public wrapper is.
   "public.get_staff_utilization",
+  // Faz NOTIF.2A (20260908090000) — push subscription and notification
+  // preference RPCs. Authenticated only, never anon: every one derives
+  // identity from auth.uid() and re-derives the caller's own active
+  // tenant membership internally (same is_tenant_member/has_permission
+  // predicate shape), never accepting a membership id, user id, or
+  // tenant id it doesn't independently verify. The private.* functions
+  // they wrap are NOT referenced from any RLS policy (unlike
+  // is_tenant_member/has_permission above), so — same reasoning as
+  // get_staff_utilization's own private helper — they carry no direct
+  // authenticated grant and correctly do not appear in this list.
+  "public.save_push_subscription",
+  "public.remove_push_subscription",
+  "public.list_my_devices",
+  "public.get_my_notification_preferences",
+  "public.update_my_notification_preferences",
 ];
 
 // Phase 2F's public read surface — the only functions anon has ever
