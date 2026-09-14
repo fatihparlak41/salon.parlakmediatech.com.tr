@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 
@@ -11,6 +11,39 @@ const fontSans = Plus_Jakarta_Sans({
 export const metadata: Metadata = {
   title: "SalonOS",
   description: "Kuaför ve güzellik salonları için operasyon platformu",
+  applicationName: "SalonOS",
+  // Faz NOTIF.2C / 2C.2 — PWA. Emits <link rel="manifest">, the Apple
+  // standalone meta tags, and the icon <link>s below. app/favicon.ico is
+  // picked up automatically. No hand-written apple-mobile-web-app-* tags
+  // here — Next generates them from `appleWebApp`.
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "SalonOS",
+    statusBarStyle: "default",
+  },
+  // Static PNGs cropped from the genuine SalonOS gold emblem (emblem
+  // only) — see scripts/generate-pwa-icons.mjs. apple-touch icon is
+  // opaque for reliable iOS rendering.
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/apple-icon-180.png", sizes: "180x180", type: "image/png" }],
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  // Matches the app's real surface colour so the browser/OS chrome does
+  // not flash a foreign colour. Values are the design-system --background
+  // token (app/globals.css), light and dark.
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#fdfbf9" },
+    { media: "(prefers-color-scheme: dark)", color: "#110c09" },
+  ],
 };
 
 /**

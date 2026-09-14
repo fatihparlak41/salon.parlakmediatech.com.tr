@@ -67,5 +67,11 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|auth|_next|_vercel|.*\\..*).*)"],
+  // Faz NOTIF.2C — `icon` and `apple-icon` (Next's app/icon.tsx +
+  // app/apple-icon.tsx generated routes) are dotless, so the trailing
+  // `.*\..*` file exclusion below does not catch them; without them here
+  // next-intl's routing swallows the request and the PWA icons 404.
+  // manifest.webmanifest / sw.js / sw-helpers.js already pass via the
+  // dotted-path rule.
+  matcher: ["/((?!api|auth|_next|_vercel|icon\\b|apple-icon\\b|.*\\..*).*)"],
 };

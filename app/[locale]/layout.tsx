@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { routing, type AppLocale } from "@/lib/i18n/routing";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
@@ -31,6 +32,7 @@ export default async function LocaleLayout({
       <NextIntlClientProvider messages={messages}>
         {children}
         <Toaster />
+        <ServiceWorkerRegister />
       </NextIntlClientProvider>
     </ThemeProvider>
   );

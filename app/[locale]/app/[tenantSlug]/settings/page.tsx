@@ -6,6 +6,7 @@ import { getOwnerManagedBranches } from "@/lib/modules/branches/queries";
 import { SelfServicePolicyForm } from "@/components/settings/self-service-policy-form";
 import { OnlineBookingToggle } from "@/components/settings/online-booking-toggle";
 import { BranchContactForm } from "@/components/settings/branch-contact-form";
+import { NotificationSettingsCard } from "@/components/settings/notification-settings-card";
 
 export default async function SettingsPage({
   params,
@@ -46,6 +47,7 @@ export default async function SettingsPage({
         initialPolicy={policy}
       />
       {branches.length > 0 && <BranchContactForm tenantSlug={tenantSlug} branches={branches} />}
+      <NotificationSettingsCard />
     </div>
   );
 }

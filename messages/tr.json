@@ -398,6 +398,21 @@
       "minutes": "dakika",
       "hours": "saat",
       "days": "gün"
+    },
+    "notifications": {
+      "heading": "Bildirimler",
+      "description": "Randevu hareketlerinden bu cihazda anında haberdar olun.",
+      "checking": "Kontrol ediliyor…",
+      "unsupported": "Bu cihaz veya tarayıcı bildirimleri desteklemiyor.",
+      "iosInstall": {
+        "title": "Bildirimleri kullanmak için SalonOS'u Ana Ekrana ekleyin.",
+        "steps": "Safari'de paylaş menüsünü açıp \"Ana Ekrana Ekle\"ye dokunun, sonra SalonOS'u Ana Ekran simgesinden açın."
+      },
+      "enablePrompt": "İzin verdiğinizde yeni randevu ve değişiklikler size bildirim olarak gelir.",
+      "enableAction": "Bildirimleri Aç",
+      "granted": "Bildirim izni verildi",
+      "deniedTitle": "Bildirimler kapalı",
+      "deniedHelp": "Bildirimleri açmak için cihazınızın veya tarayıcınızın ayarlarından SalonOS bildirim iznini yeniden etkinleştirin."
     }
   },
   "SuperAdmin": {
