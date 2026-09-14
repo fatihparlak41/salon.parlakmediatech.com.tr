@@ -47,7 +47,10 @@ export default async function SettingsPage({
         initialPolicy={policy}
       />
       {branches.length > 0 && <BranchContactForm tenantSlug={tenantSlug} branches={branches} />}
-      <NotificationSettingsCard />
+      <NotificationSettingsCard
+        tenantId={access.tenant.id}
+        vapidPublicKey={process.env.NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY}
+      />
     </div>
   );
 }

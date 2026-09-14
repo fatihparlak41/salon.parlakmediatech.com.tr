@@ -214,6 +214,14 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   "public.list_my_devices",
   "public.get_my_notification_preferences",
   "public.update_my_notification_preferences",
+  // Faz NOTIF.2D (20260914120000) originally added
+  // public.get_my_push_subscriptions_for_test_send here — a real security
+  // gap: authenticated could call it directly from browser JS and read
+  // another device's raw endpoint/p256dh/auth_key, "scoped to my own
+  // membership + settings.manage" notwithstanding. Faz NOTIF.2D.1
+  // (20260914121000) dropped that function entirely and replaced it with
+  // a service_role-only one (see SERVICE_ROLE_FUNCTION_WHITELIST below) —
+  // authenticated has zero path to this material now, full stop.
 ];
 
 // Phase 2F's public read surface — the only functions anon has ever
@@ -237,6 +245,19 @@ const ANON_FUNCTION_WHITELIST = [
 // SECURITY DEFINER and does all its own table access as its owner), no
 // private.* grant, no membership in any other role.
 const BOOKING_GATEWAY_FUNCTION_WHITELIST = ["public.create_guest_booking"];
+
+// Faz NOTIF.2D.1 — the FIRST-EVER application-runtime function grant to
+// service_role (20260914121000). Everything before this phase was test-
+// fixture-only (tests/helpers.ts's admin client, reached through
+// TESTDB-adjacent table grants, never a function grant) — this is a
+// deliberate, narrow addition, not a relaxation: exactly-matches-the-
+// whitelist, same pattern as ANON_FUNCTION_WHITELIST above, not "zero
+// grants" relaxed to "anything goes". get_push_subscriptions_for_test_send
+// takes p_tenant_id + p_user_id explicitly (service_role has no
+// auth.uid()) and is called only from lib/modules/settings/actions.ts's
+// sendTestPushNotificationAction, only AFTER that action has already
+// verified settings.manage through the normal user-session path.
+const SERVICE_ROLE_FUNCTION_WHITELIST = ["public.get_push_subscriptions_for_test_send"];
 
 // Expected output of security_audit_default_privileges() in a healthy
 // environment: zero rows for anon/authenticated (any row for either
@@ -337,9 +358,12 @@ describe("security grants regression", () => {
     // MAINTAIN/REFERENCES/TRIGGER/TRUNCATE are PROD's own pre-existing
     // default for service_role (see EXPECTED_DEFAULT_PRIVILEGES above) —
     // schema-maintenance privileges, not data access. Everything else —
-    // SELECT/INSERT/UPDATE/DELETE, on any table — must be absent: no
-    // runtime caller exists for createAdminClient() today, and fixture
-    // setup/teardown now goes through testDb, not service_role.
+    // SELECT/INSERT/UPDATE/DELETE, on any table — must be absent. Faz
+    // NOTIF.2D.1 gave createAdminClient() its first runtime caller, but
+    // that caller only ever executes one SECURITY DEFINER function
+    // (see SERVICE_ROLE_FUNCTION_WHITELIST) — it never touches any
+    // table directly, so this table-level check is unaffected. Fixture
+    // setup/teardown still goes through testDb, not service_role.
     const data = await testDb<TableGrantRow[]>`select * from security_audit_table_grants()`;
     const dmlGrants = data.filter(
       (g) => g.grantee === "service_role" && !["MAINTAIN", "REFERENCES", "TRIGGER", "TRUNCATE"].includes(g.privilege_type),
@@ -347,14 +371,25 @@ describe("security grants regression", () => {
     expect(dmlGrants).toEqual([]);
   });
 
-  it("service_role has zero function execute grants", async () => {
+  it("service_role's function execute grants exactly match the whitelist (Faz NOTIF.2D.1's one narrow addition, nothing else)", async () => {
     // Including the security_audit_*() functions this file itself
     // calls — they're reached through testDb (a direct Postgres
     // connection), not through service_role, specifically so this
-    // suite needs no grant of its own to run.
+    // suite needs no grant of its own to run. Was a blind "zero grants"
+    // check through Faz NOTIF.2D — NOTIF.2D.1 is the first phase to
+    // intentionally grant service_role anything at the application
+    // runtime layer; see SERVICE_ROLE_FUNCTION_WHITELIST above.
     const data = await testDb<FunctionGrantRow[]>`select * from security_audit_function_grants()`;
-    const serviceRoleGrants = data.filter((g) => g.grantee === "service_role");
-    expect(serviceRoleGrants).toEqual([]);
+    const actual = new Set(
+      data.filter((g) => g.grantee === "service_role").map((g) => `${g.schema_name}.${g.function_name}`),
+    );
+
+    for (const fn of SERVICE_ROLE_FUNCTION_WHITELIST) {
+      expect(actual.has(fn), `expected service_role to have execute on ${fn}`).toBe(true);
+      actual.delete(fn);
+    }
+
+    expect(Array.from(actual), "unexpected service_role execute grants").toEqual([]);
   });
 
   it("authenticated's table grants exactly match the whitelist", async () => {

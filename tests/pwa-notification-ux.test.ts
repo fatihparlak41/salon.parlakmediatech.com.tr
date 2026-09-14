@@ -29,6 +29,34 @@ function codeOnly(src: string): string {
   return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 }
 
+// Every call to `fnName(...)`, sliced by counting parens from the `(`
+// immediately after the name to its true matching `)` — unlike a lazy
+// regex (`fnName\([\s\S]*?\)`), this can't bridge past the call's own
+// close into a LATER, unrelated call that happens to close the same way
+// (e.g. another hook's own trailing `, []);`), which is exactly the trap
+// a naive regex falls into once a file has more than one hook call.
+function extractCalls(src: string, fnName: string): string[] {
+  const calls: string[] = [];
+  const marker = `${fnName}(`;
+  let searchFrom = 0;
+  for (;;) {
+    const start = src.indexOf(marker, searchFrom);
+    if (start === -1) break;
+    let depth = 0;
+    let end = start + marker.length - 1;
+    for (; end < src.length; end++) {
+      if (src[end] === "(") depth++;
+      else if (src[end] === ")") {
+        depth--;
+        if (depth === 0) break;
+      }
+    }
+    calls.push(src.slice(start, end + 1));
+    searchFrom = end + 1;
+  }
+  return calls;
+}
+
 // Load the SW helper the same way the Service Worker does (classic
 // script, attaches to `self`) so tests hit the exact shipped code.
 function loadSwHelpers() {
@@ -276,10 +304,14 @@ describe("permission UX state", () => {
     const callIdx = card.indexOf("requestNotificationPermissionOnGesture(");
     expect(handlerIdx).toBeGreaterThan(-1);
     expect(callIdx).toBeGreaterThan(handlerIdx);
-    // No useEffect body contains a permission request.
-    for (const m of card.matchAll(/useEffect\([\s\S]*?\n {2}\}, \[\]\);/g)) {
-      expect(m[0]).not.toContain("requestNotificationPermission");
-      expect(m[0]).not.toMatch(/requestPermission/);
+    // No useEffect body contains a permission request. Faz NOTIF.2D added
+    // a second useEffect (device-subscription reconciliation, deps
+    // [granted, tenantId]) — extractCalls slices each call by matching
+    // parens rather than a lazy regex, so it can't bridge past this
+    // effect's own close into some unrelated LATER hook's closing text.
+    for (const effectCall of extractCalls(card, "useEffect")) {
+      expect(effectCall).not.toContain("requestNotificationPermission");
+      expect(effectCall).not.toMatch(/requestPermission/);
     }
     expect(card).toContain("onClick={handleEnableClick}");
   });
@@ -377,12 +409,28 @@ describe("security / regression", () => {
     expect(sources).not.toMatch(/service_role|SERVICE_ROLE|supabase\/admin/i);
   });
 
-  it("22. no VAPID / application server key introduced", () => {
-    expect(sources).not.toMatch(/vapid|applicationServerKey/i);
+  // 22/23 originally asserted that NOTHING in NEW_FILES mentioned VAPID or
+  // created a PushSubscription — true for Faz NOTIF.2C, deliberately no
+  // longer true since Faz NOTIF.2D added the real subscription flow to
+  // notification-settings-card.tsx (see tests/push-subscription.test.ts
+  // for that phase's own, much larger regression suite). What must still
+  // hold, and is what these two now check, is the boundary NOTIF.2C's own
+  // doc comment promises: the permission-only modules never grow VAPID or
+  // subscription logic, no matter what later phases add elsewhere.
+  it("22. VAPID / application server key logic never leaks into the permission-only modules", () => {
+    // codeOnly: the NOTIF.2C doc comment on notification-permission.ts
+    // itself SAYS "This module NEVER touches ... VAPID ..." — that
+    // comment must not trip this same check, so strip comments first,
+    // same as the file-level `sources` above already does.
+    expect(codeOnly(read("lib/pwa/notification-permission.ts"))).not.toMatch(/vapid|applicationServerKey/i);
+    expect(codeOnly(read("lib/pwa/use-notification-env.ts"))).not.toMatch(/vapid|applicationServerKey/i);
   });
 
-  it("23. no PushSubscription created / saved", () => {
-    expect(sources).not.toMatch(/pushManager\.subscribe|\.subscribe\(|save_push_subscription|getSubscription/);
+  it("23. PushSubscription creation never leaks into the permission-only modules", () => {
+    const permissionSrc = codeOnly(read("lib/pwa/notification-permission.ts"));
+    const envSrc = codeOnly(read("lib/pwa/use-notification-env.ts"));
+    expect(permissionSrc).not.toMatch(/pushManager\.subscribe|\.subscribe\(|save_push_subscription|getSubscription/);
+    expect(envSrc).not.toMatch(/pushManager\.subscribe|\.subscribe\(|save_push_subscription|getSubscription/);
     // A capability check for the PushManager interface is allowed and is
     // NOT a subscription.
     expect(read("lib/pwa/notification-permission.ts")).toContain('"PushManager" in window');

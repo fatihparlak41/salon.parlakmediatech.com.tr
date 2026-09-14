@@ -1663,6 +1663,10 @@ export type Database = {
         }
         Returns: Json
       }
+      get_push_subscriptions_for_test_send: {
+        Args: { p_tenant_id: string; p_user_id: string }
+        Returns: Json
+      }
       get_staff_performance_summary: {
         Args: {
           p_branch_id?: string | null
