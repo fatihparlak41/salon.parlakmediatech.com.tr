@@ -235,23 +235,6 @@ export async function removePushSubscriptionAction(
 }
 
 /**
- * Faz NOTIF.2D, Steps 11-14 — the ONE manual test-send path. Not a
- * generic notification sender: the payload is fixed (see
- * lib/pwa/web-push-server.ts), nothing from the browser reaches it
- * except tenantId. Authorization is the new get_my_push_subscriptions_
- * for_test_send RPC's own job (active membership + settings.manage,
- * 20260914120000) — this action does not duplicate that check, only
- * maps its errors, matching updateOnlineBookingSettingAction's own
- * "settings.manage required" mapping exactly.
- *
- * Sends to every one of the caller's own active subscriptions for this
- * tenant (ordinarily one, but never assumes that). A 404/410 from the
- * push service soft-revokes only that one row via the existing
- * remove_push_subscription RPC — transient failures never revoke
- * anything. "sent" means the push service accepted the request for at
- * least one device, not that it has visibly appeared on any screen.
- */
-/**
  * Faz NOTIF.2D.1 — security correction. The original version called an
  * `authenticated`-grantable RPC that returned raw endpoint/p256dh/
  * auth_key — reachable directly from browser devtools regardless of
@@ -285,7 +268,7 @@ export async function sendTestPushNotificationAction(
   }
 
   const admin = createAdminClient();
-  const { data, error } = await admin.rpc("get_push_subscriptions_for_test_send", {
+  const { data, error, status, statusText } = await admin.rpc("get_push_subscriptions_for_test_send", {
     p_tenant_id: input.tenantId,
     p_user_id: user.id,
   });
@@ -294,9 +277,27 @@ export async function sendTestPushNotificationAction(
     if (error.code === "NF003") {
       return fail("UNAUTHORIZED", "Bu işlem için aktif bir üyeliğiniz yok");
     }
+    // Faz NOTIF.2D.2 — the previous version of this log line printed
+    // only `code`, which is undefined for whole classes of failure
+    // (an auth-layer rejection from an invalid/wrong-project service
+    // key, a network error) and left a real PROD failure
+    // undiagnosable. PostgrestError's own fields, in the order its own
+    // doc comment recommends reading them (hint first — Postgres often
+    // puts the actual fix there, not in message): name, message, code,
+    // details, hint, plus the HTTP status/statusText that PostgREST
+    // returns alongside the error (a sibling of `error`, not a field on
+    // it). None of these can ever contain the service_role key, the
+    // VAPID private key, or subscription material — they only ever
+    // describe the RPC call's own outcome.
     console.error("[sendTestPushNotificationAction] read failed", {
       tenantId: input.tenantId,
+      name: error.name,
+      message: error.message,
       code: error.code,
+      details: error.details,
+      hint: error.hint,
+      status,
+      statusText,
     });
     return fail("UNEXPECTED", "Test bildirimi gönderilemedi, lütfen tekrar deneyin");
   }

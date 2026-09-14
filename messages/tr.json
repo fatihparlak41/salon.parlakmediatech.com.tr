@@ -420,6 +420,7 @@
       "testSendAction": "Test bildirimi gönder",
       "testSending": "Gönderiliyor…",
       "testSent": "Test bildirimi gönderildi. Birkaç saniye içinde cihazınızda görünmeli.",
+      "testSendError": "Test bildirimi gönderilemedi, lütfen tekrar deneyin.",
       "disconnectAction": "Bu cihazda bildirimleri kapat",
       "disconnecting": "Kapatılıyor…",
       "disconnectError": "Bildirimler bu cihazda kapatılamadı, lütfen tekrar deneyin.",

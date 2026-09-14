@@ -196,13 +196,25 @@ export function NotificationSettingsCard({
 
   const handleTestSendClick = useCallback(async () => {
     setTestSend({ status: "sending" });
-    const result = await sendTestPushNotificationAction(null, { tenantId });
-    if (result.success) {
-      setTestSend({ status: "sent" });
-    } else {
-      setTestSend({ status: "error", message: result.error.message });
+    try {
+      const result = await sendTestPushNotificationAction(null, { tenantId });
+      if (result.success) {
+        setTestSend({ status: "sent" });
+      } else {
+        setTestSend({ status: "error", message: result.error.message });
+      }
+    } catch {
+      // Faz NOTIF.2D.2 — sendTestPushNotificationAction is designed to
+      // always return an ActionResult, never throw, but a Server Action
+      // call can still reject the promise it returns (a misconfigured
+      // server-only client throwing during construction — confirmed as
+      // PROD's own first failure, "Error: supabaseKey is required" —
+      // or requireUser()'s redirect() on an expired session). Without
+      // this catch, that left the button on "Gönderiliyor…" forever
+      // with no feedback at all.
+      setTestSend({ status: "error", message: t("testSendError") });
     }
-  }, [tenantId]);
+  }, [tenantId, t]);
 
   return (
     <div className="flex flex-col gap-4 rounded-lg border p-5">

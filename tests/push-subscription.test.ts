@@ -548,6 +548,48 @@ describe("sendTestPushNotificationAction", () => {
     expect(JSON.stringify(result)).not.toMatch(/p256dh|authKey|endpoint/i);
     expect(result).toEqual({ success: true, data: { sent: true } });
   });
+
+  // Faz NOTIF.2D.2 — a real PROD failure logged only `{tenantId, code:
+  // undefined}` for an admin.rpc() error, which is exactly why the real
+  // root cause (a PROD-side credential/environment issue, confirmed via
+  // a live DEV probe using the unmodified createAdminClient()) couldn't
+  // be diagnosed from the log alone. These tests lock in the fix: every
+  // field PostgrestError actually carries, plus the HTTP status/
+  // statusText .rpc() returns alongside it (a sibling of `error`, not a
+  // field on it — easy to miss).
+  it("24. a failed admin RPC read logs the full diagnostic shape — name, message, code, details, hint, status, statusText", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    adminRpcMock.mockResolvedValueOnce({
+      data: null,
+      error: { name: "PostgrestError", message: "Invalid API key", code: "", details: "", hint: "" },
+      status: 401,
+      statusText: "Unauthorized",
+    });
+    const { sendTestPushNotificationAction } = await loadActions();
+    await sendTestPushNotificationAction(null, { tenantId: "tenant-1" });
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "[sendTestPushNotificationAction] read failed",
+      expect.objectContaining({
+        tenantId: "tenant-1",
+        name: "PostgrestError",
+        message: "Invalid API key",
+        code: "",
+        details: "",
+        hint: "",
+        status: 401,
+        statusText: "Unauthorized",
+      }),
+    );
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("25. the diagnostic log can never contain a secret — it only ever carries PostgrestError's own fields and the HTTP status, never a raw header/key/subscription value", () => {
+    const src = read("lib/modules/settings/actions.ts");
+    const logCallStart = src.indexOf('console.error("[sendTestPushNotificationAction] read failed"');
+    const logCallBody = src.slice(logCallStart, src.indexOf("});", logCallStart));
+    expect(logCallBody).not.toMatch(/SUPABASE_SERVICE_ROLE_KEY|VAPID|Authorization|p256dh|authKey|endpoint/i);
+  });
 });
 
 // ================== CLIENT MODULE / COMPONENT CONTRACTS ==================
@@ -640,6 +682,41 @@ describe("client wrapper contracts", () => {
     const messages = JSON.parse(read("messages/tr.json"));
     const notifStrings = JSON.stringify(messages.Settings.notifications);
     expect(notifStrings).not.toMatch(/VAPID|endpoint|PushSubscription|p256dh/i);
+  });
+
+  // Faz NOTIF.2D.2 — handleConnectClick/handleDisconnectClick already
+  // wrapped their Server Action call in try/catch; handleTestSendClick
+  // did not. sendTestPushNotificationAction is designed to always
+  // return an ActionResult, but a Server Action call can still reject
+  // (createAdminClient() throwing "supabaseKey is required" was PROD's
+  // own confirmed first failure, before the env var was corrected) —
+  // without a catch, setTestSend("sending") was the last state update
+  // ever made, and the button stayed on "Gönderiliyor…" forever.
+  it("33. handleTestSendClick wraps its Server Action call in try/catch — a rejected promise still resolves the sending state, never leaves it stuck", () => {
+    const fnStart = card.indexOf("handleTestSendClick = useCallback");
+    const fnBody = card.slice(fnStart, card.indexOf("[tenantId, t]);", fnStart));
+    const tryIdx = fnBody.indexOf("try {");
+    const actionCallIdx = fnBody.indexOf("sendTestPushNotificationAction(");
+    const catchIdx = fnBody.indexOf("} catch");
+    expect(tryIdx).toBeGreaterThan(-1);
+    expect(actionCallIdx).toBeGreaterThan(tryIdx);
+    expect(catchIdx).toBeGreaterThan(actionCallIdx);
+    // The catch body itself must still call setTestSend — not just log
+    // and fall through, which would reproduce the exact same stuck-on-
+    // "sending" bug this test exists to prevent.
+    const catchBody = fnBody.slice(catchIdx, fnBody.length);
+    expect(catchBody).toContain("setTestSend(");
+  });
+
+  it("34. every setTestSend branch inside handleTestSendClick's try/catch sets a terminal status ('sent' or 'error'), never re-enters 'sending'", () => {
+    const fnStart = card.indexOf("handleTestSendClick = useCallback");
+    const fnBody = card.slice(fnStart, card.indexOf("[tenantId, t]);", fnStart));
+    const tryStart = fnBody.indexOf("try {");
+    const restOfFn = fnBody.slice(tryStart);
+    const statuses = Array.from(restOfFn.matchAll(/setTestSend\(\{\s*status:\s*"(\w+)"/g)).map((m) => m[1]);
+    expect(statuses.length).toBeGreaterThan(0);
+    expect(statuses).not.toContain("sending");
+    expect(new Set(statuses)).toEqual(new Set(["sent", "error"]));
   });
 });
 
