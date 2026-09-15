@@ -82,9 +82,76 @@
       "settings": "Ayarlar"
     },
     "dashboard": {
-      "title": "Salon paneli",
-      "roleLabel": "Rolünüz",
-      "description": "Bu alanın gerçek içeriği (randevular, müşteriler, raporlar) sonraki fazlarda eklenecek. Bu ekran, oturum + üyelik + izin zincirinin uçtan uca çalıştığını doğruluyor."
+      "greetingFallback": "Bugünün özeti",
+      "greetingGoodMorning": "Günaydın",
+      "greetingGoodDay": "İyi günler",
+      "greetingGoodEvening": "İyi akşamlar",
+      "summaryNone": "Bugün için henüz randevu bulunmuyor.",
+      "summaryWithFirst": "Bugün {count} randevunuz var. İlk randevu {time}'da.",
+      "summaryCountOnly": "Bugün {count} randevunuz var.",
+      "kpi": {
+        "total": "Bugünkü Randevular",
+        "pending": "Bekleyen",
+        "completed": "Tamamlanan",
+        "cancelledOrNoShow": "İptal / Gelmedi"
+      },
+      "next": {
+        "title": "Sıradaki",
+        "nowTitle": "Şu an"
+      },
+      "todaySchedule": {
+        "title": "Bugünün Takvimi",
+        "description": "Bugün için planlanan randevular",
+        "viewAll": "Tümünü Gör",
+        "empty": "Bugün için randevu bulunmuyor."
+      },
+      "quickActions": {
+        "title": "Hızlı İşlemler",
+        "addAppointment": "Randevu Ekle",
+        "addCustomer": "Müşteri Ekle",
+        "addStaff": "Personel Ekle",
+        "addService": "Hizmet Ekle",
+        "openBookingPage": "Online Randevu Sayfasını Aç"
+      },
+      "staffToday": {
+        "title": "Bugünkü Personel",
+        "empty": "Henüz aktif personel bulunmuyor.",
+        "appointmentCount": "{count} randevu"
+      },
+      "month": {
+        "title": "Bu Ay",
+        "total": "Toplam Randevu",
+        "completed": "Tamamlanan",
+        "newCustomers": "Yeni Müşteri",
+        "cancelled": "İptal",
+        "empty": "Bu ay henüz hareket bulunmuyor."
+      },
+      "onlineBooking": {
+        "title": "Online Rezervasyon",
+        "active": "Aktif",
+        "inactive": "Kapalı",
+        "activeNote": "Rezervasyon sayfanız yayında.",
+        "copyLink": "Linki Kopyala",
+        "copied": "Kopyalandı",
+        "openPage": "Sayfayı Aç",
+        "disabledNote": "Online rezervasyon şu anda kapalı.",
+        "openInSettings": "Ayarlardan aç"
+      },
+      "attention": {
+        "title": "Dikkat",
+        "onlineBookingDisabled": "Online rezervasyon kapalı",
+        "noActiveService": "Aktif hizmet bulunmuyor",
+        "noActiveStaff": "Aktif personel bulunmuyor",
+        "staffMissingSchedule": "Personelin çalışma programı eksik",
+        "goToSettings": "Ayarlara git"
+      },
+      "personal": {
+        "todayCount": "Bugün {count} randevunuz var.",
+        "todayNone": "Bugün için randevunuz bulunmuyor.",
+        "workingHoursLabel": "Bugünkü çalışma saatiniz",
+        "performanceTitle": "Performansım",
+        "viewReport": "Raporu Görüntüle"
+      }
     }
   },
   "Appointments": {
