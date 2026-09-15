@@ -253,6 +253,13 @@ export async function createTestMembershipFromTemplate(
 export async function cleanupTenants(tenantIds: string[]): Promise<void> {
   if (tenantIds.length === 0) return;
 
+  // notification_delivery_targets (Faz NOTIF.2E.2): FKs into
+  // notification_deliveries (deleted next, below) — must go first. Has
+  // its own tenant_id column, so no separate id-collection step is
+  // needed. notification_delivery_activation is NOT tenant-scoped (a
+  // global platform singleton, not a per-tenant row) and is deliberately
+  // never touched here — a test that inserts it must delete it itself.
+  await testDb`delete from notification_delivery_targets where tenant_id in ${testDb(tenantIds)}`;
   // notification_deliveries (Faz NOTIF.2E.1): FKs into both
   // notification_events and tenant_memberships, both deleted later in
   // this same function — must go first. Has its own tenant_id column

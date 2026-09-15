@@ -734,18 +734,25 @@ describe("security", () => {
     expect(anonResult.error!.code).toBe("42501");
   });
 
-  it("service_role's function execute grants exactly match the two Faz NOTIF.2D.1/2E.1A additions (baseline was zero through Faz 2F, deliberately no longer zero) — via the project's own audit function, not a raw information_schema query (which also surfaces harmless PUBLIC-granted extension functions)", async () => {
+  it("service_role's function execute grants exactly match the reviewed Faz NOTIF.2D.1/2E.1A/2E.2 additions (baseline was zero through Faz 2F, deliberately no longer zero) — via the project's own audit function, not a raw information_schema query (which also surfaces harmless PUBLIC-granted extension functions)", async () => {
     const data = await testDb<{ schema_name: string; function_name: string; grantee: string }[]>`select * from security_audit_function_grants()`;
     const serviceRoleGrants = data.filter((g) => g.grantee === "service_role");
-    // Faz NOTIF.2D.1 (get_push_subscriptions_for_test_send) and Faz
-    // NOTIF.2E.1 (materialize_notification_deliveries) are the only two
-    // service_role function grants in this project's history — both
-    // narrow, both reviewed elsewhere (security-grants-regression.test.ts's
-    // own SERVICE_ROLE_FUNCTION_WHITELIST). This test's job is only to
-    // confirm THIS baseline (Faz 2F and earlier) never grew a THIRD one.
+    // Faz NOTIF.2D.1 (get_push_subscriptions_for_test_send), Faz NOTIF.2E.1
+    // (materialize_notification_deliveries), and Faz NOTIF.2E.2 (the
+    // durable delivery worker's 5 narrow RPCs — still completely inactive,
+    // see notification_delivery_activation) are the only service_role
+    // function grants in this project's history — all narrow, all reviewed
+    // elsewhere (security-grants-regression.test.ts's own
+    // SERVICE_ROLE_FUNCTION_WHITELIST). This test's job is only to confirm
+    // this baseline never grew an UNREVIEWED one.
     expect(serviceRoleGrants.map((g) => g.function_name).sort()).toEqual([
+      "claim_notification_delivery_targets",
+      "get_notification_delivery_activation",
       "get_push_subscriptions_for_test_send",
       "materialize_notification_deliveries",
+      "materialize_pending_notification_events",
+      "prepare_notification_delivery_targets",
+      "record_notification_delivery_target_result",
     ]);
   });
 

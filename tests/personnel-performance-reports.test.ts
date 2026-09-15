@@ -114,9 +114,9 @@ async function summaryAs(
     p_tenant_id: params.tenantId ?? tenant.id,
     p_start_at: params.startAt.toISOString(),
     p_end_at: params.endAt.toISOString(),
-    p_branch_id: params.branchId ?? null,
-    p_staff_ids: params.staffIds ?? null,
-    p_service_ids: params.serviceIds ?? null,
+    p_branch_id: params.branchId ?? undefined,
+    p_staff_ids: params.staffIds ?? undefined,
+    p_service_ids: params.serviceIds ?? undefined,
   });
   await client.auth.signOut();
   return { data: data as unknown as StaffPerformanceSummary, error };

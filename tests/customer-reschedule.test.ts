@@ -802,17 +802,23 @@ describe("security", () => {
     expect(error!.code).toBe("42501");
   });
 
-  it("service_role and default-privilege baselines unchanged (except the two reviewed Faz NOTIF.2D.1/2E.1A additions)", async () => {
+  it("service_role and default-privilege baselines unchanged (except the reviewed Faz NOTIF.2D.1/2E.1A/2E.2 additions)", async () => {
     const data = await testDb<{ function_name: string; grantee: string }[]>`select * from security_audit_function_grants()`;
-    // Faz NOTIF.2D.1 (get_push_subscriptions_for_test_send) and Faz
-    // NOTIF.2E.1 (materialize_notification_deliveries) are the only two
-    // service_role function grants in this project's history — see
-    // security-grants-regression.test.ts's own SERVICE_ROLE_FUNCTION_
-    // WHITELIST for the reviewed detail. This test's job is only to
-    // confirm no THIRD one appeared.
+    // Faz NOTIF.2D.1 (get_push_subscriptions_for_test_send), Faz NOTIF.2E.1
+    // (materialize_notification_deliveries), and Faz NOTIF.2E.2 (the
+    // durable delivery worker's 5 narrow RPCs — still completely inactive)
+    // are the only service_role function grants in this project's history
+    // — see security-grants-regression.test.ts's own
+    // SERVICE_ROLE_FUNCTION_WHITELIST for the reviewed detail. This test's
+    // job is only to confirm no UNREVIEWED one appeared.
     expect(data.filter((g) => g.grantee === "service_role").map((g) => g.function_name).sort()).toEqual([
+      "claim_notification_delivery_targets",
+      "get_notification_delivery_activation",
       "get_push_subscriptions_for_test_send",
       "materialize_notification_deliveries",
+      "materialize_pending_notification_events",
+      "prepare_notification_delivery_targets",
+      "record_notification_delivery_target_result",
     ]);
     const defaults = await testDb<{ grantee: string }[]>`select * from public.security_audit_default_privileges()`;
     expect(defaults.length).toBe(4);

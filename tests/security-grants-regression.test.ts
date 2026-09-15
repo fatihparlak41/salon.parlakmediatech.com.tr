@@ -269,6 +269,29 @@ const SERVICE_ROLE_FUNCTION_WHITELIST = [
   // mutation transaction commits; never sends anything itself (no
   // push_subscriptions read, no web-push call) in this phase.
   "public.materialize_notification_deliveries",
+  // Faz NOTIF.2E.2 (20260915070000) — the durable delivery WORKER
+  // foundation, still completely inactive (notification_delivery_
+  // activation ships empty; nothing calls any of these 5 automatically —
+  // no cron, webhook, trigger, or API route exists anywhere in this
+  // codebase). Every one is a narrow, single-purpose RPC in the same
+  // private.*-does-the-work / public.*-is-the-only-service_role-callable-
+  // surface shape as materialize_notification_deliveries directly above.
+  // get_notification_delivery_activation is a read-only convenience
+  // check; the other four progress the pipeline (materialize -> prepare
+  // device targets -> claim with send-time eligibility recheck -> record
+  // result). claim_notification_delivery_targets returns raw endpoint/
+  // p256dh/authKey — same never-to-a-browser posture as get_push_
+  // subscriptions_for_test_send above. private.finalize_notification_
+  // delivery_status (the aggregation helper both claim and record call
+  // internally) deliberately has NO public wrapper and NO grant to any
+  // role, including service_role — same "called only from sibling
+  // SECURITY DEFINER functions" shape as private.enqueue_notification_
+  // event, and correctly does not appear in this list.
+  "public.get_notification_delivery_activation",
+  "public.materialize_pending_notification_events",
+  "public.prepare_notification_delivery_targets",
+  "public.claim_notification_delivery_targets",
+  "public.record_notification_delivery_target_result",
 ];
 
 // Expected output of security_audit_default_privileges() in a healthy

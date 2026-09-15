@@ -133,8 +133,16 @@ describe("sendTestPush", () => {
     await expect(sendTestPush(FAKE_SUBSCRIPTION)).resolves.toBeDefined();
   });
 
-  it("11. no retry/backoff/queue logic exists — one attempt per call, Step 14's 'no retry system for this phase'", () => {
-    expect(source).not.toMatch(/setTimeout|setInterval|retry|backoff|queue/i);
+  it("11. no retry/backoff/queue logic exists inside sendTestPush itself — one attempt per call, Step 14's 'no retry system for this phase'", () => {
+    // Faz NOTIF.2E.2 adds real retry/backoff classification (classifyPushSendError/sendDeliveryPush)
+    // to this SAME file, for the separate automatic-delivery sender — by design, that is
+    // this phase's whole point, and this check must not fail because of it. Scoped to exactly
+    // sendTestPush's own function body (start of its declaration to the next top-level export),
+    // which remains untouched and still genuinely has zero retry/backoff/queue vocabulary.
+    const start = source.indexOf("export async function sendTestPush");
+    const end = source.indexOf("\nexport", start + 1);
+    const sendTestPushBody = source.slice(start, end === -1 ? undefined : end);
+    expect(sendTestPushBody).not.toMatch(/setTimeout|setInterval|retry|backoff|queue/i);
   });
 
   it("12. this module is not a generic sender — no function here accepts a title/body/path argument", () => {

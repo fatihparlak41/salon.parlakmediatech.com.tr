@@ -571,6 +571,7 @@ export type Database = {
           next_attempt_at: string
           notification_event_id: string
           status: string
+          targets_prepared_at: string | null
           tenant_id: string
           tenant_membership_id: string
           updated_at: string
@@ -587,6 +588,7 @@ export type Database = {
           next_attempt_at?: string
           notification_event_id: string
           status?: string
+          targets_prepared_at?: string | null
           tenant_id: string
           tenant_membership_id: string
           updated_at?: string
@@ -603,6 +605,7 @@ export type Database = {
           next_attempt_at?: string
           notification_event_id?: string
           status?: string
+          targets_prepared_at?: string | null
           tenant_id?: string
           tenant_membership_id?: string
           updated_at?: string
@@ -645,6 +648,164 @@ export type Database = {
           },
         ]
       }
+      notification_delivery_activation: {
+        Row: {
+          activated_at: string
+          created_at: string
+          id: number
+        }
+        Insert: {
+          activated_at: string
+          created_at?: string
+          id?: number
+        }
+        Update: {
+          activated_at?: string
+          created_at?: string
+          id?: number
+        }
+        Relationships: []
+      }
+      notification_delivery_targets: {
+        Row: {
+          attempt_count: number
+          created_at: string
+          delivered_at: string | null
+          id: string
+          last_error_code: string | null
+          last_error_message: string | null
+          lock_token: string | null
+          locked_at: string | null
+          next_attempt_at: string
+          notification_delivery_id: string
+          push_subscription_id: string
+          status: string
+          tenant_id: string
+          tenant_membership_id: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_count?: number
+          created_at?: string
+          delivered_at?: string | null
+          id?: string
+          last_error_code?: string | null
+          last_error_message?: string | null
+          lock_token?: string | null
+          locked_at?: string | null
+          next_attempt_at?: string
+          notification_delivery_id: string
+          push_subscription_id: string
+          status?: string
+          tenant_id: string
+          tenant_membership_id: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_count?: number
+          created_at?: string
+          delivered_at?: string | null
+          id?: string
+          last_error_code?: string | null
+          last_error_message?: string | null
+          lock_token?: string | null
+          locked_at?: string | null
+          next_attempt_at?: string
+          notification_delivery_id?: string
+          push_subscription_id?: string
+          status?: string
+          tenant_id?: string
+          tenant_membership_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_delivery_targets_delivery_id_fkey"
+            columns: ["notification_delivery_id"]
+            isOneToOne: false
+            referencedRelation: "notification_deliveries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_delivery_targets_delivery_same_membership"
+            columns: ["notification_delivery_id", "tenant_membership_id"]
+            isOneToOne: false
+            referencedRelation: "notification_deliveries"
+            referencedColumns: ["id", "tenant_membership_id"]
+          },
+          {
+            foreignKeyName: "notification_delivery_targets_delivery_same_tenant"
+            columns: ["notification_delivery_id", "tenant_id"]
+            isOneToOne: false
+            referencedRelation: "notification_deliveries"
+            referencedColumns: ["id", "tenant_id"]
+          },
+          {
+            foreignKeyName: "notification_delivery_targets_subscription_id_fkey"
+            columns: ["push_subscription_id"]
+            isOneToOne: false
+            referencedRelation: "push_subscriptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_delivery_targets_subscription_same_membership"
+            columns: ["push_subscription_id", "tenant_membership_id"]
+            isOneToOne: false
+            referencedRelation: "push_subscriptions"
+            referencedColumns: ["id", "tenant_membership_id"]
+          },
+          {
+            foreignKeyName: "notification_delivery_targets_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_event_materializations: {
+        Row: {
+          materialized_at: string
+          notification_event_id: string
+          recipient_count: number
+          tenant_id: string
+        }
+        Insert: {
+          materialized_at?: string
+          notification_event_id: string
+          recipient_count: number
+          tenant_id: string
+        }
+        Update: {
+          materialized_at?: string
+          notification_event_id?: string
+          recipient_count?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_event_materializations_event_id_fkey"
+            columns: ["notification_event_id"]
+            isOneToOne: true
+            referencedRelation: "notification_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_event_materializations_event_same_tenant"
+            columns: ["notification_event_id", "tenant_id"]
+            isOneToOne: false
+            referencedRelation: "notification_events"
+            referencedColumns: ["id", "tenant_id"]
+          },
+          {
+            foreignKeyName: "notification_event_materializations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_events: {
         Row: {
           actor_user_id: string | null
@@ -653,6 +814,7 @@ export type Database = {
           event_data: Json
           event_type: string
           id: string
+          schema_version: number
           tenant_id: string
         }
         Insert: {
@@ -662,6 +824,7 @@ export type Database = {
           event_data?: Json
           event_type: string
           id?: string
+          schema_version?: number
           tenant_id: string
         }
         Update: {
@@ -671,6 +834,7 @@ export type Database = {
           event_data?: Json
           event_type?: string
           id?: string
+          schema_version?: number
           tenant_id?: string
         }
         Relationships: [
@@ -1662,6 +1826,10 @@ export type Database = {
         Args: { p_claim_ref: string; p_claim_secret_hash: string }
         Returns: Json
       }
+      claim_notification_delivery_targets: {
+        Args: { p_batch_size?: number; p_lease_seconds?: number }
+        Returns: Json
+      }
       complete_appointment: {
         Args: { p_appointment_id: string; p_performer_overrides?: Json }
         Returns: undefined
@@ -1728,6 +1896,7 @@ export type Database = {
         Args: { p_appointment_id: string; p_date: string }
         Returns: Json
       }
+      get_notification_delivery_activation: { Args: never; Returns: string }
       get_public_availability_slots: {
         Args: {
           p_branch_id: string
@@ -1756,10 +1925,10 @@ export type Database = {
       }
       get_staff_performance_summary: {
         Args: {
-          p_branch_id?: string | null
+          p_branch_id?: string
           p_end_at: string
-          p_service_ids?: string[] | null
-          p_staff_ids?: string[] | null
+          p_service_ids?: string[]
+          p_staff_ids?: string[]
           p_start_at: string
           p_tenant_id: string
         }
@@ -1767,9 +1936,9 @@ export type Database = {
       }
       get_staff_utilization: {
         Args: {
-          p_branch_id?: string | null
+          p_branch_id?: string
           p_end_at: string
-          p_staff_ids?: string[] | null
+          p_staff_ids?: string[]
           p_start_at: string
           p_tenant_id: string
         }
@@ -1788,12 +1957,27 @@ export type Database = {
         Args: { p_code_hash: string; p_customer_id: string }
         Returns: Json
       }
-      list_my_devices: {
-        Args: { p_tenant_id: string }
-        Returns: Json
-      }
+      list_my_devices: { Args: { p_tenant_id: string }; Returns: Json }
       materialize_notification_deliveries: {
         Args: { p_event_id: string }
+        Returns: Json
+      }
+      materialize_pending_notification_events: {
+        Args: { p_batch_size?: number }
+        Returns: Json
+      }
+      prepare_notification_delivery_targets: {
+        Args: { p_batch_size?: number }
+        Returns: Json
+      }
+      record_notification_delivery_target_result: {
+        Args: {
+          p_error_code?: string
+          p_error_message?: string
+          p_lock_token: string
+          p_outcome: string
+          p_target_id: string
+        }
         Returns: Json
       }
       remove_push_subscription: {
@@ -1811,7 +1995,7 @@ export type Database = {
       save_push_subscription: {
         Args: {
           p_auth_key: string
-          p_device_label?: string | null
+          p_device_label?: string
           p_endpoint: string
           p_p256dh: string
           p_tenant_id: string
@@ -1939,10 +2123,10 @@ export type Database = {
       }
       update_my_notification_preferences: {
         Args: {
-          p_assignment_change?: boolean | null
-          p_cancellation?: boolean | null
-          p_new_appointment?: boolean | null
-          p_reschedule?: boolean | null
+          p_assignment_change?: boolean
+          p_cancellation?: boolean
+          p_new_appointment?: boolean
+          p_reschedule?: boolean
           p_tenant_id: string
         }
         Returns: Json

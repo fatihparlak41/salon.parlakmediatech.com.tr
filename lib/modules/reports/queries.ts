@@ -77,9 +77,9 @@ export async function getStaffPerformanceSummary(
     p_tenant_id: input.tenantId,
     p_start_at: input.startAt,
     p_end_at: input.endAt,
-    p_branch_id: input.branchId ?? null,
-    p_staff_ids: input.staffIds ?? null,
-    p_service_ids: input.serviceIds ?? null,
+    p_branch_id: input.branchId ?? undefined,
+    p_staff_ids: input.staffIds ?? undefined,
+    p_service_ids: input.serviceIds ?? undefined,
   });
 
   if (error || !data) {
@@ -141,8 +141,8 @@ export async function getStaffUtilization(
     p_tenant_id: input.tenantId,
     p_start_at: input.startAt,
     p_end_at: input.endAt,
-    p_branch_id: input.branchId ?? null,
-    p_staff_ids: input.staffIds ?? null,
+    p_branch_id: input.branchId ?? undefined,
+    p_staff_ids: input.staffIds ?? undefined,
   });
 
   if (error || !data) {
