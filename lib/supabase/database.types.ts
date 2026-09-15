@@ -558,6 +558,93 @@ export type Database = {
         }
         Relationships: []
       }
+      notification_deliveries: {
+        Row: {
+          attempt_count: number
+          channel: string
+          created_at: string
+          delivered_at: string | null
+          id: string
+          last_error_code: string | null
+          last_error_message: string | null
+          locked_at: string | null
+          next_attempt_at: string
+          notification_event_id: string
+          status: string
+          tenant_id: string
+          tenant_membership_id: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_count?: number
+          channel?: string
+          created_at?: string
+          delivered_at?: string | null
+          id?: string
+          last_error_code?: string | null
+          last_error_message?: string | null
+          locked_at?: string | null
+          next_attempt_at?: string
+          notification_event_id: string
+          status?: string
+          tenant_id: string
+          tenant_membership_id: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_count?: number
+          channel?: string
+          created_at?: string
+          delivered_at?: string | null
+          id?: string
+          last_error_code?: string | null
+          last_error_message?: string | null
+          locked_at?: string | null
+          next_attempt_at?: string
+          notification_event_id?: string
+          status?: string
+          tenant_id?: string
+          tenant_membership_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_deliveries_event_id_fkey"
+            columns: ["notification_event_id"]
+            isOneToOne: false
+            referencedRelation: "notification_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_deliveries_event_same_tenant"
+            columns: ["notification_event_id", "tenant_id"]
+            isOneToOne: false
+            referencedRelation: "notification_events"
+            referencedColumns: ["id", "tenant_id"]
+          },
+          {
+            foreignKeyName: "notification_deliveries_membership_same_tenant"
+            columns: ["tenant_membership_id", "tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_memberships"
+            referencedColumns: ["id", "tenant_id"]
+          },
+          {
+            foreignKeyName: "notification_deliveries_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_deliveries_tenant_membership_id_fkey"
+            columns: ["tenant_membership_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_memberships"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_events: {
         Row: {
           actor_user_id: string | null
@@ -1703,6 +1790,10 @@ export type Database = {
       }
       list_my_devices: {
         Args: { p_tenant_id: string }
+        Returns: Json
+      }
+      materialize_notification_deliveries: {
+        Args: { p_event_id: string }
         Returns: Json
       }
       remove_push_subscription: {

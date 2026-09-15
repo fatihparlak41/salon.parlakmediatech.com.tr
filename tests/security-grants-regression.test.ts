@@ -257,7 +257,19 @@ const BOOKING_GATEWAY_FUNCTION_WHITELIST = ["public.create_guest_booking"];
 // auth.uid()) and is called only from lib/modules/settings/actions.ts's
 // sendTestPushNotificationAction, only AFTER that action has already
 // verified settings.manage through the normal user-session path.
-const SERVICE_ROLE_FUNCTION_WHITELIST = ["public.get_push_subscriptions_for_test_send"];
+const SERVICE_ROLE_FUNCTION_WHITELIST = [
+  "public.get_push_subscriptions_for_test_send",
+  // Faz NOTIF.2E.1 — recipient-resolution/delivery-outbox materialization
+  // (20260914130000). Reads role_permissions/permissions/tenant_
+  // memberships/notification_preferences across an entire tenant to
+  // resolve who should receive a push for one notification_events row —
+  // not any single browser session's own data, the same reasoning that
+  // keeps this a service-role-only function rather than an authenticated
+  // one. Called only from trusted server-side code after an appointment-
+  // mutation transaction commits; never sends anything itself (no
+  // push_subscriptions read, no web-push call) in this phase.
+  "public.materialize_notification_deliveries",
+];
 
 // Expected output of security_audit_default_privileges() in a healthy
 // environment: zero rows for anon/authenticated (any row for either

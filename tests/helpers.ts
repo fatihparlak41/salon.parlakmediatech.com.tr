@@ -253,6 +253,16 @@ export async function createTestMembershipFromTemplate(
 export async function cleanupTenants(tenantIds: string[]): Promise<void> {
   if (tenantIds.length === 0) return;
 
+  // notification_deliveries (Faz NOTIF.2E.1): FKs into both
+  // notification_events and tenant_memberships, both deleted later in
+  // this same function — must go first. Has its own tenant_id column
+  // (unlike push_subscriptions/notification_preferences below), so no
+  // separate id-collection step is needed.
+  await testDb`delete from notification_deliveries where tenant_id in ${testDb(tenantIds)}`;
+  // notification_event_materializations (Faz NOTIF.2E.1A): FKs into
+  // notification_events, deleted next — must go first, same reasoning
+  // as notification_deliveries directly above.
+  await testDb`delete from notification_event_materializations where tenant_id in ${testDb(tenantIds)}`;
   // notification_events (Faz NOTIF.2B): appointment_id already cascades
   // from appointments, but deleted explicitly and early anyway, matching
   // this function's own established convention of never relying on a
