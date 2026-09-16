@@ -505,8 +505,17 @@ describe("security", () => {
   });
 
   it("28. no authenticated/anon execute on private.enqueue_notification_event", async () => {
+    // Faz NOTIF.2F.1 extended this function's signature (4 new trailing
+    // DEFAULT NULL params for the display snapshot) via an explicit DROP
+    // + CREATE, not CREATE OR REPLACE — Postgres treats a longer
+    // parameter list as a distinct overload, so the OLD 4-arg signature
+    // genuinely no longer exists; this probe must name the current one.
     const rows = await testDb<{ role: string; can: boolean }[]>`
-      select role, has_function_privilege(role, 'private.enqueue_notification_event(uuid, text, uuid, jsonb)', 'EXECUTE') as can
+      select role, has_function_privilege(
+        role,
+        'private.enqueue_notification_event(uuid, text, uuid, jsonb, text, text[], timestamptz, text)',
+        'EXECUTE'
+      ) as can
       from unnest(array['authenticated', 'anon']) as role
     `;
     for (const row of rows) expect(row.can).toBe(false);

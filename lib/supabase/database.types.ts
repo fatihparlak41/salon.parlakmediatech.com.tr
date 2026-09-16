@@ -763,6 +763,58 @@ export type Database = {
           },
         ]
       }
+      notification_event_display_snapshots: {
+        Row: {
+          appointment_start_at: string | null
+          created_at: string
+          customer_name: string | null
+          event_id: string
+          service_names: string[]
+          tenant_id: string
+          tenant_timezone: string
+        }
+        Insert: {
+          appointment_start_at?: string | null
+          created_at?: string
+          customer_name?: string | null
+          event_id: string
+          service_names?: string[]
+          tenant_id: string
+          tenant_timezone: string
+        }
+        Update: {
+          appointment_start_at?: string | null
+          created_at?: string
+          customer_name?: string | null
+          event_id?: string
+          service_names?: string[]
+          tenant_id?: string
+          tenant_timezone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_event_display_snapshots_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: true
+            referencedRelation: "notification_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_event_display_snapshots_event_same_tenant"
+            columns: ["event_id", "tenant_id"]
+            isOneToOne: false
+            referencedRelation: "notification_events"
+            referencedColumns: ["id", "tenant_id"]
+          },
+          {
+            foreignKeyName: "notification_event_display_snapshots_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_event_materializations: {
         Row: {
           materialized_at: string

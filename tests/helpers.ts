@@ -270,6 +270,12 @@ export async function cleanupTenants(tenantIds: string[]): Promise<void> {
   // notification_events, deleted next — must go first, same reasoning
   // as notification_deliveries directly above.
   await testDb`delete from notification_event_materializations where tenant_id in ${testDb(tenantIds)}`;
+  // notification_event_display_snapshots (Faz NOTIF.2F.1): FKs into
+  // notification_events (NO ACTION, unchanged default — same shape as
+  // notification_event_materializations directly above) — must go first
+  // too. Has its own tenant_id column, so no separate id-collection step
+  // is needed.
+  await testDb`delete from notification_event_display_snapshots where tenant_id in ${testDb(tenantIds)}`;
   // notification_events (Faz NOTIF.2B): appointment_id already cascades
   // from appointments, but deleted explicitly and early anyway, matching
   // this function's own established convention of never relying on a

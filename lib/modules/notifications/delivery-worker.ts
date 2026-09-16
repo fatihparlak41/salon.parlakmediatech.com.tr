@@ -33,6 +33,12 @@ export type ClaimedNotificationDeliveryTarget = {
   endpoint: string;
   p256dh: string;
   authKey: string;
+  /** Faz NOTIF.2F.1 — from notification_event_display_snapshots, null for
+   * any event with no snapshot row (every pre-2F.1 historical event). */
+  customerName: string | null;
+  serviceNames: string[] | null;
+  appointmentStartAt: string | null;
+  tenantTimezone: string | null;
 };
 
 export type SendPushFn = (
@@ -66,7 +72,12 @@ export type ProcessNotificationDeliveryBatchResult = {
 const defaultSendPush: SendPushFn = (target) =>
   sendDeliveryPush(
     { endpoint: target.endpoint, p256dh: target.p256dh, authKey: target.authKey },
-    buildDeliveryPushPayload(target.eventType, target.tenantSlug),
+    buildDeliveryPushPayload(target.eventType, target.tenantSlug, {
+      customerName: target.customerName,
+      serviceNames: target.serviceNames,
+      appointmentStartAt: target.appointmentStartAt,
+      tenantTimezone: target.tenantTimezone,
+    }),
   );
 
 function rpcErrorMessage(fn: string, error: { message: string }): string {

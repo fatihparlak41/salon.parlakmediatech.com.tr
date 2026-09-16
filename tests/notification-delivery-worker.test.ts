@@ -314,6 +314,153 @@ describe("buildDeliveryPushPayload (Step 9 privacy-safe payloads, Step 10 click 
 });
 
 // ===========================================================================
+// Faz NOTIF.2F.1 — rich copy rendering from a display snapshot. Pure unit
+// tests, no DB — the display snapshot's own capture correctness (does the
+// RIGHT data land in notification_event_display_snapshots) is covered
+// separately in tests/notification-event-display-snapshot.test.ts; this
+// section covers only buildDeliveryPushPayload's own rendering/fallback/
+// sanitization logic given an already-resolved snapshot.
+// ===========================================================================
+describe("buildDeliveryPushPayload — Faz NOTIF.2F.1 rich copy", () => {
+  it("one service -> 'Yeni randevu' / customer · service · date (worked example)", () => {
+    const payload = buildDeliveryPushPayload("appointment.created", "acme-salon", {
+      customerName: "Ayşe Yılmaz",
+      serviceNames: ["Saç Kesimi"],
+      appointmentStartAt: "2026-09-16T11:30:00.000Z", // Europe/Istanbul is fixed UTC+3, no DST
+      tenantTimezone: "Europe/Istanbul",
+    });
+    expect(payload.title).toBe("Yeni randevu");
+    expect(payload.body).toBe("Ayşe Yılmaz · Saç Kesimi · 16 Eyl 14:30");
+    expect(payload.path).toBe("/app/acme-salon/appointments");
+  });
+
+  it("multiple services -> first service + count suffix (worked example)", () => {
+    const payload = buildDeliveryPushPayload("appointment.created", "acme-salon", {
+      customerName: "Ayşe Yılmaz",
+      serviceNames: ["Saç Kesimi", "Sakal"],
+      appointmentStartAt: "2026-09-16T11:30:00.000Z",
+      tenantTimezone: "Europe/Istanbul",
+    });
+    expect(payload.body).toBe("Ayşe Yılmaz · Saç Kesimi +1 hizmet · 16 Eyl 14:30");
+  });
+
+  it("three services -> +2 hizmet, never lists every service", () => {
+    const payload = buildDeliveryPushPayload("appointment.created", "acme-salon", {
+      customerName: "Ayşe Yılmaz",
+      serviceNames: ["Saç Kesimi", "Sakal", "Manikür"],
+      appointmentStartAt: "2026-09-16T11:30:00.000Z",
+      tenantTimezone: "Europe/Istanbul",
+    });
+    expect(payload.body).toBe("Ayşe Yılmaz · Saç Kesimi +2 hizmet · 16 Eyl 14:30");
+  });
+
+  it("missing customer name falls back to 'Müşteri'", () => {
+    const payload = buildDeliveryPushPayload("appointment.cancelled", "acme-salon", {
+      customerName: null,
+      serviceNames: ["Saç Kesimi"],
+      appointmentStartAt: "2026-09-16T11:30:00.000Z",
+      tenantTimezone: "Europe/Istanbul",
+    });
+    expect(payload.title).toBe("Randevu iptal edildi");
+    expect(payload.body).toBe("Müşteri · Saç Kesimi · 16 Eyl 14:30");
+  });
+
+  it("missing/empty service names falls back to 'Randevu', title still 'Randevu güncellendi'", () => {
+    const payload = buildDeliveryPushPayload("appointment.rescheduled", "acme-salon", {
+      customerName: "Ayşe Yılmaz",
+      serviceNames: [],
+      appointmentStartAt: "2026-09-16T11:30:00.000Z",
+      tenantTimezone: "Europe/Istanbul",
+    });
+    expect(payload.title).toBe("Randevu güncellendi");
+    expect(payload.body).toBe("Ayşe Yılmaz · Randevu · 16 Eyl 14:30");
+  });
+
+  it("appointment.staff_reassigned title is 'Personel değişti'", () => {
+    const payload = buildDeliveryPushPayload("appointment.staff_reassigned", "acme-salon", {
+      customerName: "Ayşe Yılmaz",
+      serviceNames: ["Saç Kesimi"],
+      appointmentStartAt: "2026-09-16T11:30:00.000Z",
+      tenantTimezone: "Europe/Istanbul",
+    });
+    expect(payload.title).toBe("Personel değişti");
+  });
+
+  it("newline/tab/control characters in customer and service names are collapsed, never multi-line", () => {
+    const payload = buildDeliveryPushPayload("appointment.created", "acme-salon", {
+      customerName: "Ayşe\nYılmaz\t ",
+      serviceNames: ["Saç   Kesimi\r\n", "Sakal "],
+      appointmentStartAt: "2026-09-16T11:30:00.000Z",
+      tenantTimezone: "Europe/Istanbul",
+    });
+    expect(payload.body).not.toMatch(/[\r\n\t\x00-\x1f]/);
+    expect(payload.body).toBe("Ayşe Yılmaz · Saç Kesimi +1 hizmet · 16 Eyl 14:30");
+  });
+
+  it("rendered payload never contains an email, a phone-shaped digit run, or a UUID", () => {
+    const payload = buildDeliveryPushPayload("appointment.created", "acme-salon", {
+      customerName: "Ayşe Yılmaz",
+      serviceNames: ["Saç Kesimi"],
+      appointmentStartAt: "2026-09-16T11:30:00.000Z",
+      tenantTimezone: "Europe/Istanbul",
+    });
+    const serialized = JSON.stringify(payload);
+    expect(serialized).not.toMatch(/@/);
+    expect(serialized).not.toMatch(/\+?\d{7,}/);
+    expect(serialized).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  });
+
+  it("no usable appointment time -> falls back to the fully generic copy, never a malformed partial body", () => {
+    const payload = buildDeliveryPushPayload("appointment.created", "acme-salon", {
+      customerName: "Ayşe Yılmaz",
+      serviceNames: ["Saç Kesimi"],
+      appointmentStartAt: null,
+      tenantTimezone: "Europe/Istanbul",
+    });
+    expect(payload.title).toBe("SalonOS");
+    expect(payload.body).toBe("Yeni randevu oluşturuldu.");
+  });
+
+  it("matches the spec's second worked example: '7 Eki 09:00' — no leading zero on the day", () => {
+    const payload = buildDeliveryPushPayload("appointment.created", "acme-salon", {
+      customerName: "Ayşe Yılmaz",
+      serviceNames: ["Saç Kesimi"],
+      appointmentStartAt: "2026-10-07T09:00:00.000Z",
+      tenantTimezone: "UTC",
+    });
+    expect(payload.body).toBe("Ayşe Yılmaz · Saç Kesimi · 7 Eki 09:00");
+  });
+
+  it("matches the spec's third worked example: '21 Ara 17:45'", () => {
+    const payload = buildDeliveryPushPayload("appointment.created", "acme-salon", {
+      customerName: "Ayşe Yılmaz",
+      serviceNames: ["Saç Kesimi"],
+      appointmentStartAt: "2026-12-21T17:45:00.000Z",
+      tenantTimezone: "UTC",
+    });
+    expect(payload.body).toBe("Ayşe Yılmaz · Saç Kesimi · 21 Ara 17:45");
+  });
+
+  it("uses the snapshot's own tenant timezone, never a hardcoded one", () => {
+    const utc = buildDeliveryPushPayload("appointment.created", "acme-salon", {
+      customerName: "Ayşe Yılmaz",
+      serviceNames: ["Saç Kesimi"],
+      appointmentStartAt: "2026-09-16T11:30:00.000Z",
+      tenantTimezone: "UTC",
+    });
+    const istanbul = buildDeliveryPushPayload("appointment.created", "acme-salon", {
+      customerName: "Ayşe Yılmaz",
+      serviceNames: ["Saç Kesimi"],
+      appointmentStartAt: "2026-09-16T11:30:00.000Z",
+      tenantTimezone: "Europe/Istanbul",
+    });
+    expect(utc.body).toContain("11:30");
+    expect(istanbul.body).toContain("14:30");
+    expect(utc.body).not.toBe(istanbul.body);
+  });
+});
+
+// ===========================================================================
 // A/B/C — activation cutover
 // ===========================================================================
 
@@ -959,5 +1106,68 @@ describe("D through O — device fanout, retry, eligibility, concurrency, isolat
     const targets = await targetsFor(deliveryId);
     expect(targets).toHaveLength(1);
     expect(targets[0]!.status).toBe("sent");
+  });
+});
+
+// ===========================================================================
+// Faz NOTIF.2F.1 — claim_notification_delivery_targets actually returns the
+// display snapshot fields (not just that they exist somewhere in the DB).
+// The snapshot row itself is inserted directly via testDb, matching this
+// file's own established "fixture data, not the real RPC" convention for
+// worker-focused scenarios (insertEvent does the same for notification_
+// events) — write-side RPC capture correctness is exhaustively covered in
+// tests/notification-event-display-snapshot.test.ts instead.
+// ===========================================================================
+describe("NOTIF.2F.1 — claim_notification_delivery_targets returns the display snapshot", () => {
+  it("P. a target for an event WITH a snapshot receives all 4 fields; one WITHOUT gets 4 nulls (backward compatible)", async () => {
+    const recipient = await createRecipient(tenant.id, cashierRoleId, "notif2f1-p-snapshot");
+    cleanupUserIds.push(recipient.user.id);
+    await addDevice(recipient.membershipId);
+
+    const eventId = await insertEvent(tenant.id, appointmentId, "appointment.created", owner.id, [recipient.staffMemberId]);
+    await testDb`
+      insert into notification_event_display_snapshots (event_id, tenant_id, customer_name, service_names, appointment_start_at, tenant_timezone)
+      values (${eventId}, ${tenant.id}, 'Ayşe Yılmaz', ${testDb.array(["Saç Kesimi", "Sakal"])}, ${"2026-09-16T11:30:00.000Z"}, 'Europe/Istanbul')
+    `;
+    const deliveryId = await materialize(eventId);
+    await admin.rpc("prepare_notification_delivery_targets", { p_batch_size: 100 });
+
+    let claimedTarget: ClaimedNotificationDeliveryTarget | undefined;
+    const captureSend: SendPushFn = async (target) => {
+      claimedTarget = target;
+      return { outcome: "sent" };
+    };
+    const withSnapshot = await processNotificationDeliveryBatch({ supabase: admin, sendPush: captureSend, claimBatchSize: 100 });
+    expect(withSnapshot.sent).toBe(1);
+    expect(claimedTarget).toBeDefined();
+    expect(claimedTarget!.customerName).toBe("Ayşe Yılmaz");
+    expect(claimedTarget!.serviceNames).toEqual(["Saç Kesimi", "Sakal"]);
+    expect(claimedTarget!.appointmentStartAt).toContain("2026-09-16");
+    expect(claimedTarget!.tenantTimezone).toBe("Europe/Istanbul");
+    expect(await deliveryStatus(deliveryId)).toBe("sent");
+
+    // Backward compatibility: a second recipient on an event with NO
+    // display snapshot row (the D-O scenarios' own insertEvent pattern,
+    // and every real pre-2F.1 historical event) gets 4 nulls, not an
+    // error and not a fabricated value.
+    const recipient2 = await createRecipient(tenant.id, cashierRoleId, "notif2f1-p-nosnapshot");
+    cleanupUserIds.push(recipient2.user.id);
+    await addDevice(recipient2.membershipId);
+    const legacyEventId = await insertEvent(tenant.id, appointmentId, "appointment.created", owner.id, [recipient2.staffMemberId]);
+    await materialize(legacyEventId);
+    await admin.rpc("prepare_notification_delivery_targets", { p_batch_size: 100 });
+
+    let legacyTarget: ClaimedNotificationDeliveryTarget | undefined;
+    const captureSend2: SendPushFn = async (target) => {
+      legacyTarget = target;
+      return { outcome: "sent" };
+    };
+    const withoutSnapshot = await processNotificationDeliveryBatch({ supabase: admin, sendPush: captureSend2, claimBatchSize: 100 });
+    expect(withoutSnapshot.sent).toBe(1);
+    expect(legacyTarget).toBeDefined();
+    expect(legacyTarget!.customerName).toBeNull();
+    expect(legacyTarget!.serviceNames).toBeNull();
+    expect(legacyTarget!.appointmentStartAt).toBeNull();
+    expect(legacyTarget!.tenantTimezone).toBeNull();
   });
 });
