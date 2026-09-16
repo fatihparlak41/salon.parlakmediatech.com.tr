@@ -4,6 +4,10 @@
     {
       "path": "/api/internal/notifications/process",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/internal/notifications/purge-display-snapshots",
+      "schedule": "17 * * * *"
     }
   ]
 }
