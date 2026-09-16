@@ -2022,6 +2022,10 @@ export type Database = {
         Args: { p_batch_size?: number }
         Returns: Json
       }
+      purge_expired_notification_event_display_snapshots: {
+        Args: { p_batch_size?: number }
+        Returns: number
+      }
       record_notification_delivery_target_result: {
         Args: {
           p_error_code?: string

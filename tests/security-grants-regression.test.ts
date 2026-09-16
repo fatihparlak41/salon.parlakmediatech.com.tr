@@ -292,6 +292,12 @@ const SERVICE_ROLE_FUNCTION_WHITELIST = [
   "public.prepare_notification_delivery_targets",
   "public.claim_notification_delivery_targets",
   "public.record_notification_delivery_target_result",
+  // Faz NOTIF.2F.2 (20260916080000) — the bounded 30-day retention purge
+  // for notification_event_display_snapshots. Same private/public split,
+  // same service_role-only posture as every entry above; not invoked by
+  // any application code in this phase (no cron/route wiring yet — that
+  // is a deliberately separate, later decision).
+  "public.purge_expired_notification_event_display_snapshots",
 ];
 
 // Expected output of security_audit_default_privileges() in a healthy
