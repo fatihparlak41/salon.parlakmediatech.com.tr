@@ -54,7 +54,16 @@ const AUTHENTICATED_TABLE_WHITELIST: Record<string, string[]> = {
   permissions: ["SELECT"],
   role_templates: ["SELECT"],
   role_template_permissions: ["SELECT"],
-  roles: ["SELECT", "UPDATE"],
+  // No table-level UPDATE as of Faz SAAS.1C.1R (20260917081000): the
+  // grant had zero legitimate application dependency (every real usage
+  // is the embedded read-only `roles(name)` select in
+  // lib/auth/session.ts and lib/modules/staff/queries.ts — no
+  // role-renaming/editing UI or Server Action exists), and left
+  // roles.tenant_id/deleted_at mutable by any staff.manage holder with
+  // nothing independently re-checking them (private.has_permission()
+  // never joins roles at all). roles_update_staff_manage was dropped in
+  // the same migration.
+  roles: ["SELECT"],
   role_permissions: ["SELECT"],
   // No table-level UPDATE: `status` is writable only via a column-level
   // grant (20260816090002/090006), asserted separately below by the
@@ -230,6 +239,23 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   // (20260914121000) dropped that function entirely and replaced it with
   // a service_role-only one (see SERVICE_ROLE_FUNCTION_WHITELIST below) —
   // authenticated has zero path to this material now, full stop.
+  // Faz SAAS.1C.1 (20260917080000) — create/list/resend/revoke/accept
+  // team invitation RPCs. Same private.*-wrapped-by-public.* shape as
+  // create_role/update_role_permissions/update_membership_role above:
+  // each private.* counterpart carries its own explicit revoke from
+  // public and is never granted to authenticated directly, so only these
+  // 5 public wrappers appear here. The invariant enforcement this same
+  // migration adds (tenant_has_active_unrestricted_holder,
+  // assert_tenant_has_unrestricted_holder, and the two
+  // enforce_unrestricted_holder_on_*_change trigger functions) carries no
+  // authenticated grant at all — triggers fire as part of statement
+  // execution, not via a caller's own EXECUTE privilege, and the two
+  // pure helpers are private.*-internal only.
+  "public.create_team_invitation",
+  "public.list_team_invitations",
+  "public.resend_team_invitation",
+  "public.revoke_team_invitation",
+  "public.accept_team_invitation",
 ];
 
 // Phase 2F's public read surface — the only functions anon has ever

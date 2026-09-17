@@ -92,7 +92,7 @@ export const getUserMemberships = cache(
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("tenant_memberships")
-      .select("tenant_id, role_id, tenants(name, slug, status), roles(name)")
+      .select("tenant_id, role_id, tenants(name, slug, status), roles!tenant_memberships_role_id_fkey(name)")
       .eq("user_id", user.id)
       .eq("status", "active")
       .is("deleted_at", null);
@@ -137,7 +137,7 @@ export const getTenantAccess = cache(
 
     const { data: membership } = await supabase
       .from("tenant_memberships")
-      .select("id, status, role_id, roles(name)")
+      .select("id, status, role_id, roles!tenant_memberships_role_id_fkey(name)")
       .eq("tenant_id", tenant.id)
       .eq("user_id", user.id)
       .eq("status", "active")

@@ -1945,6 +1945,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      accept_team_invitation: {
+        Args: { p_token: string }
+        Returns: {
+          membership_id: string
+          outcome: string
+          role_id: string
+          staff_link_reason: string
+          staff_linked: boolean
+          tenant_id: string
+        }[]
+      }
       cancel_my_appointment: {
         Args: { p_appointment_id: string }
         Returns: Json
@@ -2015,6 +2026,25 @@ export type Database = {
           p_tenant_id: string
         }
         Returns: string
+      }
+      create_team_invitation: {
+        Args: {
+          p_email: string
+          p_role_id: string
+          p_staff_member_id?: string
+          p_tenant_id: string
+        }
+        Returns: {
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          role_id: string
+          staff_member_id: string
+          status: string
+          tenant_id: string
+          token: string
+        }[]
       }
       create_tenant: {
         Args: { p_name: string; p_slug: string }
@@ -2100,6 +2130,22 @@ export type Database = {
         Returns: Json
       }
       list_my_devices: { Args: { p_tenant_id: string }; Returns: Json }
+      list_team_invitations: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          created_at: string
+          effective_status: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by_name: string
+          role_id: string
+          role_name: string
+          staff_member_id: string
+          staff_member_name: string
+          status: string
+        }[]
+      }
       materialize_notification_deliveries: {
         Args: { p_event_id: string }
         Returns: Json
@@ -2137,6 +2183,22 @@ export type Database = {
       reschedule_my_appointment: {
         Args: { p_appointment_id: string; p_new_start_at: string }
         Returns: Json
+      }
+      resend_team_invitation: {
+        Args: { p_invitation_id: string }
+        Returns: {
+          expires_at: string
+          id: string
+          status: string
+          token: string
+        }[]
+      }
+      revoke_team_invitation: {
+        Args: { p_invitation_id: string }
+        Returns: {
+          id: string
+          status: string
+        }[]
       }
       save_push_subscription: {
         Args: {

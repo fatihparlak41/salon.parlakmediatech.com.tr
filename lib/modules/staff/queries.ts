@@ -187,7 +187,7 @@ export async function getAvailableMemberships(
   const supabase = await createClient();
   const { data: memberships } = await supabase
     .from("tenant_memberships")
-    .select("id, user_id, roles(name)")
+    .select("id, user_id, roles!tenant_memberships_role_id_fkey(name)")
     .eq("tenant_id", tenantId)
     .eq("status", "active")
     .is("deleted_at", null);

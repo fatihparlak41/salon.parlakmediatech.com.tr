@@ -1,4 +1,5 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createHash, randomBytes } from "node:crypto";
 import postgres from "postgres";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -253,6 +254,28 @@ export async function createTestMembershipFromTemplate(
 export async function cleanupTenants(tenantIds: string[]): Promise<void> {
   if (tenantIds.length === 0) return;
 
+  // Faz SAAS.1C.1: the last-unrestricted-holder deferred constraint
+  // triggers correctly block reducing a *live* tenant to zero holders —
+  // but this function's job is to fully tear a test tenant down, which
+  // necessarily deletes every membership including the last one. That is
+  // a legitimate full-teardown, not the "still-operating tenant loses
+  // its owner" scenario the invariant protects against, so the two
+  // triggers are disabled for the duration of this teardown only and
+  // always re-enabled afterward, even on failure. testDb's role owns
+  // these tables (see this file's own testDb doc comment on why it's
+  // privileged), so it can do this; DEV-only, same as testDb itself.
+  await testDb`alter table tenant_memberships disable trigger tenant_memberships_unrestricted_holder_guard`;
+  await testDb`alter table role_permissions disable trigger role_permissions_unrestricted_holder_guard`;
+
+  try {
+    await cleanupTenantsInner(tenantIds);
+  } finally {
+    await testDb`alter table tenant_memberships enable trigger tenant_memberships_unrestricted_holder_guard`;
+    await testDb`alter table role_permissions enable trigger role_permissions_unrestricted_holder_guard`;
+  }
+}
+
+async function cleanupTenantsInner(tenantIds: string[]): Promise<void> {
   // notification_delivery_targets (Faz NOTIF.2E.2): FKs into
   // notification_deliveries (deleted next, below) — must go first. Has
   // its own tenant_id column, so no separate id-collection step is
@@ -537,4 +560,18 @@ export async function cleanupUsers(userIds: string[]): Promise<void> {
 export async function cleanupPlatformAdmins(userIds: string[]): Promise<void> {
   if (userIds.length === 0) return;
   await testDb`delete from platform_admins where user_id in ${testDb(userIds)}`;
+}
+
+// --- Faz SAAS.1C.1 fixture helpers -------------------------------------
+
+/** Same hex-encoded SHA-256 shape the DB side uses (encode(digest(token,
+ * 'sha256'), 'hex')) — lets a test construct a raw token + matching
+ * token_hash pair for direct-insert fixtures (e.g. a pre-expired or
+ * pre-revoked invitation row) without going through create_team_invitation. */
+export function sha256Hex(input: string): string {
+  return createHash("sha256").update(input).digest("hex");
+}
+
+export function randomTokenHex(): string {
+  return randomBytes(32).toString("hex");
 }
