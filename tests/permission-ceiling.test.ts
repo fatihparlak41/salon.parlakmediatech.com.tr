@@ -237,4 +237,26 @@ describe("permission ceiling — direct table writes are blocked", () => {
       .eq("id", limitedMembershipA);
     expect(error).not.toBeNull();
   });
+
+  // Faz SAAS.1B (20260917070000) — tenant_memberships_insert_staff_manage
+  // used to let any staff.manage holder INSERT a membership row directly,
+  // with an arbitrary role_id never checked against caller_can_grant_
+  // permissions(). limitedA holds staff.manage but not manage_
+  // unrestricted — exactly the shape that could previously grant ownerB
+  // (an existing user, not yet a member of tenantA) a full-Owner role
+  // without holding that power themselves. INSERT is now fully revoked
+  // from authenticated on this table; this proves the bypass stays closed.
+  it("cannot insert a tenant_memberships row directly, even for an existing user and role in the caller's own tenant", async () => {
+    const { error } = await limitedAClient.from("tenant_memberships").insert({
+      tenant_id: tenantA.id,
+      user_id: ownerB.id,
+      role_id: tenantA.ownerRoleId,
+    });
+    expect(error).not.toBeNull();
+
+    const [row] = await testDb<{ id: string }[]>`
+      select id from tenant_memberships where tenant_id = ${tenantA.id} and user_id = ${ownerB.id}
+    `;
+    expect(row).toBeUndefined();
+  });
 });

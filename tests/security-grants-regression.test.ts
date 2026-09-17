@@ -60,7 +60,15 @@ const AUTHENTICATED_TABLE_WHITELIST: Record<string, string[]> = {
   // grant (20260816090002/090006), asserted separately below by the
   // "only column-level grant" test. Postgres never folds a column-level
   // ACL into the table-level one, so it correctly does not appear here.
-  tenant_memberships: ["INSERT", "SELECT"],
+  // No INSERT either, as of Faz SAAS.1B (20260917070000): the
+  // tenant_memberships_insert_staff_manage policy never checked the
+  // inserted row's role_id against private.caller_can_grant_permissions
+  // — a real permission-ceiling bypass, closed once a repo-wide search
+  // confirmed zero application call sites depended on direct insert.
+  // private.create_tenant_with_owner (bootstrap) and, from Faz SAAS.1C
+  // onward, private.accept_team_invitation are the only paths left, both
+  // SECURITY DEFINER.
+  tenant_memberships: ["SELECT"],
   platform_admins: ["INSERT", "SELECT", "UPDATE"],
   plans: ["INSERT", "SELECT", "UPDATE"],
   features: ["INSERT", "SELECT", "UPDATE"],

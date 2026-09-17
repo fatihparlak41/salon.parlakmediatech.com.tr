@@ -296,6 +296,12 @@ export async function cleanupTenants(tenantIds: string[]): Promise<void> {
   await testDb`delete from appointments where tenant_id in ${testDb(tenantIds)}`;
   await testDb`delete from staff_schedule_exceptions where tenant_id in ${testDb(tenantIds)}`;
   await testDb`delete from staff_schedules where tenant_id in ${testDb(tenantIds)}`;
+  // team_invitations (Faz SAAS.1B): FKs into staff_members (deleted
+  // below), roles, and tenant_memberships (both deleted further down in
+  // this same function) — must go first, before any of the three. Has
+  // its own tenant_id column, so no separate id-collection step is
+  // needed.
+  await testDb`delete from team_invitations where tenant_id in ${testDb(tenantIds)}`;
 
   const staff = await testDb<{ id: string }[]>`
     select id from staff_members where tenant_id in ${testDb(tenantIds)}
