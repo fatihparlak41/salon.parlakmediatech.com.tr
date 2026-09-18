@@ -2146,6 +2146,19 @@ export type Database = {
           status: string
         }[]
       }
+      log_team_invitation_email_delivery: {
+        Args: {
+          p_actor_user_id: string
+          p_attempt_type: string
+          p_duration_ms?: number
+          p_error_class?: string
+          p_invitation_id: string
+          p_outcome: string
+          p_provider: string
+          p_provider_message_id?: string
+        }
+        Returns: undefined
+      }
       materialize_notification_deliveries: {
         Args: { p_event_id: string }
         Returns: Json
@@ -2185,7 +2198,7 @@ export type Database = {
         Returns: Json
       }
       resend_team_invitation: {
-        Args: { p_invitation_id: string }
+        Args: { p_expected_expires_at: string; p_invitation_id: string }
         Returns: {
           expires_at: string
           id: string

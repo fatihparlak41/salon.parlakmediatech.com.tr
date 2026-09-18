@@ -332,6 +332,17 @@ const SERVICE_ROLE_FUNCTION_WHITELIST = [
   // any application code in this phase (no cron/route wiring yet — that
   // is a deliberately separate, later decision).
   "public.purge_expired_notification_event_display_snapshots",
+  // Faz SAAS.1C.2C (20260918070000) — narrow, server-side-only email
+  // delivery observability write for team invitations. Same
+  // private/public split, same service_role-only posture as every entry
+  // above. Deliberately not authenticated-grantable even though the
+  // Server Action that calls it runs on behalf of a signed-in user —
+  // auth.uid() is unavailable under service_role, so the function
+  // validates the caller-supplied p_actor_user_id against a real active
+  // membership in the invitation's own tenant itself, rather than
+  // trusting RLS/auth.uid() the way every authenticated-grantable RPC
+  // in this schema otherwise does.
+  "public.log_team_invitation_email_delivery",
 ];
 
 // Expected output of security_audit_default_privileges() in a healthy

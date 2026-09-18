@@ -802,22 +802,26 @@ describe("security", () => {
     expect(error!.code).toBe("42501");
   });
 
-  it("service_role and default-privilege baselines unchanged (except the reviewed Faz NOTIF.2D.1/2E.1A/2E.2 additions)", async () => {
+  it("service_role and default-privilege baselines unchanged (except the reviewed Faz NOTIF.2D.1/2E.1A/2E.2/2F.1 + SAAS.1C.2C additions)", async () => {
     const data = await testDb<{ function_name: string; grantee: string }[]>`select * from security_audit_function_grants()`;
     // Faz NOTIF.2D.1 (get_push_subscriptions_for_test_send), Faz NOTIF.2E.1
-    // (materialize_notification_deliveries), and Faz NOTIF.2E.2 (the
-    // durable delivery worker's 5 narrow RPCs — still completely inactive)
-    // are the only service_role function grants in this project's history
-    // — see security-grants-regression.test.ts's own
+    // (materialize_notification_deliveries), Faz NOTIF.2E.2 (the durable
+    // delivery worker's 5 narrow RPCs — still completely inactive), Faz
+    // NOTIF.2F.1 (purge_expired_notification_event_display_snapshots), and
+    // Faz SAAS.1C.2C (log_team_invitation_email_delivery) are the only
+    // service_role function grants in this project's history — see
+    // security-grants-regression.test.ts's own
     // SERVICE_ROLE_FUNCTION_WHITELIST for the reviewed detail. This test's
     // job is only to confirm no UNREVIEWED one appeared.
     expect(data.filter((g) => g.grantee === "service_role").map((g) => g.function_name).sort()).toEqual([
       "claim_notification_delivery_targets",
       "get_notification_delivery_activation",
       "get_push_subscriptions_for_test_send",
+      "log_team_invitation_email_delivery",
       "materialize_notification_deliveries",
       "materialize_pending_notification_events",
       "prepare_notification_delivery_targets",
+      "purge_expired_notification_event_display_snapshots",
       "record_notification_delivery_target_result",
     ]);
     const defaults = await testDb<{ grantee: string }[]>`select * from public.security_audit_default_privileges()`;

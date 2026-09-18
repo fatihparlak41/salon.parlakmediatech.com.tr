@@ -315,7 +315,10 @@ describe("RESEND", () => {
       email: `inv-resend-rotate-${Date.now().toString(36)}@example.com`,
       roleId: limitedRoleId,
     });
-    const { data, error } = await ownerAClient.rpc("resend_team_invitation", { p_invitation_id: created.data!.id });
+    const { data, error } = await ownerAClient.rpc("resend_team_invitation", {
+      p_invitation_id: created.data!.id,
+      p_expected_expires_at: created.data!.expires_at,
+    });
     const row = (data as { id: string; status: string; expires_at: string; token: string }[] | null)?.[0];
     expect(error).toBeNull();
     expect(row?.status).toBe("pending");
@@ -328,7 +331,10 @@ describe("RESEND", () => {
     createdTenantIds.push(tenant.id);
     const created = await createInvitation(ownerAClient, { tenantId: tenant.id, email, roleId: tenant.ownerRoleId });
 
-    const { data } = await ownerAClient.rpc("resend_team_invitation", { p_invitation_id: created.data!.id });
+    const { data } = await ownerAClient.rpc("resend_team_invitation", {
+      p_invitation_id: created.data!.id,
+      p_expected_expires_at: created.data!.expires_at,
+    });
     const newToken = (data as { token: string }[])[0]!.token;
 
     const oldAttempt = await primaryAccepterClient.rpc("accept_team_invitation", { p_token: created.data!.token });
@@ -347,7 +353,10 @@ describe("RESEND", () => {
       email: `inv-resend-expiry-${Date.now().toString(36)}@example.com`,
       roleId: limitedRoleId,
     });
-    const { data } = await ownerAClient.rpc("resend_team_invitation", { p_invitation_id: created.data!.id });
+    const { data } = await ownerAClient.rpc("resend_team_invitation", {
+      p_invitation_id: created.data!.id,
+      p_expected_expires_at: created.data!.expires_at,
+    });
     const row = (data as { expires_at: string }[])[0]!;
     const expected = Date.now() + 7 * 24 * 3600_000;
     expect(Math.abs(new Date(row.expires_at).getTime() - expected)).toBeLessThan(60_000);
@@ -356,13 +365,21 @@ describe("RESEND", () => {
   it("transitions an expired-but-pending invitation to expired instead of resurrecting it", async () => {
     const email = `inv-resend-stale-${Date.now().toString(36)}@example.com`;
     const rawToken = randomTokenHex();
-    const [stale] = await testDb<{ id: string }[]>`
+    const [stale] = await testDb<{ id: string; expires_at: string }[]>`
       insert into team_invitations (tenant_id, email, role_id, invited_by, status, token_hash, expires_at, created_at)
       values (${tenantA.id}, ${email}, ${limitedRoleId}, ${ownerA.id}, 'pending', ${sha256Hex(rawToken)}, now() - interval '1 hour', now() - interval '8 days')
-      returning id
+      returning id, expires_at
     `;
 
-    const { data, error } = await ownerAClient.rpc("resend_team_invitation", { p_invitation_id: stale!.id });
+    // The expiry check fires before the fencing check (see this
+    // migration's own header — expiry is a terminal fact regardless of
+    // what the caller expected to see), so the exact value passed here
+    // is never actually compared for this specific case; passed anyway
+    // for a realistic, non-vacuous call.
+    const { data, error } = await ownerAClient.rpc("resend_team_invitation", {
+      p_invitation_id: stale!.id,
+      p_expected_expires_at: stale!.expires_at,
+    });
     const row = (data as { status: string; token: string | null }[] | null)?.[0];
     expect(error).toBeNull();
     expect(row?.status).toBe("expired");
@@ -380,7 +397,12 @@ describe("RESEND", () => {
     });
     await ownerAClient.rpc("revoke_team_invitation", { p_invitation_id: revokedTarget.data!.id });
 
-    const { error } = await ownerAClient.rpc("resend_team_invitation", { p_invitation_id: revokedTarget.data!.id });
+    // status-not-pending fires before fencing, same reasoning as the
+    // stale-expiry case above — the value here is never compared.
+    const { error } = await ownerAClient.rpc("resend_team_invitation", {
+      p_invitation_id: revokedTarget.data!.id,
+      p_expected_expires_at: revokedTarget.data!.expires_at,
+    });
     expect(error).not.toBeNull();
     expect(error?.message).toMatch(/invitation_not_pending/);
   });
@@ -391,7 +413,10 @@ describe("RESEND", () => {
       email: `inv-resend-ceiling-${Date.now().toString(36)}@example.com`,
       roleId: tenantA.ownerRoleId,
     });
-    const { error } = await managerAClient.rpc("resend_team_invitation", { p_invitation_id: created.data!.id });
+    const { error } = await managerAClient.rpc("resend_team_invitation", {
+      p_invitation_id: created.data!.id,
+      p_expected_expires_at: created.data!.expires_at,
+    });
     expect(error).not.toBeNull();
   });
 });
@@ -766,7 +791,14 @@ describe("SECURITY", () => {
         p_role_id: limitedRoleId,
       }),
       anon.rpc("list_team_invitations", { p_tenant_id: tenantA.id }),
-      anon.rpc("resend_team_invitation", { p_invitation_id: target.invitation.id }),
+      // Faz SAAS.1C.2C: resend_team_invitation's signature gained
+      // p_expected_expires_at (optimistic fencing, 20260918070000) —
+      // still just verifying anon gets denied on whatever the CURRENT
+      // real RPC is, not an artifact of calling a deleted overload.
+      anon.rpc("resend_team_invitation", {
+        p_invitation_id: target.invitation.id,
+        p_expected_expires_at: target.invitation.expires_at,
+      }),
       anon.rpc("revoke_team_invitation", { p_invitation_id: target.invitation.id }),
     ]);
     for (const { error } of results) {
