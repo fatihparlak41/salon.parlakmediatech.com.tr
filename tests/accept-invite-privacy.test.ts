@@ -112,11 +112,26 @@ describe("who may read the raw token", () => {
     expect(filesContaining("getPendingTeamInvitationToken", [PENDING_COOKIE])).toEqual([ACCEPT_ACTION]);
   });
 
-  it("the accept page uses only the boolean hasPendingTeamInvitation()", () => {
+  it("the accept page uses only the boolean presence helper, never the token getter", () => {
     const src = code(ACCEPT_PAGE);
-    expect(src).toContain("hasPendingTeamInvitation");
+    expect(src).toContain("pendingTeamInvitationPresence");
     expect(src).not.toContain("getPendingTeamInvitationToken");
-    expect(filesContaining("hasPendingTeamInvitation", [PENDING_COOKIE])).toEqual([ACCEPT_PAGE]);
+  });
+
+  it("only BOOLEAN presence helpers exist outside the accept action: the accept page plus the temporary continuity diagnostics on the auth hops", () => {
+    // SAAS.1D confirmation-continuity: /auth/confirm and the auth Server
+    // Actions now read whether an invitation is parked — booleans only —
+    // for presence diagnostics. The token getter stays single-consumer
+    // (see the test above); this pins WHO else may even ask "is one
+    // parked?" so that list can't grow silently.
+    expect(
+      filesContaining(/hasPendingTeamInvitation|pendingTeamInvitationPresence/, [PENDING_COOKIE]).sort(),
+    ).toEqual([ACCEPT_PAGE, "app/auth/confirm/route.ts", "lib/modules/auth/actions.ts"].sort());
+
+    // …and the helpers really do return booleans only.
+    const helper = code(PENDING_COOKIE);
+    expect(helper).toMatch(/hasPendingTeamInvitation\(\): Promise<boolean>/);
+    expect(helper).toMatch(/pendingTeamInvitationPresence\(\): Promise<\{ present: boolean; shapeValid: boolean \}>/);
   });
 
   it("the cookie name is read/written only by the three token modules", () => {
@@ -253,7 +268,9 @@ describe("login and sign-up carry the return path safely", () => {
 
   it("login completion, sign-up and sign-out never call the accept action or read the pending token", () => {
     const src = code("lib/modules/auth/actions.ts");
-    expect(src).not.toMatch(/pending-team-invitation|getPendingTeamInvitationToken|clearPendingTeamInvitation/);
+    // The auth actions may ask "is an invitation parked?" (a boolean, for
+    // the continuity diagnostics) but never fetch or clear the token.
+    expect(src).not.toMatch(/getPendingTeamInvitationToken|clearPendingTeamInvitation/);
   });
 });
 

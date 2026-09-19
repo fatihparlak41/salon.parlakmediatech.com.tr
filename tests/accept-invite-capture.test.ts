@@ -243,10 +243,11 @@ describe("open-redirect safety of the auth return path (`next`)", () => {
     expect(resolveSafeNext(input, getSiteUrl())).toBe("/");
   });
 
-  it("keeps an encoded-slash path on this origin (it is a path, not a host)", () => {
-    const result = resolveSafeNext("/%2F%2Fevil.com", prod);
-    expect(result.startsWith("/")).toBe(true);
-    expect(new URL(result, prod).origin).toBe(prod);
+  it("falls back to / for an encoded-slash path too: on this origin it is a path, but a layer that decodes it would read a host", () => {
+    // F4: the guard now refuses anything that only BECOMES protocol-relative once decoded
+    // (see tests/redirect-safety.test.ts for the full payload list and the property test).
+    expect(resolveSafeNext("/%2F%2Fevil.com", prod)).toBe("/");
+    expect(new URL(resolveSafeNext("/%2F%2Fevil.com", prod), prod).origin).toBe(prod);
   });
 });
 

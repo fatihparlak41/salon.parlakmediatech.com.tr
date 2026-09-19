@@ -33,6 +33,20 @@ export async function hasPendingTeamInvitation(): Promise<boolean> {
   return (await readRawCookie()) !== null;
 }
 
+/**
+ * Presence-only, for the temporary continuity diagnostics (see
+ * lib/auth/invite-continuity-log.ts): whether the cookie exists in this
+ * request at all, and whether its value has the shape of a token. Booleans
+ * only — the value itself never leaves this function, so, like
+ * hasPendingTeamInvitation(), it is safe to call from anywhere that needs
+ * to know WHETHER an invitation is parked.
+ */
+export async function pendingTeamInvitationPresence(): Promise<{ present: boolean; shapeValid: boolean }> {
+  const cookieStore = await cookies();
+  const value = cookieStore.get(PENDING_TEAM_INVITATION_COOKIE)?.value;
+  return { present: value !== undefined, shapeValid: isValidTeamInvitationTokenShape(value) };
+}
+
 /** For the accept Server Action ONLY. Never pass the result to a Client
  * Component prop, a redirect URL, a log line, or an ActionResult. */
 export async function getPendingTeamInvitationToken(): Promise<string | null> {

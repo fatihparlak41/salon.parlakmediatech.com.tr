@@ -3,7 +3,12 @@ import type { NextRequest } from "next/server";
 import createMiddleware from "next-intl/middleware";
 import { routing } from "@/lib/i18n/routing";
 import { authErrorLogFields, isStaleSessionError } from "@/lib/auth/session-errors";
-import { captureTeamInvitationToken } from "@/lib/auth/team-invitation-token";
+import {
+  captureTeamInvitationToken,
+  requestHasPendingTeamInvitationCookie,
+} from "@/lib/auth/team-invitation-token";
+import { clearStaleSupabaseAuthCookies } from "@/lib/auth/supabase-auth-cookies";
+import { logProxyStaleSessionSweep } from "@/lib/auth/invite-continuity-log";
 
 const handleI18nRouting = createMiddleware(routing);
 
@@ -63,9 +68,26 @@ export async function proxy(request: NextRequest) {
       // to throw rather than return {error} for this case. Clear the
       // now-invalid cookies so this and future requests are cleanly
       // signed-out instead of retrying the same broken refresh on every
-      // request. Expected condition, not logged.
-      request.cookies.getAll().forEach(({ name }) => {
-        if (name.startsWith("sb-")) response.cookies.delete(name);
+      // request. Expected condition, not an error.
+      //
+      // Faz SAAS.1D confirmation-continuity: this used to delete EVERY
+      // cookie whose name started with "sb-", which also caught
+      // SalonOS's own application cookies that share the prefix (the
+      // pending team invitation, the pending email confirmation,
+      // booking-claim secrets). It now clears only the cookies Supabase
+      // Auth itself owns — an exact predicate derived from the installed
+      // @supabase/ssr / auth-js (lib/auth/supabase-auth-cookies.ts).
+      const outcome = clearStaleSupabaseAuthCookies({
+        cookieNames: request.cookies.getAll().map(({ name }) => name),
+        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+        remove: (name) => response.cookies.delete(name),
+      });
+      // TEMPORARY, presence-only: with the pinned auth-js this branch is
+      // unreachable, so any occurrence in the logs is itself a finding.
+      logProxyStaleSessionSweep({
+        sweptCookieCount: outcome.sweptCount,
+        preservedCookieCount: outcome.preservedCount,
+        pendingInvitationCookiePreserved: requestHasPendingTeamInvitationCookie(request),
       });
     } else {
       console.error(

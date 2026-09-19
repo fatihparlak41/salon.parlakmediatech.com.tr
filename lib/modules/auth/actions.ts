@@ -14,6 +14,13 @@ import { authErrorLogFields } from "@/lib/auth/session-errors";
 import { resolveSafeNext } from "@/app/auth/confirm/route";
 import { resendConfirmationSchema, signInSchema, signUpSchema } from "./schemas";
 import { getSiteUrl } from "@/lib/site-url";
+import { pendingTeamInvitationPresence } from "@/lib/auth/pending-team-invitation";
+import {
+  POST_CONFIRM_NEXT_METADATA_KEY,
+  chooseConfirmationDestination,
+  resolvePostConfirmHintForWrite,
+} from "@/lib/auth/post-confirm-destination";
+import { logConfirmSuccessContinuity, logSignUpContinuity } from "@/lib/auth/invite-continuity-log";
 
 /**
  * Faz SAAS.1D.2 — optional post-auth return path, e.g. /accept-invite.
@@ -93,11 +100,32 @@ export async function signUpAction(
   // DEV project's allowlist that a same-origin path here is honored, not
   // replaced by the Site URL.
   const next = readSafeNext(formData);
+
+  // Faz SAAS.1D confirmation-continuity: PROD's shared "Confirm signup"
+  // email template does not forward RedirectTo as `next` (proven from a
+  // real PROD confirmation link), so emailRedirectTo alone cannot bring an
+  // invited team member back to /accept-invite. The validated destination
+  // is therefore ALSO stored on the account as a non-secret hint that
+  // confirmEmailAction reads after a successful signup confirmation (see
+  // lib/auth/post-confirm-destination.ts for the security model). Only an
+  // allowlisted route is ever written — never a token, id, email or
+  // cookie content. emailRedirectTo is deliberately left unchanged.
+  const postConfirmNext = resolvePostConfirmHintForWrite(next, getSiteUrl());
+  const invitationPresence = await pendingTeamInvitationPresence();
+  logSignUpContinuity({
+    pendingInvitationCookiePresent: invitationPresence.present,
+    pendingInvitationCookieShapeValid: invitationPresence.shapeValid,
+    metadataHintWritten: postConfirmNext !== null,
+  });
+
   const { error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
     options: {
-      data: { full_name: parsed.data.fullName },
+      data: {
+        full_name: parsed.data.fullName,
+        ...(postConfirmNext ? { [POST_CONFIRM_NEXT_METADATA_KEY]: postConfirmNext } : {}),
+      },
       emailRedirectTo: next && next !== "/" ? `${getSiteUrl()}${next}` : getSiteUrl(),
     },
   });
@@ -139,7 +167,7 @@ export async function confirmEmailAction(): Promise<void> {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.verifyOtp({
+  const { data, error } = await supabase.auth.verifyOtp({
     type: pending.type,
     token_hash: pending.tokenHash,
   });
@@ -155,7 +183,34 @@ export async function confirmEmailAction(): Promise<void> {
     redirect("/confirm-email");
   }
 
-  redirect(pending.next);
+  // Faz SAAS.1D confirmation-continuity: an explicit destination from the
+  // confirmation link wins; otherwise a SIGNUP confirmation falls back to
+  // the validated post_confirm_next hint stored at sign-up (an invited
+  // team member returns to /accept-invite), then to "/". Recovery,
+  // magic-link, email-change, invite and email confirmations never
+  // inherit the hint. Choosing a redirect is ALL this does — it does not
+  // accept an invitation, create a membership, link staff or touch the
+  // invitation: the explicit "Daveti Kabul Et" click remains mandatory.
+  const chosen = chooseConfirmationDestination({
+    confirmType: pending.type,
+    pendingNext: pending.next,
+    userMetadata: data.user?.user_metadata,
+    siteOrigin: getSiteUrl(),
+  });
+
+  const invitationPresence = await pendingTeamInvitationPresence();
+  logConfirmSuccessContinuity({
+    confirmType: pending.type,
+    pendingInvitationCookiePresent: invitationPresence.present,
+    pendingInvitationCookieShapeValid: invitationPresence.shapeValid,
+    pendingConfirmationCookiePresent: true,
+    explicitNextPresent: chosen.source === "explicit",
+    metadataNextPresent: chosen.metadataNextPresent,
+    metadataNextAccepted: chosen.metadataNextAccepted,
+    destinationSource: chosen.source,
+  });
+
+  redirect(chosen.destination);
 }
 
 export async function resendConfirmationAction(
