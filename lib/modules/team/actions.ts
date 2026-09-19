@@ -1,19 +1,20 @@
 "use server";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { revalidatePath } from "next/cache";
 import type { Database } from "@/lib/supabase/database.types";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireUser } from "@/lib/auth/session";
 import { fail, ok, type ActionResult } from "@/lib/errors";
-import { getSiteUrl } from "@/lib/site-url";
 import {
   sendTeamInvitationEmail,
   type EmailErrorClass,
   type EmailSendOutcome,
   type SendEmailTransport,
 } from "@/lib/email/email-server";
-import { createTeamInvitationSchema, resendTeamInvitationSchema } from "./schemas";
+import { createTeamInvitationSchema, resendTeamInvitationSchema, revokeTeamInvitationSchema } from "./schemas";
+import { mapCreateInvitationError, mapResendInvitationError, mapRevokeInvitationError, buildAcceptUrl } from "./helpers";
 
 /**
  * Faz SAAS.1C.2B/2C — the ONLY module allowed to combine the
@@ -40,6 +41,24 @@ import { createTeamInvitationSchema, resendTeamInvitationSchema } from "./schema
  * dependency-injection shape already used for sendPush/
  * sendTeamInvitationEmail, one layer up. The "use server" functions are
  * thin real-dependency wrappers around these Core functions.
+ *
+ * Faz SAAS.1D.1 — mapCreateInvitationError/mapResendInvitationError/
+ * mapRevokeInvitationError/buildAcceptUrl moved out to ./helpers.ts
+ * (plain synchronous functions, re-exported nowhere from here). A
+ * file-level "use server" directive requires EVERY export of THIS file
+ * to be an async function; those four never were. That combination was
+ * always invalid, but silently so — Next.js only validates a "use
+ * server" file's full export surface once something client-reachable
+ * imports from it, which nothing did until this phase's own Team UI
+ * components became the first client code to import an action from
+ * here, surfacing "Server Actions must be async functions" for
+ * buildAcceptUrl. (An inline function-level "use server" inside each
+ * action was tried first and rejected by Next.js too — "It is not
+ * allowed to define inline 'use server' annotated Server Actions in
+ * Client Components" — because this file becomes part of the client
+ * bundle graph once a Client Component imports from it.) No behavioral
+ * change to any RPC/email/audit logic — only where these four pure
+ * functions live.
  */
 
 export type CreateTeamInvitationInput = {
@@ -62,6 +81,16 @@ export type ResendTeamInvitationResultData =
   | { outcome: "sent"; invitationId: string }
   | { outcome: "delivery_failed"; invitationId: string; errorClass: EmailErrorClass }
   | { outcome: "expired"; invitationId: string };
+
+export type RevokeTeamInvitationInput = {
+  tenantId: string;
+  invitationId: string;
+};
+
+export type RevokeTeamInvitationResultData = {
+  invitationId: string;
+  status: string;
+};
 
 type CreateTeamInvitationRpcRow = {
   id: string;
@@ -96,76 +125,12 @@ type ListTeamInvitationsRpcRow = {
   invited_by_name: string | null;
 };
 
+type RevokeTeamInvitationRpcRow = {
+  id: string;
+  status: string;
+};
+
 type AnySupabaseClient = SupabaseClient<Database>;
-
-/** Exact live RPC error messages (private.create_team_invitation,
- * 20260917080000) — re-read from the deployed DEV function body for
- * this phase, not recalled from memory. */
-export function mapCreateInvitationError(error: { message: string }): ActionResult<never> {
-  const msg = error.message;
-  if (msg.includes("authentication required")) {
-    return fail("UNAUTHENTICATED", "Oturum açmanız gerekiyor");
-  }
-  if (msg.includes("staff.manage required")) {
-    return fail("UNAUTHORIZED", "Bu işlem için yetkiniz yok");
-  }
-  if (msg.includes("cannot invite into a role with permissions you do not hold")) {
-    return fail("UNAUTHORIZED", "Sahip olmadığınız izinleri içeren bir role davet gönderemezsiniz");
-  }
-  if (msg.includes("role not found in this tenant")) {
-    return fail("VALIDATION", "Geçersiz rol");
-  }
-  if (msg.includes("staff member not found in this tenant")) {
-    return fail("VALIDATION", "Geçersiz personel");
-  }
-  if (msg.includes("invalid_email")) {
-    return fail("VALIDATION", "Geçersiz e-posta adresi");
-  }
-  if (msg.includes("pending_invitation_exists")) {
-    return fail("CONFLICT", "Bu e-posta için zaten bekleyen bir davet var");
-  }
-  if (msg.includes("already_member")) {
-    return fail("CONFLICT", "Bu kişi zaten ekibin bir üyesi");
-  }
-  if (msg.includes("membership_suspended")) {
-    return fail("CONFLICT", "Bu kişinin üyeliği askıya alınmış");
-  }
-  return fail("UNEXPECTED", "Davet oluşturulamadı, lütfen tekrar deneyin");
-}
-
-/** Exact live RPC error messages — private.resend_team_invitation AND
- * private.list_team_invitations (Faz SAAS.1C.2C, 20260918070000; the
- * prelookup call below can only ever raise the shared
- * "staff.manage required" case). Note: an already-expired-but-still-
- * pending invitation is NOT an error from resend_team_invitation — it
- * returns a normal {status:"expired", token:null} row instead, handled
- * separately, not here. invitation_changed is new this phase: the
- * caller's observed expires_at no longer matches the row's current
- * value — someone else (most likely a concurrent resend) already
- * mutated it first. */
-export function mapResendInvitationError(error: { message: string }): ActionResult<never> {
-  const msg = error.message;
-  if (msg.includes("invitation_not_found")) {
-    return fail("NOT_FOUND", "Davet bulunamadı");
-  }
-  if (msg.includes("staff.manage required")) {
-    return fail("UNAUTHORIZED", "Bu işlem için yetkiniz yok");
-  }
-  if (msg.includes("cannot resend an invitation into a role with permissions you do not hold")) {
-    return fail("UNAUTHORIZED", "Sahip olmadığınız izinleri içeren bir role daveti yeniden gönderemezsiniz");
-  }
-  if (msg.includes("invitation_not_pending")) {
-    return fail("CONFLICT", "Bu davet artık beklemede değil");
-  }
-  if (msg.includes("invitation_changed")) {
-    return fail("CONFLICT", "Davet başka bir işlem tarafından güncellendi. Lütfen tekrar deneyin.");
-  }
-  return fail("UNEXPECTED", "Davet yeniden gönderilemedi, lütfen tekrar deneyin");
-}
-
-export function buildAcceptUrl(rawToken: string): string {
-  return `${getSiteUrl()}/accept-invite?token=${encodeURIComponent(rawToken)}`;
-}
 
 /** Tenant display name + timezone via the same tenant-safe, RLS-scoped
  * SELECT every other authenticated tenant page in this codebase already
@@ -431,18 +396,87 @@ export async function resendTeamInvitationCore(
 
 export async function createTeamInvitationAction(
   _prevState: ActionResult<CreateTeamInvitationResultData> | null,
-  input: CreateTeamInvitationInput,
+  input: CreateTeamInvitationInput & { tenantSlug: string },
 ): Promise<ActionResult<CreateTeamInvitationResultData>> {
   const user = await requireUser();
   const supabase = await createClient();
-  return createTeamInvitationCore(supabase, user.id, input);
+  const result = await createTeamInvitationCore(supabase, user.id, input);
+  if (result.success) {
+    revalidatePath(`/app/${input.tenantSlug}/team`);
+  }
+  return result;
 }
 
 export async function resendTeamInvitationAction(
   _prevState: ActionResult<ResendTeamInvitationResultData> | null,
-  input: ResendTeamInvitationInput,
+  input: ResendTeamInvitationInput & { tenantSlug: string },
 ): Promise<ActionResult<ResendTeamInvitationResultData>> {
   const user = await requireUser();
   const supabase = await createClient();
-  return resendTeamInvitationCore(supabase, user.id, input);
+  const result = await resendTeamInvitationCore(supabase, user.id, input);
+  if (result.success) {
+    revalidatePath(`/app/${input.tenantSlug}/team`);
+  }
+  return result;
+}
+
+/**
+ * Faz SAAS.1D.1 — narrow revoke wrapper, same prelookup-before-mutation
+ * shape as resendTeamInvitationCore (see its own header comment): a
+ * wrong/stale tenantId — most plausibly the Team page acting on a
+ * cross-tenant-scoped invitationId — fails closed at the
+ * list_team_invitations prelookup, before revoke_team_invitation is ever
+ * called. Unlike resend, there is no email/presentation-data step here,
+ * so the prelookup exists purely for this tenant-scoping proof, not to
+ * gather template data.
+ */
+export async function revokeTeamInvitationCore(
+  supabase: AnySupabaseClient,
+  input: RevokeTeamInvitationInput,
+): Promise<ActionResult<RevokeTeamInvitationResultData>> {
+  const parsed = revokeTeamInvitationSchema.safeParse(input);
+  if (!parsed.success) {
+    return fail("VALIDATION", "Geçersiz istek");
+  }
+
+  const { data: listData, error: listError } = await supabase.rpc("list_team_invitations", {
+    p_tenant_id: parsed.data.tenantId,
+  });
+  if (listError) {
+    return mapRevokeInvitationError(listError);
+  }
+  const invitationRow = (listData as ListTeamInvitationsRpcRow[] | null)?.find(
+    (r) => r.id === parsed.data.invitationId,
+  );
+  if (!invitationRow) {
+    return fail("NOT_FOUND", "Davet bulunamadı");
+  }
+
+  const { data, error } = await supabase.rpc("revoke_team_invitation", {
+    p_invitation_id: parsed.data.invitationId,
+  });
+
+  if (error) {
+    return mapRevokeInvitationError(error);
+  }
+
+  const row = (data as RevokeTeamInvitationRpcRow[] | null)?.[0];
+  if (!row) {
+    return fail("UNEXPECTED", "Davet iptal edilemedi, lütfen tekrar deneyin");
+  }
+
+  return ok({ invitationId: row.id, status: row.status });
+}
+
+export async function revokeTeamInvitationAction(
+  _prevState: ActionResult<RevokeTeamInvitationResultData> | null,
+  input: RevokeTeamInvitationInput & { tenantSlug: string },
+): Promise<ActionResult<RevokeTeamInvitationResultData>> {
+  await requireUser();
+  const supabase = await createClient();
+  const result = await revokeTeamInvitationCore(supabase, input);
+  if (result.success) {
+    revalidatePath(`/app/${input.tenantSlug}/team`);
+  }
+  return result;
 }

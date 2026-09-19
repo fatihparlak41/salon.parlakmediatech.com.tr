@@ -21,3 +21,13 @@ export const resendTeamInvitationSchema = z.object({
   tenantId: z.string().uuid(),
   invitationId: z.string().uuid(),
 });
+
+export const revokeTeamInvitationSchema = z.object({
+  // Same reasoning as resendTeamInvitationSchema above: revoke_team_invitation
+  // itself only takes p_invitation_id and derives its own tenant/permission
+  // checks, but the Team page's own prelookup (proving the invitation
+  // belongs to the tenant currently being viewed, not just one the caller
+  // happens to hold staff.manage in) needs tenantId explicitly.
+  tenantId: z.string().uuid(),
+  invitationId: z.string().uuid(),
+});

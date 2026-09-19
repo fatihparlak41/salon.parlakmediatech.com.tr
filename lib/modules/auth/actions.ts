@@ -11,8 +11,25 @@ import {
   getPendingConfirmation,
 } from "@/lib/auth/pending-confirmation";
 import { authErrorLogFields } from "@/lib/auth/session-errors";
+import { resolveSafeNext } from "@/app/auth/confirm/route";
 import { resendConfirmationSchema, signInSchema, signUpSchema } from "./schemas";
 import { getSiteUrl } from "@/lib/site-url";
+
+/**
+ * Faz SAAS.1D.2 — optional post-auth return path, e.g. /accept-invite.
+ * Same shape as the customer portal's (lib/modules/customer-account/
+ * actions.ts requestAccountMagicLinkAction): the page that rendered the
+ * form already validated `?next=` once with resolveSafeNext, but a hidden
+ * form field is client-submitted data, so it's re-validated here with
+ * that same guard rather than trusted. Null when absent or empty, so the
+ * caller keeps its own existing default ("/" for sign-in/sign-out, the
+ * bare site URL for sign-up's emailRedirectTo).
+ */
+function readSafeNext(formData: FormData | undefined): string | null {
+  const raw = formData?.get("next");
+  if (typeof raw !== "string" || !raw) return null;
+  return resolveSafeNext(raw, getSiteUrl());
+}
 
 export async function signInAction(
   _prevState: ActionResult<null> | null,
@@ -37,7 +54,10 @@ export async function signInAction(
     return fail("UNAUTHENTICATED", "E-posta veya şifre hatalı");
   }
 
-  redirect("/");
+  // Deliberately NOT accepting any pending team invitation here — login
+  // only navigates. The person still has to press "Daveti Kabul Et" on
+  // /accept-invite themselves.
+  redirect(readSafeNext(formData) ?? "/");
 }
 
 export async function signUpAction(
@@ -65,12 +85,20 @@ export async function signUpAction(
   // `{{ .RedirectTo }}` template variable, i.e. where confirmEmailAction
   // sends the user after a successful verifyOtp() — also checked
   // server-side against the project's Redirect URL allowlist.
+  //
+  // Faz SAAS.1D.2: a signup that began from an invitation continues to
+  // /accept-invite after confirmation this way — the existing mechanism,
+  // no change to confirm semantics, and no invitation token anywhere in
+  // this URL (that stays in the HttpOnly cookie). Confirmed against the
+  // DEV project's allowlist that a same-origin path here is honored, not
+  // replaced by the Site URL.
+  const next = readSafeNext(formData);
   const { error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
     options: {
       data: { full_name: parsed.data.fullName },
-      emailRedirectTo: getSiteUrl(),
+      emailRedirectTo: next && next !== "/" ? `${getSiteUrl()}${next}` : getSiteUrl(),
     },
   });
 
@@ -165,8 +193,13 @@ export async function resendConfirmationAction(
   return { success: true, data: null };
 }
 
-export async function signOutAction(): Promise<void> {
+/** Optional `next` (Faz SAAS.1D.2): the invitation email-mismatch screen
+ * signs the wrong account out and returns to /accept-invite, where the
+ * still-parked invitation cookie lets the RIGHT account sign in and
+ * continue. The sidebar's own sign-out form sends no `next`, so it keeps
+ * landing on "/" exactly as before. */
+export async function signOutAction(formData?: FormData): Promise<void> {
   const supabase = await createClient();
   await supabase.auth.signOut();
-  redirect("/");
+  redirect(readSafeNext(formData) ?? "/");
 }

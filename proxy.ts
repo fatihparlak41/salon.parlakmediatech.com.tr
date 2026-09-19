@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import createMiddleware from "next-intl/middleware";
 import { routing } from "@/lib/i18n/routing";
 import { authErrorLogFields, isStaleSessionError } from "@/lib/auth/session-errors";
+import { captureTeamInvitationToken } from "@/lib/auth/team-invitation-token";
 
 const handleI18nRouting = createMiddleware(routing);
 
@@ -23,6 +24,17 @@ const handleI18nRouting = createMiddleware(routing);
  * used as a full session management or authorization solution).
  */
 export async function proxy(request: NextRequest) {
+  // Faz SAAS.1D.2 — GET /accept-invite?token=... must only ever park the
+  // token in an HttpOnly cookie and redirect to the token-free URL; it
+  // never renders a page, touches auth state, or calls the database (see
+  // lib/auth/team-invitation-token.ts). Handled here rather than in a
+  // page because a Server Component can't set cookies, and rather than a
+  // /auth/* route handler because the invitation email's CTA is the
+  // /accept-invite URL itself. Every other request falls through to the
+  // normal pipeline below, unchanged.
+  const invitationCapture = captureTeamInvitationToken(request);
+  if (invitationCapture) return invitationCapture;
+
   const response = handleI18nRouting(request);
 
   const supabase = createServerClient(

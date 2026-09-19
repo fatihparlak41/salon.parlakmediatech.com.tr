@@ -44,6 +44,30 @@
       "resendSuccess": "Bu e-posta adresi kayıtlıysa, yeni bir doğrulama bağlantısı gönderildi."
     }
   },
+  "AcceptInvite": {
+    "continuation": {
+      "title": "SalonOS ekip davetiniz hazır.",
+      "description": "Devam etmek için giriş yapın veya hesap oluşturun.",
+      "loginCta": "Giriş Yap",
+      "signUpCta": "Hesap Oluştur"
+    },
+    "noPending": {
+      "title": "Davet bağlantısı bulunamadı",
+      "description": "Bu bağlantının süresi dolmuş veya daha önce kullanılmış olabilir. Lütfen e-postanızdaki davet bağlantısına tekrar tıklayın.",
+      "homeCta": "Ana sayfaya dön"
+    },
+    "accept": {
+      "title": "Ekip davetini kabul et",
+      "description": "Daveti kabul ederek salon ekibine katılacaksınız.",
+      "acceptCta": "Daveti Kabul Et",
+      "accepting": "Kabul ediliyor…",
+      "notNowCta": "Şimdi Değil"
+    },
+    "failure": {
+      "switchAccountCta": "Çıkış Yap ve Farklı Hesapla Giriş Yap",
+      "homeCta": "Ana sayfaya dön"
+    }
+  },
   "Home": {
     "signedOut": {
       "title": "SalonOS",
@@ -77,6 +101,7 @@
       "customers": "Müşteriler",
       "appointments": "Randevular",
       "staff": "Personel",
+      "team": "Ekip",
       "services": "Hizmetler",
       "reports": "Raporlar",
       "settings": "Ayarlar"
@@ -230,6 +255,60 @@
     "countLabel": "Toplam personel",
     "activeCountLabel": "Aktif",
     "noBranchWarning": "Bu personel hiçbir şubeye atanmadı — randevu için görünmeyecek."
+  },
+  "Team": {
+    "title": "Ekip ve Yetkiler",
+    "description": "Salonunuza erişebilen kullanıcıları ve bekleyen davetleri yönetin.",
+    "inviteCta": "Yeni Davet",
+    "membersSectionTitle": "Aktif Ekip Üyeleri",
+    "invitationsSectionTitle": "Davetler",
+    "membersTable": {
+      "nameColumn": "Kullanıcı",
+      "roleColumn": "Rol",
+      "staffLinkColumn": "Personel Bağlantısı",
+      "unlinkedLabel": "Bağlantı yok"
+    },
+    "invitationsTable": {
+      "emailColumn": "E-posta",
+      "roleColumn": "Rol",
+      "staffLinkColumn": "Personel Bağlantısı",
+      "invitedByColumn": "Davet Eden",
+      "createdColumn": "Oluşturulma",
+      "expiresColumn": "Son Geçerlilik",
+      "statusColumn": "Durum",
+      "actionsColumn": "İşlemler",
+      "unlinkedLabel": "—",
+      "unknownInviter": "—"
+    },
+    "emptyInvitationsTitle": "Henüz gönderilmiş bir ekip daveti yok.",
+    "noMembersTitle": "Henüz aktif ekip üyesi bulunmuyor.",
+    "resendCta": "Tekrar Gönder",
+    "resendPending": "Gönderiliyor…",
+    "revokeCta": "İptal Et",
+    "revokeConfirmTitle": "Daveti iptal et?",
+    "revokeConfirmDescription": "Bu davet artık kullanılamayacak. Daveti iptal etmek istiyor musunuz?",
+    "revokeConfirmCancel": "Vazgeç",
+    "revokeConfirmConfirm": "Daveti İptal Et",
+    "revokeConfirmPending": "İptal ediliyor…",
+    "createSentMessage": "Davet gönderildi.",
+    "createDeliveryFailedMessage": "Davet oluşturuldu ancak e-posta gönderilemedi.",
+    "resendSentMessage": "Davet yeniden gönderildi.",
+    "resendDeliveryFailedMessage": "Davet yeniden oluşturuldu ancak e-posta gönderilemedi.",
+    "resendExpiredMessage": "Bu davetin süresi dolmuş. Yeni bir davet oluşturun.",
+    "invitationChangedMessage": "Davet başka bir işlem tarafından güncellendi. Liste yenilendi.",
+    "createDialog": {
+      "title": "Yeni davet gönder",
+      "description": "Salonunuza katılması için birini davet edin.",
+      "emailLabel": "E-posta",
+      "roleLabel": "Rol",
+      "rolePlaceholder": "Bir rol seçin",
+      "staffLinkLabel": "Personel hesabına bağla (opsiyonel)",
+      "staffLinkPlaceholder": "Bağlama",
+      "staffLinkNone": "Bağlama",
+      "staffLinkHelper": "Yalnızca bu davet mevcut bir personel kaydıyla ilişkilendirilecekse seçin.",
+      "submitLabel": "Daveti gönder",
+      "submitPending": "Gönderiliyor…"
+    }
   },
   "Services": {
     "title": "Hizmetler",
