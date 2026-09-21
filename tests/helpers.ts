@@ -575,3 +575,103 @@ export function sha256Hex(input: string): string {
 export function randomTokenHex(): string {
   return randomBytes(32).toString("hex");
 }
+
+// --- Faz SAAS.1E.0 fixture helpers -------------------------------------
+
+/** Runs `fn` inside ONE transaction as the given user, exactly the way a
+ * PostgREST request would: role `authenticated` plus the JWT claims that
+ * make auth.uid() resolve to `userId`. Everything the RPCs and RLS see is
+ * therefore identical to a real signed-in call, without spending one of
+ * Supabase Auth's rate-limited password sign-ins per actor — which is what
+ * lets the authority matrices in the SAAS.1E.0 tests be wide. Deferred
+ * constraint triggers fire when the transaction COMMITS, so a violation
+ * surfaces here exactly as it does for a real request. Assertions that are
+ * specifically about the PostgREST surface (raw table PATCH, which RPCs are
+ * exposed, anon) still use real clients — see the individual tests. */
+export async function asAuthenticatedUser<T>(
+  userId: string,
+  fn: (sql: postgres.TransactionSql) => Promise<T>,
+): Promise<T> {
+  return (await testDb.begin(async (sql) => {
+    await sql`select set_config('request.jwt.claims', ${JSON.stringify({ sub: userId, role: "authenticated" })}, true),
+                     set_config('request.jwt.claim.sub', ${userId}, true)`;
+    await sql`set local role authenticated`;
+    return fn(sql);
+  })) as T;
+}
+
+/** Same, but as an arbitrary database role (e.g. proving service_role or
+ * anon are not trusted to write the staff link). */
+export async function asDatabaseRole<T>(
+  role: "authenticated" | "anon" | "service_role",
+  userId: string | null,
+  fn: (sql: postgres.TransactionSql) => Promise<T>,
+): Promise<T> {
+  return (await testDb.begin(async (sql) => {
+    if (userId) {
+      await sql`select set_config('request.jwt.claims', ${JSON.stringify({ sub: userId, role })}, true),
+                       set_config('request.jwt.claim.sub', ${userId}, true)`;
+    }
+    await sql.unsafe(`set local role ${role}`);
+    return fn(sql);
+  })) as T;
+}
+
+export type AttemptOutcome = { ok: true } | { ok: false; message: string; code: string | undefined };
+
+/** `asAuthenticatedUser`, but a rejection becomes a value so a test can
+ * assert on the exact stable error code an RPC raised. */
+export async function attemptAs(
+  userId: string,
+  fn: (sql: postgres.TransactionSql) => Promise<unknown>,
+): Promise<AttemptOutcome> {
+  try {
+    await asAuthenticatedUser(userId, fn);
+    return { ok: true };
+  } catch (error) {
+    const e = error as { message?: string; code?: string };
+    return { ok: false, message: e.message ?? String(error), code: e.code };
+  }
+}
+
+/** A role with exactly `permissionKeys`, an explicit `key` (so a test can
+ * prove a role literally KEYED "SALON_OWNER" carries no authority of its
+ * own) and a flag for is_system_default. */
+export async function createCustomRole(
+  tenantId: string,
+  name: string,
+  permissionKeys: string[],
+  options: { key?: string | null; isSystemDefault?: boolean } = {},
+): Promise<string> {
+  const [role] = await testDb<{ id: string }[]>`
+    insert into roles (tenant_id, key, name, is_system_default)
+    values (${tenantId}, ${options.key ?? null}, ${name}, ${options.isSystemDefault ?? false})
+    returning id
+  `;
+  if (!role) throw new Error(`failed to create role "${name}"`);
+  if (permissionKeys.length > 0) {
+    const perms = await testDb<{ id: string }[]>`select id from permissions where key in ${testDb(permissionKeys)}`;
+    await testDb`
+      insert into role_permissions ${testDb(perms.map((p) => ({ role_id: role.id, permission_id: p.id })))}
+    `;
+  }
+  return role.id;
+}
+
+/** Every permission key in the catalog (the SALON_OWNER shape). */
+export async function allPermissionKeys(): Promise<string[]> {
+  const rows = await testDb<{ key: string }[]>`select key from permissions order by key`;
+  return rows.map((r) => r.key);
+}
+
+export async function auditRows(tenantId: string, action: string, entityId?: string) {
+  return entityId
+    ? await testDb<{ actor_user_id: string | null; before: unknown; after: unknown }[]>`
+        select actor_user_id, before, after from audit_logs
+        where tenant_id = ${tenantId} and action = ${action} and entity_id = ${entityId}
+        order by created_at`
+    : await testDb<{ actor_user_id: string | null; before: unknown; after: unknown }[]>`
+        select actor_user_id, before, after from audit_logs
+        where tenant_id = ${tenantId} and action = ${action}
+        order by created_at`;
+}

@@ -297,6 +297,9 @@ describe("mapRevokeInvitationError — pure function, exact live RPC messages", 
     expect(
       mapRevokeInvitationError({ message: "cannot revoke an invitation into a role with permissions you do not hold" }),
     ).toMatchObject({ error: { code: "UNAUTHORIZED" } });
+    expect(mapRevokeInvitationError({ message: "insufficient_authority" })).toMatchObject({
+      error: { code: "UNAUTHORIZED" },
+    });
     expect(mapRevokeInvitationError({ message: "invitation_not_pending" })).toMatchObject({
       error: { code: "CONFLICT" },
     });

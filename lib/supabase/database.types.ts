@@ -2129,6 +2129,14 @@ export type Database = {
         Args: { p_code_hash: string; p_customer_id: string }
         Returns: Json
       }
+      link_staff_membership: {
+        Args: {
+          p_membership_id: string
+          p_staff_member_id: string
+          p_tenant_id: string
+        }
+        Returns: undefined
+      }
       list_my_devices: { Args: { p_tenant_id: string }; Returns: Json }
       list_team_invitations: {
         Args: { p_tenant_id: string }
@@ -2175,6 +2183,10 @@ export type Database = {
         Args: { p_batch_size?: number }
         Returns: number
       }
+      reactivate_membership: {
+        Args: { p_membership_id: string; p_tenant_id: string }
+        Returns: undefined
+      }
       record_notification_delivery_target_result: {
         Args: {
           p_error_code?: string
@@ -2184,6 +2196,10 @@ export type Database = {
           p_target_id: string
         }
         Returns: Json
+      }
+      remove_membership_access: {
+        Args: { p_membership_id: string; p_tenant_id: string }
+        Returns: undefined
       }
       remove_push_subscription: {
         Args: { p_subscription_id: string }
@@ -2326,9 +2342,17 @@ export type Database = {
         Args: { p_enabled: boolean; p_tenant_id: string }
         Returns: boolean
       }
+      suspend_membership: {
+        Args: { p_membership_id: string; p_tenant_id: string }
+        Returns: undefined
+      }
       unlink_salon_assisted_customer_account: {
         Args: { p_customer_id: string }
         Returns: Json
+      }
+      unlink_staff_membership: {
+        Args: { p_staff_member_id: string; p_tenant_id: string }
+        Returns: undefined
       }
       update_appointment_status: {
         Args: { p_appointment_id: string; p_new_status: string }

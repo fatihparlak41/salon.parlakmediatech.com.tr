@@ -413,6 +413,9 @@ describe("error mapping — pure functions, exact live RPC messages", () => {
     expect(
       mapCreateInvitationError({ message: "cannot invite into a role with permissions you do not hold" }),
     ).toMatchObject({ error: { code: "UNAUTHORIZED" } });
+    expect(mapCreateInvitationError({ message: "insufficient_authority" })).toMatchObject({
+      error: { code: "UNAUTHORIZED" },
+    });
     expect(mapCreateInvitationError({ message: "role not found in this tenant" })).toMatchObject({
       error: { code: "VALIDATION" },
     });
@@ -442,7 +445,16 @@ describe("error mapping — pure functions, exact live RPC messages", () => {
     expect(
       mapResendInvitationError({ message: "cannot resend an invitation into a role with permissions you do not hold" }),
     ).toMatchObject({ error: { code: "UNAUTHORIZED" } });
+    expect(mapResendInvitationError({ message: "insufficient_authority" })).toMatchObject({
+      error: { code: "UNAUTHORIZED" },
+    });
+    expect(mapResendInvitationError({ message: "role_not_found" })).toMatchObject({
+      error: { code: "CONFLICT" },
+    });
     expect(mapResendInvitationError({ message: "invitation_not_pending" })).toMatchObject({
+      error: { code: "CONFLICT" },
+    });
+    expect(mapResendInvitationError({ message: "invitation_changed" })).toMatchObject({
       error: { code: "CONFLICT" },
     });
     expect(mapResendInvitationError({ message: "some completely unrecognized message" })).toMatchObject({

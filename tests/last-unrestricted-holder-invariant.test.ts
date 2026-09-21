@@ -22,14 +22,24 @@ import {
  * 20260917080000_last_unrestricted_holder_invariant_and_invitation_rpcs.sql's
  * own header for the full design and concurrency argument. These tests
  * exercise the trigger layer directly, independent of which RPC (or
- * direct grant) performs the underlying mutation — update_membership_role
- * and update_role_permissions were not changed at all by that migration.
+ * direct grant) performs the underlying mutation.
+ *
+ * Faz SAAS.1E.0 update: update_membership_role and update_role_permissions
+ * now also judge WHO the target is (see team-authority-hardening.test.ts),
+ * so a limited staff.manage caller can no longer reach an unrestricted
+ * holder at all. The RPC-level tests below therefore act as the
+ * unrestricted holder they legitimately require (ownerA), and the "last
+ * holder" cases prove BOTH layers: the authority layer refuses first, and
+ * the deferred trigger underneath still blocks the same mutation when it is
+ * attempted directly (raw SQL, no RPC in the way). The soft-deleted-role
+ * part of the invariant lives in deleted-role-semantics.test.ts.
  */
 
 let ownerA: TestUser;
 let ownerB: TestUser;
 let bypassCaller: TestUser;
 let bypassCallerClient: SupabaseClient;
+let ownerAClient: SupabaseClient;
 
 const createdTenantIds: string[] = [];
 const createdUserIds: string[] = [];
@@ -40,6 +50,7 @@ beforeAll(async () => {
   bypassCaller = await createTestUser("luh-bypass-caller");
   createdUserIds.push(ownerA.id, ownerB.id, bypassCaller.id);
   bypassCallerClient = await signInAs(bypassCaller);
+  ownerAClient = await signInAs(ownerA);
 }, 30000);
 
 afterAll(async () => {
@@ -218,7 +229,8 @@ describe("role change protection via update_membership_role — item 21", () => 
   it("can change a non-last unrestricted holder's role when another active unrestricted holder remains", async () => {
     const fx = await setupTwoHolderTenant("role-change-nonlast");
 
-    const { error } = await bypassCallerClient.rpc("update_membership_role", {
+    // ownerA (an unrestricted holder) demotes the OTHER holder: allowed, A remains.
+    const { error } = await ownerAClient.rpc("update_membership_role", {
       p_membership_id: fx.membershipB,
       p_new_role_id: fx.nonUnrestrictedRoleId,
     });
@@ -229,19 +241,35 @@ describe("role change protection via update_membership_role — item 21", () => 
     expect(await activeUnrestrictedHolderCount(fx.tenantId)).toBe(1);
   });
 
-  it("cannot move the last active unrestricted holder to a non-unrestricted role", async () => {
+  it("cannot move the last active unrestricted holder to a non-unrestricted role — authority refuses first, the deferred trigger backs it up", async () => {
     const fx = await setupTwoHolderTenant("role-change-last");
 
     // Strip B first (allowed — A remains), leaving A as the sole holder.
     await testDb`update tenant_memberships set role_id = ${fx.nonUnrestrictedRoleId} where id = ${fx.membershipB}`;
     expect(await activeUnrestrictedHolderCount(fx.tenantId)).toBe(1);
 
-    const { error } = await bypassCallerClient.rpc("update_membership_role", {
+    // Layer 1 (RPC authority): nobody but an unrestricted holder may act on
+    // a holder, and the only holder left is A themselves — refused as a self
+    // action; a limited staff.manage caller is refused for insufficient
+    // authority. Neither reaches the invariant.
+    const self = await ownerAClient.rpc("update_membership_role", {
       p_membership_id: fx.membershipA,
       p_new_role_id: fx.nonUnrestrictedRoleId,
     });
-    expect(error).not.toBeNull();
-    expect(error?.message).toMatch(/tenant_would_lose_last_unrestricted_holder/);
+    expect(self.error?.message).toMatch(/cannot change your own role/);
+    const limited = await bypassCallerClient.rpc("update_membership_role", {
+      p_membership_id: fx.membershipA,
+      p_new_role_id: fx.nonUnrestrictedRoleId,
+    });
+    expect(limited.error?.message).toMatch(/insufficient_authority/);
+
+    // Layer 2 (database invariant): the same mutation attempted directly,
+    // with no RPC in the way, still cannot commit.
+    await expect(
+      testDb.begin(async (sql) => {
+        await sql`update tenant_memberships set role_id = ${fx.nonUnrestrictedRoleId} where id = ${fx.membershipA}`;
+      }),
+    ).rejects.toThrow(/tenant_would_lose_last_unrestricted_holder/);
 
     const [row] = await testDb<{ role_id: string }[]>`select role_id from tenant_memberships where id = ${fx.membershipA}`;
     expect(row?.role_id).toBe(fx.ownerRoleAId);
@@ -253,7 +281,8 @@ describe("role permission edit protection via update_role_permissions — item 2
   it("can remove manage_unrestricted from a role when another active membership with another unrestricted role remains", async () => {
     const fx = await setupTwoHolderTenant("perm-edit-nonlast");
 
-    const { error } = await bypassCallerClient.rpc("update_role_permissions", {
+    // ownerA (unrestricted) strips the OTHER holder's role: allowed, A remains.
+    const { error } = await ownerAClient.rpc("update_role_permissions", {
       p_role_id: fx.ownerRoleBId,
       p_permission_keys: ["appointments.view"],
     });
@@ -269,7 +298,18 @@ describe("role permission edit protection via update_role_permissions — item 2
     await testDb`delete from role_permissions where role_id = ${fx.ownerRoleBId} and permission_id in (select id from permissions where key = 'permissions.manage_unrestricted')`;
     expect(await activeUnrestrictedHolderCount(fx.tenantId)).toBe(1);
 
-    const { error } = await bypassCallerClient.rpc("update_role_permissions", {
+    // A limited staff.manage caller may not touch the holder role at all
+    // (authority layer)...
+    const limited = await bypassCallerClient.rpc("update_role_permissions", {
+      p_role_id: fx.ownerRoleAId,
+      p_permission_keys: ["appointments.view"],
+    });
+    expect(limited.error?.message).toMatch(/system_role_edit_not_permitted/);
+
+    // ...and the sole holder stripping the unrestricted key from ITS OWN role
+    // is authorized (unrestricted callers may edit any role) but is stopped
+    // by the RPC's explicit last-holder assertion (clean error, before commit).
+    const { error } = await ownerAClient.rpc("update_role_permissions", {
       p_role_id: fx.ownerRoleAId,
       p_permission_keys: ["appointments.view"],
     });

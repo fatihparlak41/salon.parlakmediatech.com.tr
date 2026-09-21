@@ -54,7 +54,17 @@ beforeAll(async () => {
   tenantB = await createTestTenant("test-tenant-tea-b", unrelatedUser.id);
 
   limitedRoleId = await createRoleForTenant(tenantA.id, "Sınırlı Rol", ["staff.manage", "appointments.view"]);
-  await addMembership(tenantA.id, managerA.id, limitedRoleId);
+  // Faz SAAS.1E.0 part 2: a non-owner may resend/revoke an invitation only when
+  // the invited role's permissions are a STRICT subset of their own, so the
+  // manager holds one permission MORE (services.view) than the invited role
+  // instead of sharing it (equal authority is now refused — see
+  // tests/invitation-target-authority.test.ts).
+  const managerRoleId = await createRoleForTenant(tenantA.id, "Üst Sınırlı Rol", [
+    "staff.manage",
+    "appointments.view",
+    "services.view",
+  ]);
+  await addMembership(tenantA.id, managerA.id, managerRoleId);
 
   ownerAClient = await signInAs(ownerA);
   managerAClient = await signInAs(managerA);

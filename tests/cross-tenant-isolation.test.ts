@@ -176,16 +176,20 @@ describe("cross-tenant isolation", () => {
       where tenant_id = ${tenantA.id} and user_id = ${userA.id}
     `;
 
-    const { data: updateResult } = await clientA
+    const { data: updateResult, error: updateError } = await clientA
       .from("tenant_memberships")
       .update({ status: "suspended" })
       .eq("id", before!.id)
       .select();
 
-    // tenant_memberships_update_staff_manage excludes user_id = auth.uid()
-    // — RLS makes the row invisible to this UPDATE, so it matches zero
-    // rows rather than throwing.
-    expect(updateResult).toHaveLength(0);
+    // Faz SAAS.1E.0: tenant_memberships.status is no longer writable
+    // through the Data API at all — the column-level UPDATE grant (and
+    // its RLS policy) were revoked, and suspend_membership /
+    // reactivate_membership are the only paths. The PATCH is therefore
+    // refused at the privilege layer (42501) instead of matching zero
+    // rows; either way nothing may change.
+    expect(updateError).not.toBeNull();
+    expect(updateResult ?? []).toHaveLength(0);
 
     const [after] = await testDb<{ status: string }[]>`
       select status from tenant_memberships where id = ${before!.id}

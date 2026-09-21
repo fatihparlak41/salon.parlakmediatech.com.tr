@@ -11,8 +11,8 @@ import { getSiteUrl } from "@/lib/site-url";
  */
 
 /** Exact live RPC error messages (private.create_team_invitation,
- * 20260917080000) — re-read from the deployed DEV function body for
- * this phase, not recalled from memory. */
+ * 20260917080000; authority rule per 20260921083417) — re-read from the
+ * deployed DEV function body for this phase, not recalled from memory. */
 export function mapCreateInvitationError(error: { message: string }): ActionResult<never> {
   const msg = error.message;
   if (msg.includes("authentication required")) {
@@ -23,6 +23,11 @@ export function mapCreateInvitationError(error: { message: string }): ActionResu
   }
   if (msg.includes("cannot invite into a role with permissions you do not hold")) {
     return fail("UNAUTHORIZED", "Sahip olmadığınız izinleri içeren bir role davet gönderemezsiniz");
+  }
+  // Faz SAAS.1E.0 part 2 — the invited role's permissions equal the caller's
+  // own (a peer): only an unrestricted caller may invite into it.
+  if (msg.includes("insufficient_authority")) {
+    return fail("UNAUTHORIZED", "Kendi yetki seviyenize eşit veya daha yüksek bir role davet gönderemezsiniz");
   }
   if (msg.includes("role not found in this tenant")) {
     return fail("VALIDATION", "Geçersiz rol");
@@ -66,6 +71,14 @@ export function mapResendInvitationError(error: { message: string }): ActionResu
   if (msg.includes("cannot resend an invitation into a role with permissions you do not hold")) {
     return fail("UNAUTHORIZED", "Sahip olmadığınız izinleri içeren bir role daveti yeniden gönderemezsiniz");
   }
+  // Faz SAAS.1E.0 part 2 — equal authority (a peer role) is refused too.
+  if (msg.includes("insufficient_authority")) {
+    return fail("UNAUTHORIZED", "Kendi yetki seviyenize eşit veya daha yüksek bir role ait daveti yeniden gönderemezsiniz");
+  }
+  // The invited role has been deleted since: the link could never be accepted.
+  if (msg.includes("role_not_found")) {
+    return fail("CONFLICT", "Bu davetin rolü artık mevcut değil");
+  }
   if (msg.includes("invitation_not_pending")) {
     return fail("CONFLICT", "Bu davet artık beklemede değil");
   }
@@ -90,6 +103,10 @@ export function mapRevokeInvitationError(error: { message: string }): ActionResu
   }
   if (msg.includes("cannot revoke an invitation into a role with permissions you do not hold")) {
     return fail("UNAUTHORIZED", "Sahip olmadığınız izinleri içeren bir davetin iptalini gerçekleştiremezsiniz");
+  }
+  // Faz SAAS.1E.0 part 2 — equal authority (a peer role) is refused too.
+  if (msg.includes("insufficient_authority")) {
+    return fail("UNAUTHORIZED", "Kendi yetki seviyenize eşit veya daha yüksek bir role ait daveti iptal edemezsiniz");
   }
   if (msg.includes("invitation_not_pending")) {
     return fail("CONFLICT", "Bu davet artık beklemede değil");

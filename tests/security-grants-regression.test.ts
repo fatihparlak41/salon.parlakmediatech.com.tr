@@ -65,10 +65,12 @@ const AUTHENTICATED_TABLE_WHITELIST: Record<string, string[]> = {
   // the same migration.
   roles: ["SELECT"],
   role_permissions: ["SELECT"],
-  // No table-level UPDATE: `status` is writable only via a column-level
-  // grant (20260816090002/090006), asserted separately below by the
-  // "only column-level grant" test. Postgres never folds a column-level
-  // ACL into the table-level one, so it correctly does not appear here.
+  // No table-level UPDATE, and since Faz SAAS.1E.0 (20260921061657) no
+  // column-level UPDATE either: `status` used to be writable through a
+  // single column-level grant (20260816090002/090006) and is now changed
+  // only by suspend_membership / reactivate_membership /
+  // remove_membership_access — asserted below by the "no column-level
+  // grant anywhere" test.
   // No INSERT either, as of Faz SAAS.1B (20260917070000): the
   // tenant_memberships_insert_staff_manage policy never checked the
   // inserted row's role_id against private.caller_can_grant_permissions
@@ -121,6 +123,14 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   "public.create_role",
   "public.update_role_permissions",
   "public.update_membership_role",
+  // Faz SAAS.1E.0 (20260921061657) — membership lifecycle and staff/login
+  // link, RPC-only. Authenticated only, never anon; every one derives the
+  // caller from auth.uid() and judges authority on effective permissions.
+  "public.suspend_membership",
+  "public.reactivate_membership",
+  "public.remove_membership_access",
+  "public.link_staff_membership",
+  "public.unlink_staff_membership",
   "public.has_permission",
   "public.has_feature",
   "public.is_platform_admin",
@@ -649,12 +659,16 @@ describe("security grants regression", () => {
     expect(problems).toEqual([]);
   });
 
-  it("the only column-level grant in the schema is tenant_memberships.status", async () => {
+  it("there is NO column-level grant anywhere in the schema (tenant_memberships.status is RPC-only since Faz SAAS.1E.0)", async () => {
     // Table-level ACLs never surface column-restricted grants (Postgres
     // stores them separately on pg_attribute.attacl), so the whitelist
     // test above can't see this boundary — this is the actual security
-    // check for the one place a narrower-than-table-level grant matters:
-    // role_id must never become directly writable by widening this.
+    // check for it. Until Faz SAAS.1E.0 the ONE column-level grant was
+    // tenant_memberships.status (a direct PATCH with no ceiling and no
+    // audit row); suspend_membership / reactivate_membership replaced it
+    // and the grant was revoked. Any column-level grant reappearing —
+    // above all on role_id or status — must be a deliberate, reviewed
+    // decision that updates this test.
     const data = await testDb<ColumnGrantRow[]>`select * from security_audit_column_grants()`;
 
     const rows = data.map((r) => ({
@@ -664,14 +678,7 @@ describe("security grants regression", () => {
       privilege: r.privilege_type,
     }));
 
-    expect(rows).toEqual([
-      {
-        table: "tenant_memberships",
-        column: "status",
-        grantee: "authenticated",
-        privilege: "UPDATE",
-      },
-    ]);
+    expect(rows).toEqual([]);
   });
 
   it("authenticated has no USAGE on the private schema at all", async () => {

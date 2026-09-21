@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/auth/session";
 import { fail, ok, type ActionResult } from "@/lib/errors";
+import { applyStaffMembershipLink } from "./membership-link";
 import {
   staffProfileSchema,
   staffBranchesSchema,
@@ -61,7 +62,6 @@ export async function createStaffMemberAction(
       full_name: parsed.data.fullName,
       email: parsed.data.email || null,
       phone: parsed.data.phone || null,
-      tenant_membership_id: parsed.data.tenantMembershipId || null,
       concurrent_capacity: parsed.data.concurrentCapacity,
     })
     .select("id")
@@ -81,6 +81,19 @@ export async function createStaffMemberAction(
         "UNEXPECTED",
         "Personel oluşturuldu ancak şube ataması başarısız oldu — düzenleyerek tekrar deneyin",
       );
+    }
+  }
+
+  // Faz SAAS.1E.0: the login link is set through link_staff_membership, never
+  // through the insert above (the database refuses a direct write of it).
+  if (parsed.data.tenantMembershipId) {
+    const linked = await applyStaffMembershipLink(supabase, {
+      staffMemberId: data.id,
+      desiredMembershipId: parsed.data.tenantMembershipId,
+    });
+    if (!linked.success) {
+      revalidatePath(`/app/${input.tenantSlug}/staff`);
+      return fail(linked.error.code, `Personel oluşturuldu ancak hesap bağlantısı kurulamadı: ${linked.error.message}`);
     }
   }
 
@@ -119,12 +132,23 @@ export async function updateStaffProfileAction(
       full_name: parsed.data.fullName,
       email: parsed.data.email || null,
       phone: parsed.data.phone || null,
-      tenant_membership_id: parsed.data.tenantMembershipId || null,
       concurrent_capacity: parsed.data.concurrentCapacity,
     })
     .eq("id", input.staffMemberId);
 
   if (error) return mapWriteError(error);
+
+  // Faz SAAS.1E.0: the login link is changed through link_staff_membership /
+  // unlink_staff_membership (see ./membership-link.ts); an unchanged value is
+  // not a write. An empty selection still means "no login", exactly as before.
+  const linked = await applyStaffMembershipLink(supabase, {
+    staffMemberId: input.staffMemberId,
+    desiredMembershipId: parsed.data.tenantMembershipId,
+  });
+  if (!linked.success) {
+    revalidatePath(`/app/${input.tenantSlug}/staff`);
+    return fail(linked.error.code, `Personel güncellendi ancak hesap bağlantısı değiştirilemedi: ${linked.error.message}`);
+  }
 
   revalidatePath(`/app/${input.tenantSlug}/staff`);
   return ok(null);

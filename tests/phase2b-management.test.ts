@@ -93,16 +93,21 @@ afterAll(async () => {
 }, 45000);
 
 describe("staff — same-tenant membership linking", () => {
-  it("linking to an unlinked same-tenant membership succeeds", async () => {
+  it("linking to an unlinked same-tenant membership succeeds (through link_staff_membership)", async () => {
     const staff = await createStaffMember(tenantA.id, "Bağlantılı Personel");
     const [membership] = await testDb<{ id: string }[]>`
       select id from tenant_memberships where tenant_id = ${tenantA.id} and user_id = ${secondUserA.id}
     `;
 
-    const { error } = await ownerAClient
-      .from("staff_members")
-      .update({ tenant_membership_id: membership!.id })
-      .eq("id", staff.id);
+    // Faz SAAS.1E.0: staff_members.tenant_membership_id is no longer
+    // writable through a direct table write (see
+    // staff-membership-link-rpcs.test.ts for the proof that a raw PATCH is
+    // refused); link_staff_membership is the way to set it.
+    const { error } = await ownerAClient.rpc("link_staff_membership", {
+      p_tenant_id: tenantA.id,
+      p_staff_member_id: staff.id,
+      p_membership_id: membership!.id,
+    });
     expect(error).toBeNull();
 
     const [row] = await testDb<{ tenant_membership_id: string }[]>`
@@ -122,11 +127,12 @@ describe("staff — same-tenant membership linking", () => {
 
     await testDb`update staff_members set tenant_membership_id = ${membership!.id} where id = ${staffOne.id}`;
 
-    const { error } = await ownerAClient
-      .from("staff_members")
-      .update({ tenant_membership_id: membership!.id })
-      .eq("id", staffTwo.id);
-    expect(error).not.toBeNull();
+    const { error } = await ownerAClient.rpc("link_staff_membership", {
+      p_tenant_id: tenantA.id,
+      p_staff_member_id: staffTwo.id,
+      p_membership_id: membership!.id,
+    });
+    expect(error?.message).toBe("membership_already_linked");
 
     await testDb`delete from staff_members where id in (${staffOne.id}, ${staffTwo.id})`;
   });
