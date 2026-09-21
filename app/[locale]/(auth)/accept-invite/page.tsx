@@ -2,9 +2,7 @@ import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { Link } from "@/lib/i18n/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
-import { pendingTeamInvitationPresence } from "@/lib/auth/pending-team-invitation";
-import { resolveAcceptInviteView } from "@/lib/auth/accept-invite-view";
-import { logAcceptInviteRender } from "@/lib/auth/invite-continuity-log";
+import { hasPendingTeamInvitation } from "@/lib/auth/pending-team-invitation";
 import { Button } from "@/components/ui/button";
 import { AcceptInvitePanel } from "@/components/auth/accept-invite-panel";
 
@@ -20,29 +18,19 @@ const ACCEPT_INVITE_RETURN = encodeURIComponent("/accept-invite");
  * below are token-free by construction.
  *
  * Purely a render decision over two booleans — is an invitation parked,
- * is someone signed in. It never reads the raw token (only the
- * presence helper, which returns booleans), never queries invitation
- * details (an anonymous visitor learns nothing about the invitation, not
- * even the invited address), and never calls accept_team_invitation: a GET
- * here can't burn a single-use token, and acceptance happens only on the
- * explicit button press inside AcceptInvitePanel.
- *
- * It also emits one TEMPORARY presence-only continuity line (booleans and
- * the chosen view; see lib/auth/invite-continuity-log.ts).
+ * is someone signed in. It never reads the raw token (only
+ * hasPendingTeamInvitation(), which returns a boolean), never queries
+ * invitation details (an anonymous visitor learns nothing about the
+ * invitation, not even the invited address), and never calls
+ * accept_team_invitation: a GET here can't burn a single-use token, and
+ * acceptance happens only on the explicit button press inside
+ * AcceptInvitePanel.
  */
 export default async function AcceptInvitePage() {
   const t = await getTranslations("AcceptInvite");
-  const [presence, user] = await Promise.all([pendingTeamInvitationPresence(), getCurrentUser()]);
-  const view = resolveAcceptInviteView({ hasPendingInvitation: presence.shapeValid, authenticated: user !== null });
+  const [hasPending, user] = await Promise.all([hasPendingTeamInvitation(), getCurrentUser()]);
 
-  logAcceptInviteRender({
-    pendingInvitationCookiePresent: presence.present,
-    pendingInvitationCookieShapeValid: presence.shapeValid,
-    authenticated: user !== null,
-    view,
-  });
-
-  if (view === "no-pending") {
+  if (!hasPending) {
     return (
       <div className="flex flex-col gap-6 text-center">
         <div className="flex flex-col gap-2">
@@ -56,7 +44,7 @@ export default async function AcceptInvitePage() {
     );
   }
 
-  if (view === "continuation") {
+  if (!user) {
     return (
       <div className="flex flex-col gap-6 text-center">
         <div className="flex flex-col gap-2">

@@ -193,7 +193,7 @@ function interceptSignup(mode: "create" | "capture", capture: SignupCapture): vo
 }
 
 // ---------------------------------------------------------------------------
-// Console capture — diagnostics and everything else that was printed.
+// Console capture — everything printed during the journey (the leak scan below reads it).
 // ---------------------------------------------------------------------------
 
 const consoleLines: string[] = [];
@@ -206,15 +206,6 @@ function startConsoleCapture(): void {
     });
     restoreConsole.push(() => spy.mockRestore());
   }
-}
-
-type Continuity = Record<string, unknown> & { tag: "invite-continuity"; hop: string };
-
-function continuityLines(from = 0): Continuity[] {
-  return consoleLines
-    .slice(from)
-    .filter((line) => line.startsWith('{"tag":"invite-continuity"'))
-    .map((line) => JSON.parse(line) as Continuity);
 }
 
 // ---------------------------------------------------------------------------
@@ -295,12 +286,10 @@ type ConfirmRecord = {
   pendingConfirmation: { tokenHash: string; type: string; next: string } | null;
   outcome: Outcome<void>;
   jarAfter: JarSnapshot;
-  logs: Continuity[];
 };
 
 /** GET the emailed link, then press the confirm button (POST /confirm-email). */
 async function openLinkAndConfirm(link: string): Promise<ConfirmRecord> {
-  const logFrom = consoleLines.length;
   const response = await authConfirmGet(new Request(link));
   const raw = h.jar.get(PENDING_CONFIRMATION_COOKIE);
   const pendingConfirmation = raw ? (JSON.parse(raw) as ConfirmRecord["pendingConfirmation"]) : null;
@@ -312,7 +301,6 @@ async function openLinkAndConfirm(link: string): Promise<ConfirmRecord> {
     pendingConfirmation,
     outcome,
     jarAfter: snapshotJar(),
-    logs: continuityLines(logFrom),
   };
 }
 
@@ -343,8 +331,6 @@ const A = {} as {
   stateAfterConfirm: Awaited<ReturnType<typeof invitationState>>;
   writesAfterConfirm: typeof h.writes;
   pageHtml: string;
-  pageLogs: Continuity[];
-  signUpLogs: Continuity[];
   jarForAccept: JarSnapshot;
 };
 
@@ -355,14 +341,12 @@ const C = {} as { confirm: ConfirmRecord };
 // D: an ordinary sign-up (no next) — nothing stored, lands on "/".
 const D = {} as { capture: SignupCapture; signUpOutcome: Outcome<unknown>; rowAfterSignUp: AuthRow; confirm: ConfirmRecord };
 // F: the hint carries the destination even if the invitation cookie is gone.
-const F = {} as { confirm: ConfirmRecord; pageHtml: string; pageLogs: Continuity[] };
+const F = {} as { confirm: ConfirmRecord; pageHtml: string };
 // G: sign-ups whose `next` is not the invitation route (wiring only, nothing created).
 const G = {} as Record<"accountNext" | "hostileNext" | "protocolRelative" | "absoluteForeign", { capture: SignupCapture }>;
 
-async function renderAcceptPage(): Promise<{ html: string; logs: Continuity[] }> {
-  const logFrom = consoleLines.length;
-  const html = renderToStaticMarkup(await AcceptInvitePage());
-  return { html, logs: continuityLines(logFrom) };
+async function renderAcceptPage(): Promise<{ html: string }> {
+  return { html: renderToStaticMarkup(await AcceptInvitePage()) };
 }
 
 /** Everything the page's visible text says — the i18n payload never ships in the static markup, only in real Next's flight data. */
@@ -387,7 +371,6 @@ beforeAll(async () => {
   parkViaRealCapture(invitation.token); // [1]
   A.jarBeforeSignUp = snapshotJar();
 
-  const signUpLogFrom = consoleLines.length;
   A.capture = {};
   interceptSignup("create", A.capture);
   try {
@@ -397,7 +380,6 @@ beforeAll(async () => {
   } finally {
     vi.unstubAllGlobals();
   }
-  A.signUpLogs = continuityLines(signUpLogFrom);
   A.rowAfterSignUp = await authRow(inviteeEmail);
   A.stateAfterSignUp = await invitationState(invitation.id, A.rowAfterSignUp.id);
   A.writesAfterSignUp = [...h.writes];
@@ -410,7 +392,6 @@ beforeAll(async () => {
 
   const page = await renderAcceptPage();
   A.pageHtml = page.html;
-  A.pageLogs = page.logs;
   A.jarForAccept = snapshotJar();
 
   // ---- B: explicit next wins over the stored hint -------------------------
@@ -449,7 +430,6 @@ beforeAll(async () => {
     F.confirm = await openLinkAndConfirm(prodConfirmationLink(user.tokenHash));
     const page2 = await renderAcceptPage();
     F.pageHtml = page2.html;
-    F.pageLogs = page2.logs;
   }
 
   // ---- G: sign-ups whose next is not the invitation route -------------------
@@ -522,8 +502,8 @@ describe("SAAS.1D confirmation continuity — invited sign-up, confirmation link
 
   it("[7] the destination becomes /accept-invite through the metadata fallback", () => {
     expect(A.confirm.outcome).toEqual({ kind: "redirected", url: "/accept-invite" });
-    const success = A.confirm.logs.find((l) => l.hop === "confirm-email-success");
-    expect(success).toMatchObject({ explicitNextPresent: false, metadataNextPresent: true, metadataNextAccepted: true, destinationSource: "metadata" });
+    // The link carried no explicit destination, so only the stored hint can have brought the person here.
+    expect(A.confirm.pendingConfirmation).toMatchObject({ type: "signup", next: "/" });
   });
 
   it("[8] the invitation cookie is still present, byte for byte, after confirmation", () => {
@@ -549,16 +529,6 @@ describe("SAAS.1D confirmation continuity — invited sign-up, confirmation link
     expect(text).toContain("Daveti Kabul Et");
     expect(text).not.toContain("Davet bağlantısı bulunamadı");
     expect(text).not.toContain("Hesap Oluştur");
-    expect(A.pageLogs).toEqual([
-      {
-        tag: "invite-continuity",
-        hop: "accept-invite-render",
-        pendingInvitationCookiePresent: true,
-        pendingInvitationCookieShapeValid: true,
-        authenticated: true,
-        view: "accept-panel",
-      },
-    ]);
   });
 
   it("[12][13] only the explicit acceptance creates the membership: exactly one, with exactly one audit transition", async () => {
@@ -637,43 +607,7 @@ describe("SAAS.1D confirmation continuity — nothing sensitive leaks", () => {
     expect(holders).toEqual([PENDING_TEAM_INVITATION_COOKIE]);
   });
 
-  it("[18] diagnostics are presence-only: closed shape, and no token, hash, URL, email, id or cookie value in ANY captured output", () => {
-    const journeyLines = [...A.signUpLogs, ...A.confirm.logs, ...A.pageLogs];
-    expect(journeyLines.map((l) => l.hop)).toEqual(["sign-up", "auth-confirm-get", "confirm-email-success", "accept-invite-render"]);
-
-    const ALLOWED_KEYS = new Set([
-      "tag",
-      "hop",
-      "confirmType",
-      "destinationSource",
-      "view",
-      "pendingInvitationCookiePresent",
-      "pendingInvitationCookieShapeValid",
-      "pendingConfirmationCookiePresent",
-      "explicitNextPresent",
-      "metadataNextPresent",
-      "metadataNextAccepted",
-      "metadataHintWritten",
-      "authenticated",
-      "sweptCookieCount",
-      "preservedCookieCount",
-      "pendingInvitationCookiePreserved",
-    ]);
-    const ENUMS: Record<string, string[]> = {
-      confirmType: ["signup", "invite", "magiclink", "recovery", "email_change", "email"],
-      destinationSource: ["explicit", "metadata", "default"],
-      view: ["no-pending", "continuation", "accept-panel"],
-    };
-    for (const line of continuityLines()) {
-      for (const [key, value] of Object.entries(line)) {
-        expect(ALLOWED_KEYS.has(key), `unexpected diagnostic field ${key}`).toBe(true);
-        if (key === "tag") expect(value).toBe("invite-continuity");
-        else if (key === "hop") expect(typeof value).toBe("string");
-        else if (ENUMS[key]) expect(ENUMS[key]).toContain(value);
-        else expect(["boolean", "number"], `${key} must be a boolean or count`).toContain(typeof value);
-      }
-    }
-
+  it("[18] nothing printed to the console during the whole journey contains a token, hash, URL, email, id or cookie value", () => {
     const forbidden = [
       invitation.token,
       tokenHash(),
@@ -690,38 +624,6 @@ describe("SAAS.1D confirmation continuity — nothing sensitive leaks", () => {
     const everythingPrinted = consoleLines.join("\n");
     for (const secret of forbidden) expect(everythingPrinted).not.toContain(secret);
   });
-
-  it("the diagnostics report the truth at each hop of the real scenario", () => {
-    const byHop = Object.fromEntries([...A.signUpLogs, ...A.confirm.logs, ...A.pageLogs].map((l) => [l.hop, l]));
-    expect(byHop["sign-up"]).toEqual({
-      tag: "invite-continuity",
-      hop: "sign-up",
-      pendingInvitationCookiePresent: true,
-      pendingInvitationCookieShapeValid: true,
-      metadataHintWritten: true,
-    });
-    expect(byHop["auth-confirm-get"]).toEqual({
-      tag: "invite-continuity",
-      hop: "auth-confirm-get",
-      pendingInvitationCookiePresent: true,
-      pendingInvitationCookieShapeValid: true,
-      confirmType: "signup",
-      pendingConfirmationCookiePresent: true,
-      explicitNextPresent: false,
-    });
-    expect(byHop["confirm-email-success"]).toEqual({
-      tag: "invite-continuity",
-      hop: "confirm-email-success",
-      pendingInvitationCookiePresent: true,
-      pendingInvitationCookieShapeValid: true,
-      confirmType: "signup",
-      pendingConfirmationCookiePresent: true,
-      explicitNextPresent: false,
-      metadataNextPresent: true,
-      metadataNextAccepted: true,
-      destinationSource: "metadata",
-    });
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -732,20 +634,10 @@ describe("SAAS.1D confirmation continuity — precedence and safety", () => {
   it("[19] an explicit valid next in the link overrides the stored hint", () => {
     expect(B.confirm.pendingConfirmation).toMatchObject({ type: "signup", next: "/account" });
     expect(B.confirm.outcome).toEqual({ kind: "redirected", url: "/account" });
-    expect(B.confirm.logs.find((l) => l.hop === "confirm-email-success")).toMatchObject({
-      explicitNextPresent: true,
-      metadataNextPresent: true,
-      destinationSource: "explicit",
-    });
   });
 
-  it("[20] a hostile stored hint is rejected: the confirmation lands on / and the diagnostics say the hint was refused", () => {
+  it("[20] a hostile stored hint is rejected: the confirmation lands on /", () => {
     expect(C.confirm.outcome).toEqual({ kind: "redirected", url: "/" });
-    expect(C.confirm.logs.find((l) => l.hop === "confirm-email-success")).toMatchObject({
-      metadataNextPresent: true,
-      metadataNextAccepted: false,
-      destinationSource: "default",
-    });
   });
 
   it("[21] an ordinary sign-up is unchanged: nothing extra is stored, the redirect is the bare site URL, and it lands on /", () => {
@@ -754,11 +646,6 @@ describe("SAAS.1D confirmation continuity — precedence and safety", () => {
     expect(D.capture.body?.data).toEqual({ full_name: "Sıradan Kullanıcı" });
     expect(Object.keys(D.rowAfterSignUp.meta)).toEqual(["full_name"]);
     expect(D.confirm.outcome).toEqual({ kind: "redirected", url: "/" });
-    expect(D.confirm.logs.find((l) => l.hop === "confirm-email-success")).toMatchObject({
-      metadataNextPresent: false,
-      metadataNextAccepted: false,
-      destinationSource: "default",
-    });
   });
 
   it("a sign-up whose next is not the invitation route stores no hint and keeps its existing redirect_to behavior", () => {
@@ -781,14 +668,10 @@ describe("SAAS.1D confirmation continuity — precedence and safety", () => {
 
   it("if the invitation cookie is lost, the account still returns to /accept-invite, and the page honestly asks for the email link again", () => {
     expect(F.confirm.outcome).toEqual({ kind: "redirected", url: "/accept-invite" });
-    expect(F.confirm.logs.find((l) => l.hop === "confirm-email-success")).toMatchObject({
-      pendingInvitationCookiePresent: false,
-      destinationSource: "metadata",
-    });
+    expect(F.confirm.jarAfter.hasPendingInvitation).toBe(false);
     const text = visibleText(F.pageHtml);
     expect(text).toContain("Davet bağlantısı bulunamadı");
     expect(text).not.toContain("Daveti Kabul Et");
-    expect(F.pageLogs[0]).toMatchObject({ view: "no-pending", authenticated: true, pendingInvitationCookiePresent: false });
   });
 
   it("every confirmation is single-use: the pending-confirmation cookie is consumed whatever the destination", () => {

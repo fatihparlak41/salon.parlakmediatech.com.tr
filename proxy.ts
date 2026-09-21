@@ -3,12 +3,8 @@ import type { NextRequest } from "next/server";
 import createMiddleware from "next-intl/middleware";
 import { routing } from "@/lib/i18n/routing";
 import { authErrorLogFields, isStaleSessionError } from "@/lib/auth/session-errors";
-import {
-  captureTeamInvitationToken,
-  requestHasPendingTeamInvitationCookie,
-} from "@/lib/auth/team-invitation-token";
+import { captureTeamInvitationToken } from "@/lib/auth/team-invitation-token";
 import { clearStaleSupabaseAuthCookies } from "@/lib/auth/supabase-auth-cookies";
-import { logProxyStaleSessionSweep } from "@/lib/auth/invite-continuity-log";
 
 const handleI18nRouting = createMiddleware(routing);
 
@@ -77,17 +73,10 @@ export async function proxy(request: NextRequest) {
       // booking-claim secrets). It now clears only the cookies Supabase
       // Auth itself owns — an exact predicate derived from the installed
       // @supabase/ssr / auth-js (lib/auth/supabase-auth-cookies.ts).
-      const outcome = clearStaleSupabaseAuthCookies({
+      clearStaleSupabaseAuthCookies({
         cookieNames: request.cookies.getAll().map(({ name }) => name),
         supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
         remove: (name) => response.cookies.delete(name),
-      });
-      // TEMPORARY, presence-only: with the pinned auth-js this branch is
-      // unreachable, so any occurrence in the logs is itself a finding.
-      logProxyStaleSessionSweep({
-        sweptCookieCount: outcome.sweptCount,
-        preservedCookieCount: outcome.preservedCount,
-        pendingInvitationCookiePreserved: requestHasPendingTeamInvitationCookie(request),
       });
     } else {
       console.error(

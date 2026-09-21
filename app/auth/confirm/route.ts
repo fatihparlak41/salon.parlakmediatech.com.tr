@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { setPendingConfirmation } from "@/lib/auth/pending-confirmation";
-import { pendingTeamInvitationPresence } from "@/lib/auth/pending-team-invitation";
-import { logAuthConfirmContinuity } from "@/lib/auth/invite-continuity-log";
 
 /**
  * Prefetch-safe by design — this GET NEVER calls verifyOtp() and never
@@ -122,20 +120,6 @@ export async function GET(request: Request) {
   if (tokenHash && type) {
     const next = resolveSafeNext(searchParams.get("next") ?? "/", origin);
     await setPendingConfirmation({ tokenHash, type, next });
-
-    // Faz SAAS.1D confirmation-continuity — TEMPORARY, presence-only
-    // diagnostics (lib/auth/invite-continuity-log.ts): booleans about
-    // this request only, never a cookie value, the token_hash, the URL
-    // or any identity. Still no verification here: this GET remains
-    // prefetch-safe.
-    const invitationPresence = await pendingTeamInvitationPresence();
-    logAuthConfirmContinuity({
-      confirmType: type,
-      pendingInvitationCookiePresent: invitationPresence.present,
-      pendingInvitationCookieShapeValid: invitationPresence.shapeValid,
-      pendingConfirmationCookiePresent: true,
-      explicitNextPresent: next !== "/",
-    });
   }
   // No token_hash/type at all: nothing to store. /confirm-email will
   // correctly render its "no pending confirmation" state either way —

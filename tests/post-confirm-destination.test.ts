@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   POST_CONFIRM_NEXT_METADATA_KEY,
   chooseConfirmationDestination,
-  hasPostConfirmHintKey,
   readPostConfirmHint,
   resolvePostConfirmHintForWrite,
 } from "@/lib/auth/post-confirm-destination";
@@ -132,14 +131,6 @@ describe("read side: readPostConfirmHint treats user_metadata as untrusted", () 
   it("rejects an oversized value outright", () => {
     expect(readPostConfirmHint({ [KEY]: "/accept-invite" + "x".repeat(300) }, SITE)).toBeNull();
   });
-
-  it("hasPostConfirmHintKey only reports presence of the key, not validity", () => {
-    expect(hasPostConfirmHintKey({ [KEY]: "//evil.example" })).toBe(true);
-    expect(hasPostConfirmHintKey({ [KEY]: null })).toBe(true);
-    expect(hasPostConfirmHintKey({ other: 1 })).toBe(false);
-    expect(hasPostConfirmHintKey(null)).toBe(false);
-    expect(hasPostConfirmHintKey([KEY])).toBe(false);
-  });
 });
 
 describe("chooseConfirmationDestination: explicit > validated metadata > /", () => {
@@ -148,7 +139,7 @@ describe("chooseConfirmationDestination: explicit > validated metadata > /", () 
     chooseConfirmationDestination({ confirmType: "signup", pendingNext: "/", userMetadata: meta, siteOrigin: SITE, ...over });
 
   it("the real PROD case: signup confirmation, link carried no next, hint present -> /accept-invite", () => {
-    expect(choose({})).toMatchObject({ destination: "/accept-invite", source: "metadata", metadataNextPresent: true, metadataNextAccepted: true });
+    expect(choose({})).toMatchObject({ destination: "/accept-invite", source: "metadata" });
   });
 
   it("an explicit valid destination from the link always wins over the hint", () => {
@@ -167,19 +158,17 @@ describe("chooseConfirmationDestination: explicit > validated metadata > /", () 
     expect(choose({ userMetadata: { full_name: "Ayşe" } })).toMatchObject({
       destination: "/",
       source: "default",
-      metadataNextPresent: false,
-      metadataNextAccepted: false,
     });
   });
 
   it.each(HOSTILE)("a hostile hint (%s) is rejected and the destination stays /", (_label, value) => {
-    expect(choose({ userMetadata: { [KEY]: value } })).toMatchObject({ destination: "/", source: "default", metadataNextPresent: true, metadataNextAccepted: false });
+    expect(choose({ userMetadata: { [KEY]: value } })).toMatchObject({ destination: "/", source: "default" });
   });
 
   it.each(["magiclink", "recovery", "email_change", "email", "invite"])(
     "a %s confirmation NEVER inherits the hint, even when one is present and valid",
     (confirmType) => {
-      expect(choose({ confirmType })).toMatchObject({ destination: "/", source: "default", metadataNextPresent: true, metadataNextAccepted: true });
+      expect(choose({ confirmType })).toMatchObject({ destination: "/", source: "default" });
     },
   );
 

@@ -150,7 +150,7 @@ describe("isSupabaseAuthCookieName — the cookies Supabase Auth genuinely owns"
 });
 
 describe("clearStaleSupabaseAuthCookies", () => {
-  it("clears exactly the Supabase-owned cookies and reports counts only", () => {
+  it("clears exactly the Supabase-owned cookies and leaves every other cookie alone", () => {
     const removed: string[] = [];
     const names = [
       KEY_A,
@@ -164,20 +164,17 @@ describe("clearStaleSupabaseAuthCookies", () => {
       KEY_B,
     ];
 
-    const outcome = clearStaleSupabaseAuthCookies({ cookieNames: names, supabaseUrl: URL_A, remove: (n) => removed.push(n) });
+    clearStaleSupabaseAuthCookies({ cookieNames: names, supabaseUrl: URL_A, remove: (n) => removed.push(n) });
 
     expect(removed.sort()).toEqual(
       [KEY_A, `${KEY_A}.0`, `${KEY_A}.1`, `${KEY_A}-code-verifier`, `${KEY_A}-flows-code-verifier`, `${KEY_A}-flow-${FLOW_ID}-code-verifier`].sort(),
     );
-    expect(outcome).toEqual({ sweptCount: 6, preservedCount: 5 });
-    expect(Object.keys(outcome).sort()).toEqual(["preservedCount", "sweptCount"]);
   });
 
   it("fails safe: with an unusable project URL it clears nothing at all", () => {
     const remove = vi.fn();
     for (const supabaseUrl of [undefined, "", "not a url"]) {
-      const outcome = clearStaleSupabaseAuthCookies({ cookieNames: [KEY_A, ...APP_COOKIES], supabaseUrl, remove });
-      expect(outcome).toEqual({ sweptCount: 0, preservedCount: 1 + APP_COOKIES.length });
+      clearStaleSupabaseAuthCookies({ cookieNames: [KEY_A, ...APP_COOKIES], supabaseUrl, remove });
     }
     expect(remove).not.toHaveBeenCalled();
   });
@@ -379,7 +376,6 @@ describe("proxy() stale-session cleanup", () => {
 
   it("clears the stale Supabase auth cookies (session, chunks, PKCE verifiers)", async () => {
     seams.getUser.mockRejectedValue(staleError());
-    vi.spyOn(console, "info").mockImplementation(() => {});
     const { proxy } = await import("@/proxy");
 
     const response = await proxy(requestWithCookies(cookiesInBrowser));
@@ -390,7 +386,6 @@ describe("proxy() stale-session cleanup", () => {
   });
 
   it("clears the same for every stale-session error code", async () => {
-    vi.spyOn(console, "info").mockImplementation(() => {});
     const { proxy } = await import("@/proxy");
 
     for (const code of ["refresh_token_not_found", "refresh_token_already_used", "session_not_found", "session_expired"]) {
@@ -403,7 +398,6 @@ describe("proxy() stale-session cleanup", () => {
   it("clears project B's cookies (and only those) when the deployment points at project B", async () => {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", URL_B);
     seams.getUser.mockRejectedValue(staleError());
-    vi.spyOn(console, "info").mockImplementation(() => {});
     const { proxy } = await import("@/proxy");
 
     const response = await proxy(requestWithCookies([KEY_B, `${KEY_B}.0`, KEY_A, ...APP_COOKIES]));
@@ -414,7 +408,6 @@ describe("proxy() stale-session cleanup", () => {
   it.skipIf(!CONFIGURED_URL)("derives the key from the environment's own NEXT_PUBLIC_SUPABASE_URL at runtime, with no project ref written down", async () => {
     vi.unstubAllEnvs(); // back to the real configured value
     seams.getUser.mockRejectedValue(staleError());
-    vi.spyOn(console, "info").mockImplementation(() => {});
     const { proxy } = await import("@/proxy");
 
     const response = await proxy(requestWithCookies([configuredKey, `${configuredKey}.0`, `${configuredKey}-code-verifier`, KEY_A, KEY_B, ...APP_COOKIES]));
@@ -424,7 +417,6 @@ describe("proxy() stale-session cleanup", () => {
 
   it("the pending team-invitation cookie survives the cleanup", async () => {
     seams.getUser.mockRejectedValue(staleError());
-    vi.spyOn(console, "info").mockImplementation(() => {});
     const { proxy } = await import("@/proxy");
 
     const response = await proxy(requestWithCookies(cookiesInBrowser));
@@ -435,7 +427,6 @@ describe("proxy() stale-session cleanup", () => {
 
   it("the pending email-confirmation cookie survives the cleanup", async () => {
     seams.getUser.mockRejectedValue(staleError());
-    vi.spyOn(console, "info").mockImplementation(() => {});
     const { proxy } = await import("@/proxy");
 
     const response = await proxy(requestWithCookies(cookiesInBrowser));
@@ -445,7 +436,6 @@ describe("proxy() stale-session cleanup", () => {
 
   it("booking-claim cookies survive the cleanup", async () => {
     seams.getUser.mockRejectedValue(staleError());
-    vi.spyOn(console, "info").mockImplementation(() => {});
     const { proxy } = await import("@/proxy");
     const second = "11111111-2222-4333-8444-555555555555";
 
@@ -457,7 +447,6 @@ describe("proxy() stale-session cleanup", () => {
 
   it("leaves unrelated cookies and another project's Supabase cookies alone", async () => {
     seams.getUser.mockRejectedValue(staleError());
-    vi.spyOn(console, "info").mockImplementation(() => {});
     const { proxy } = await import("@/proxy");
 
     const response = await proxy(requestWithCookies(cookiesInBrowser));
@@ -492,33 +481,11 @@ describe("proxy() stale-session cleanup", () => {
   it("with an unusable project URL the cleanup clears nothing rather than guessing", async () => {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "not a url");
     seams.getUser.mockRejectedValue(staleError());
-    vi.spyOn(console, "info").mockImplementation(() => {});
     const { proxy } = await import("@/proxy");
 
     const response = await proxy(requestWithCookies(cookiesInBrowser));
 
     expect(deletedNames(response)).toEqual([]);
-  });
-
-  it("emits one presence-only sweep line: counts and a boolean, never a cookie name or value", async () => {
-    seams.getUser.mockRejectedValue(staleError());
-    const info = vi.spyOn(console, "info").mockImplementation(() => {});
-    const { proxy } = await import("@/proxy");
-
-    await proxy(requestWithCookies(cookiesInBrowser));
-
-    const lines = info.mock.calls.map((call) => String(call[0])).filter((line) => line.includes("invite-continuity"));
-    expect(lines).toHaveLength(1);
-    const record = JSON.parse(lines[0]!);
-    expect(record).toEqual({
-      tag: "invite-continuity",
-      hop: "proxy-stale-session-sweep",
-      sweptCookieCount: 6,
-      preservedCookieCount: cookiesInBrowser.length - 6,
-      pendingInvitationCookiePreserved: true,
-    });
-    for (const name of cookiesInBrowser) expect(lines[0]).not.toContain(name);
-    expect(lines[0]).not.toContain("value-of-");
   });
 });
 

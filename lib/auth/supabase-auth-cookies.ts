@@ -74,36 +74,21 @@ export function isSupabaseAuthCookieName(name: string, storageKey: string): bool
   return base !== name && isAuthItemKey(base, storageKey) && isChunkLike(name, base);
 }
 
-export type StaleCookieClearOutcome = {
-  /** Supabase-owned cookies that were cleared. */
-  sweptCount: number;
-  /** Cookies deliberately left alone (application-owned or unrelated). */
-  preservedCount: number;
-};
-
 /**
  * The stale-session cleanup proxy.ts performs: clears exactly the
  * Supabase-owned cookies among `cookieNames` (through `remove`) and leaves
- * every other cookie alone. Returns counts only — cookie names can carry
- * identifiers (booking-claim refs), so they are never returned or logged.
- * With an unusable project URL nothing is cleared (fail safe).
+ * every other cookie alone. With an unusable project URL nothing is
+ * cleared (fail safe).
  */
 export function clearStaleSupabaseAuthCookies(input: {
   cookieNames: readonly string[];
   supabaseUrl: string | undefined;
   remove: (name: string) => void;
-}): StaleCookieClearOutcome {
+}): void {
   const storageKey = supabaseAuthStorageKey(input.supabaseUrl);
-  let sweptCount = 0;
-  let preservedCount = 0;
+  if (storageKey === null) return;
 
   for (const name of input.cookieNames) {
-    if (storageKey !== null && isSupabaseAuthCookieName(name, storageKey)) {
-      input.remove(name);
-      sweptCount += 1;
-    } else {
-      preservedCount += 1;
-    }
+    if (isSupabaseAuthCookieName(name, storageKey)) input.remove(name);
   }
-  return { sweptCount, preservedCount };
 }

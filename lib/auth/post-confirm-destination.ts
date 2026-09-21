@@ -61,8 +61,8 @@ export function resolvePostConfirmHintForWrite(next: string | null | undefined, 
   return validatedAllowlistedRoute(next, siteOrigin);
 }
 
-/** True when user_metadata carries the key at all (diagnostics only). */
-export function hasPostConfirmHintKey(userMetadata: unknown): boolean {
+/** True when user_metadata is a plain object that carries the hint key at all (any value). */
+function hasPostConfirmHintKey(userMetadata: unknown): boolean {
   return (
     typeof userMetadata === "object" &&
     userMetadata !== null &&
@@ -88,10 +88,6 @@ export type ConfirmationDestinationSource = "explicit" | "metadata" | "default";
 export type ConfirmationDestination = {
   destination: string;
   source: ConfirmationDestinationSource;
-  /** The metadata key was present at all (any value). */
-  metadataNextPresent: boolean;
-  /** The metadata value validated as an allowlisted route. */
-  metadataNextAccepted: boolean;
 };
 
 /**
@@ -116,15 +112,9 @@ export function chooseConfirmationDestination(input: {
   // it is a plain local path; anything else counts as "no explicit destination".
   const normalized = resolveSafeNext(input.pendingNext, input.siteOrigin);
   const explicit = isPlainLocalPath(normalized) ? normalized : "/";
-  const metadataNextPresent = hasPostConfirmHintKey(input.userMetadata);
   const hint = readPostConfirmHint(input.userMetadata, input.siteOrigin);
-  const metadataNextAccepted = hint !== null;
 
-  if (explicit !== "/") {
-    return { destination: explicit, source: "explicit", metadataNextPresent, metadataNextAccepted };
-  }
-  if (hint !== null && input.confirmType === POST_CONFIRM_APPLIES_TO_TYPE) {
-    return { destination: hint, source: "metadata", metadataNextPresent, metadataNextAccepted };
-  }
-  return { destination: "/", source: "default", metadataNextPresent, metadataNextAccepted };
+  if (explicit !== "/") return { destination: explicit, source: "explicit" };
+  if (hint !== null && input.confirmType === POST_CONFIRM_APPLIES_TO_TYPE) return { destination: hint, source: "metadata" };
+  return { destination: "/", source: "default" };
 }

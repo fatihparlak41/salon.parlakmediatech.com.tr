@@ -14,13 +14,11 @@ import { authErrorLogFields } from "@/lib/auth/session-errors";
 import { resolveSafeNext } from "@/app/auth/confirm/route";
 import { resendConfirmationSchema, signInSchema, signUpSchema } from "./schemas";
 import { getSiteUrl } from "@/lib/site-url";
-import { pendingTeamInvitationPresence } from "@/lib/auth/pending-team-invitation";
 import {
   POST_CONFIRM_NEXT_METADATA_KEY,
   chooseConfirmationDestination,
   resolvePostConfirmHintForWrite,
 } from "@/lib/auth/post-confirm-destination";
-import { logConfirmSuccessContinuity, logSignUpContinuity } from "@/lib/auth/invite-continuity-log";
 
 /**
  * Faz SAAS.1D.2 — optional post-auth return path, e.g. /accept-invite.
@@ -111,12 +109,6 @@ export async function signUpAction(
   // allowlisted route is ever written — never a token, id, email or
   // cookie content. emailRedirectTo is deliberately left unchanged.
   const postConfirmNext = resolvePostConfirmHintForWrite(next, getSiteUrl());
-  const invitationPresence = await pendingTeamInvitationPresence();
-  logSignUpContinuity({
-    pendingInvitationCookiePresent: invitationPresence.present,
-    pendingInvitationCookieShapeValid: invitationPresence.shapeValid,
-    metadataHintWritten: postConfirmNext !== null,
-  });
 
   const { error } = await supabase.auth.signUp({
     email: parsed.data.email,
@@ -191,26 +183,14 @@ export async function confirmEmailAction(): Promise<void> {
   // inherit the hint. Choosing a redirect is ALL this does — it does not
   // accept an invitation, create a membership, link staff or touch the
   // invitation: the explicit "Daveti Kabul Et" click remains mandatory.
-  const chosen = chooseConfirmationDestination({
+  const { destination } = chooseConfirmationDestination({
     confirmType: pending.type,
     pendingNext: pending.next,
     userMetadata: data.user?.user_metadata,
     siteOrigin: getSiteUrl(),
   });
 
-  const invitationPresence = await pendingTeamInvitationPresence();
-  logConfirmSuccessContinuity({
-    confirmType: pending.type,
-    pendingInvitationCookiePresent: invitationPresence.present,
-    pendingInvitationCookieShapeValid: invitationPresence.shapeValid,
-    pendingConfirmationCookiePresent: true,
-    explicitNextPresent: chosen.source === "explicit",
-    metadataNextPresent: chosen.metadataNextPresent,
-    metadataNextAccepted: chosen.metadataNextAccepted,
-    destinationSource: chosen.source,
-  });
-
-  redirect(chosen.destination);
+  redirect(destination);
 }
 
 export async function resendConfirmationAction(

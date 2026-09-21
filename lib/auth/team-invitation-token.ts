@@ -73,13 +73,6 @@ export function pendingTeamInvitationCookieOptions() {
   };
 }
 
-/** Whether a request carries the pending-invitation cookie at all (the
- * value is not read). For proxy.ts's continuity diagnostics, which must not
- * reference the cookie name themselves: this module owns it. */
-export function requestHasPendingTeamInvitationCookie(request: { cookies: { has(name: string): boolean } }): boolean {
-  return request.cookies.has(PENDING_TEAM_INVITATION_COOKIE);
-}
-
 /**
  * Called first thing in proxy.ts. Returns a redirect response ONLY for
  * `GET /accept-invite?token=...` (any value, including malformed ones —
