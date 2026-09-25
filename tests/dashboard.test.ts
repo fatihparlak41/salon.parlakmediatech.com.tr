@@ -578,16 +578,18 @@ describe("Faz DASHBOARD.1 — the real permission catalog decides section visibi
     expect(await hasPermissionAs(stylistUser, "staff.manage")).toBe(false);
   });
 
-  it("reports.basic — gates the 'Bu Ay' section — is true for owner/manager/receptionist, false for stylist", async () => {
-    // Confirmed against the real role_template_permissions seed
-    // (20260815120006_create_role_templates.sql): RECEPTIONIST is
-    // deliberately granted reports.basic. The dashboard must show "Bu
-    // Ay" to a receptionist for this reason — not because "receptionist"
-    // sounds unprivileged, and not by inventing a stricter rule this
-    // phase's spec examples didn't anticipate.
+  it("reports.basic — gates the 'Bu Ay' section — is true for owner/manager only; receptionist and stylist do not hold it", async () => {
+    // The dashboard shows "Bu Ay" to whoever the real permission catalog
+    // says holds reports.basic. The original RECEPTIONIST seed
+    // (20260815120006_create_role_templates.sql) granted it; the locked
+    // Faz SAAS.1E.1 matrix for "Resepsiyon" does NOT (appointments,
+    // customers view/create/update, schedules.view and services.view only),
+    // so the section is now Owner/Manager-only and a receptionist gets the
+    // same dashboard without it that a stylist already did. The section
+    // follows the permission, never the role's name.
     expect(await hasPermissionAs(owner, "reports.basic")).toBe(true);
     expect(await hasPermissionAs(managerUser, "reports.basic")).toBe(true);
-    expect(await hasPermissionAs(receptionistUser, "reports.basic")).toBe(true);
+    expect(await hasPermissionAs(receptionistUser, "reports.basic")).toBe(false);
     expect(await hasPermissionAs(stylistUser, "reports.basic")).toBe(false);
   });
 

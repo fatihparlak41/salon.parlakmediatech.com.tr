@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 import { fail, ok, type ActionResult } from "@/lib/errors";
+import { getOneStaffManagementDetail } from "./management-details";
 
 /**
  * Faz SAAS.1E.0 — the ONLY way the application changes which login a staff
@@ -59,15 +60,20 @@ export async function applyStaffMembershipLink(
 ): Promise<ActionResult<null>> {
   const { data: staff, error: readError } = await supabase
     .from("staff_members")
-    .select("tenant_id, tenant_membership_id")
+    .select("tenant_id")
     .eq("id", input.staffMemberId)
     .maybeSingle();
 
   if (readError) return mapStaffLinkError(readError);
   if (!staff) return fail("NOT_FOUND", "Personel bulunamadı");
 
+  // Faz SAAS.1E.1: tenant_membership_id is no longer a selectable column
+  // directly (staff.view/staff.manage required) — read through the same
+  // management-details RPC every other staff-management screen uses. This
+  // action is only ever called from a management context (staff.manage
+  // already required to write anything below).
   const desired = input.desiredMembershipId || null;
-  const current = staff.tenant_membership_id;
+  const current = (await getOneStaffManagementDetail(supabase, staff.tenant_id, input.staffMemberId))?.tenantMembershipId ?? null;
   if (current === desired) return ok(null);
 
   if (current !== null) {

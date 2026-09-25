@@ -1,6 +1,8 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { APPOINTMENTS_PAGE_SIZE } from "./constants";
+import { CUSTOMER_NAME_FALLBACK, getAppointmentCustomerNames } from "./customer-display";
+import { getAppointmentPrivateDetails } from "./private-details";
 
 export type AppointmentListRow = {
   id: string;
@@ -23,9 +25,14 @@ export type AppointmentListScope = "upcoming" | "today" | "all";
 // with "more than one relationship was found". These embeds are, and
 // must remain, about the BOOKED staff only (staff_member_id) — actual
 // performer has no display surface yet (Faz 5A.2).
+//
+// Faz SAAS.1E.1: the customer is NOT embedded here any more. The customers
+// table is behind customers.view, which Personel deliberately lacks; the
+// customer's display name comes from get_appointment_customer_display (one
+// RPC per page of rows, appointments.view only, name and nothing else) —
+// see customer-display.ts.
 const LIST_SELECT = `
   id, status, scheduled_start_at, scheduled_end_at,
-  customers(full_name),
   branches(name),
   appointment_items(services(name), staff_members!appointment_items_staff_member_id_fkey(full_name))
 `;
@@ -35,18 +42,17 @@ type RawAppointmentRow = {
   status: string;
   scheduled_start_at: string;
   scheduled_end_at: string;
-  customers: { full_name: string } | null;
   branches: { name: string } | null;
   appointment_items: { services: { name: string } | null; staff_members: { full_name: string } | null }[];
 };
 
-function mapListRow(r: RawAppointmentRow): AppointmentListRow {
+function mapListRow(r: RawAppointmentRow, customerNames: Map<string, string>): AppointmentListRow {
   return {
     id: r.id,
     status: r.status,
     scheduledStartAt: r.scheduled_start_at,
     scheduledEndAt: r.scheduled_end_at,
-    customerName: r.customers?.full_name ?? "—",
+    customerName: customerNames.get(r.id) ?? CUSTOMER_NAME_FALLBACK,
     branchName: r.branches?.name ?? "—",
     serviceNames: Array.from(new Set(r.appointment_items.map((i) => i.services?.name).filter((n): n is string => !!n))),
     staffNames: Array.from(new Set(r.appointment_items.map((i) => i.staff_members?.full_name).filter((n): n is string => !!n))),
@@ -84,7 +90,9 @@ export async function getAppointmentList(
 
   const { data, error } = await query;
   if (error || !data) return [];
-  return (data as unknown as RawAppointmentRow[]).map(mapListRow);
+  const rows = data as unknown as RawAppointmentRow[];
+  const customerNames = await getAppointmentCustomerNames(supabase, tenantId, rows.map((r) => r.id));
+  return rows.map((r) => mapListRow(r, customerNames));
 }
 
 export async function getTenantTimezone(tenantId: string): Promise<string> {
@@ -98,13 +106,18 @@ export type AppointmentDetail = {
   status: string;
   scheduledStartAt: string;
   scheduledEndAt: string;
+  /** Null when there genuinely are no notes, AND when the caller lacks
+   * appointments.update (Personel) — the two are indistinguishable on
+   * purpose, through get_appointment_private_details (see private-details.ts). */
   notes: string | null;
   createdAt: string;
-  /** Null when the caller can read the appointment (appointments.view)
-   * but not the customer row (customers.view) — RLS omits the embedded
-   * resource rather than erroring. The detail view must still render in
-   * that case, with the customer name degrading to a placeholder, the
-   * same way calendar item blocks already do (see mapCalendarItemRow). */
+  /** The customer's id and DISPLAY NAME — read through
+   * get_appointment_customer_display (appointments.view is enough; the
+   * customers row itself, with its phone/e-mail/notes, stays behind
+   * customers.view). Null only if that lookup yields nothing (failed
+   * call); the detail view must still render, with the name degrading to
+   * a placeholder, the same way calendar item blocks do (see
+   * mapCalendarItemRow). */
   customer: { id: string; fullName: string } | null;
   branch: { id: string; name: string };
   items: {
@@ -113,7 +126,8 @@ export type AppointmentDetail = {
     scheduledStartAt: string;
     scheduledEndAt: string;
     durationMinutes: number;
-    price: string;
+    /** Null for the same reason as notes above — price is appointments.update-only. */
+    price: string | null;
     service: { id: string; name: string };
     staffMember: { id: string; fullName: string };
     /** Faz 5A.2 — null until the item is completed (or completed via the
@@ -137,9 +151,14 @@ export async function getAppointmentDetail(appointmentId: string): Promise<Appoi
       // available. actual_staff_members is nullable per row (LEFT-join
       // shaped by the FK itself being nullable) — a not-yet-completed or
       // legacy item correctly comes back null, never an error.
-      `id, status, scheduled_start_at, scheduled_end_at, notes, created_at,
-       customers(id, full_name), branches(id, name),
-       appointment_items(id, sequence, scheduled_start_at, scheduled_end_at, duration_minutes, price,
+      //
+      // Faz SAAS.1E.1: notes and appointment_items.price are NOT selected —
+      // both are column-restricted to appointments.update holders only (not
+      // Personel, who has appointments.view alone). They come from
+      // get_appointment_private_details below, merged in.
+      `id, tenant_id, customer_id, status, scheduled_start_at, scheduled_end_at, created_at,
+       branches(id, name),
+       appointment_items(id, sequence, scheduled_start_at, scheduled_end_at, duration_minutes,
          services(id, name), staff_members!appointment_items_staff_member_id_fkey(id, full_name),
          actual_staff_members:staff_members!appointment_items_actual_staff_member_id_fkey(id, full_name))`,
     )
@@ -149,12 +168,12 @@ export async function getAppointmentDetail(appointmentId: string): Promise<Appoi
   if (error || !data) return null;
   const d = data as unknown as {
     id: string;
+    tenant_id: string;
+    customer_id: string;
     status: string;
     scheduled_start_at: string;
     scheduled_end_at: string;
-    notes: string | null;
     created_at: string;
-    customers: { id: string; full_name: string } | null;
     branches: { id: string; name: string } | null;
     appointment_items: {
       id: string;
@@ -162,7 +181,6 @@ export async function getAppointmentDetail(appointmentId: string): Promise<Appoi
       scheduled_start_at: string;
       scheduled_end_at: string;
       duration_minutes: number;
-      price: string;
       services: { id: string; name: string } | null;
       staff_members: { id: string; full_name: string } | null;
       actual_staff_members: { id: string; full_name: string } | null;
@@ -171,14 +189,20 @@ export async function getAppointmentDetail(appointmentId: string): Promise<Appoi
 
   if (!d.branches) return null;
 
+  const [customerNames, privateDetails] = await Promise.all([
+    getAppointmentCustomerNames(supabase, d.tenant_id, [d.id]),
+    getAppointmentPrivateDetails(supabase, d.tenant_id, d.id),
+  ]);
+  const customerName = customerNames.get(d.id);
+
   return {
     id: d.id,
     status: d.status,
     scheduledStartAt: d.scheduled_start_at,
     scheduledEndAt: d.scheduled_end_at,
-    notes: d.notes,
+    notes: privateDetails.notes,
     createdAt: d.created_at,
-    customer: d.customers ? { id: d.customers.id, fullName: d.customers.full_name } : null,
+    customer: customerName ? { id: d.customer_id, fullName: customerName } : null,
     branch: { id: d.branches.id, name: d.branches.name },
     items: d.appointment_items
       .filter((i) => i.services && i.staff_members)
@@ -189,7 +213,7 @@ export async function getAppointmentDetail(appointmentId: string): Promise<Appoi
         scheduledStartAt: i.scheduled_start_at,
         scheduledEndAt: i.scheduled_end_at,
         durationMinutes: i.duration_minutes,
-        price: String(i.price),
+        price: privateDetails.prices.get(i.id) ?? null,
         service: { id: i.services!.id, name: i.services!.name },
         staffMember: { id: i.staff_members!.id, fullName: i.staff_members!.full_name },
         actualStaffMember: i.actual_staff_members ? { id: i.actual_staff_members.id, fullName: i.actual_staff_members.full_name } : null,
@@ -228,11 +252,15 @@ export type CalendarItemRow = {
   customerName: string;
 };
 
+// Faz SAAS.1E.1: the customer is no longer embedded (customers.view gate) —
+// names come from get_appointment_customer_display, one RPC for the whole
+// visible range (see customer-display.ts). Keep client-queries.ts's own
+// CALENDAR_ITEM_SELECT identical.
 const CALENDAR_ITEM_SELECT = `
   id, appointment_id, sequence, scheduled_start_at, scheduled_end_at, appointment_status,
   services(name),
   staff_members!appointment_items_staff_member_id_fkey(id, full_name),
-  appointments!inner(branch_id, customers(full_name))
+  appointments!inner(branch_id)
 `;
 
 type RawCalendarItemRow = {
@@ -244,10 +272,10 @@ type RawCalendarItemRow = {
   appointment_status: string;
   services: { name: string } | null;
   staff_members: { id: string; full_name: string } | null;
-  appointments: { branch_id: string; customers: { full_name: string } | null } | null;
+  appointments: { branch_id: string } | null;
 };
 
-function mapCalendarItemRow(r: RawCalendarItemRow): CalendarItemRow | null {
+function mapCalendarItemRow(r: RawCalendarItemRow, customerNames: Map<string, string>): CalendarItemRow | null {
   if (!r.services || !r.staff_members || !r.appointments) return null;
   return {
     id: r.id,
@@ -265,7 +293,7 @@ function mapCalendarItemRow(r: RawCalendarItemRow): CalendarItemRow | null {
     serviceName: r.services.name,
     staffMemberId: r.staff_members.id,
     staffMemberFullName: r.staff_members.full_name,
-    customerName: r.appointments.customers?.full_name ?? "—",
+    customerName: customerNames.get(r.appointment_id) ?? CUSTOMER_NAME_FALLBACK,
   };
 }
 
@@ -274,8 +302,10 @@ function mapCalendarItemRow(r: RawCalendarItemRow): CalendarItemRow | null {
  * extend into it). Branch-scoped via an inner-join filter on the parent
  * appointment, since appointment_items itself carries no branch_id.
  * Returns everything a calendar block needs already joined — never one
- * query per visible item (services/staff_members/appointments.customers
- * all embedded in this single round trip). */
+ * query per visible item: services/staff_members are embedded in the one
+ * range query, and the customers' display names arrive through ONE
+ * get_appointment_customer_display call for the whole visible range
+ * (Faz SAAS.1E.1 — appointments.view is enough, no customers.view). */
 export async function getCalendarItems(
   tenantId: string,
   branchId: string,
@@ -302,8 +332,10 @@ export async function getCalendarItems(
     .order("scheduled_start_at", { ascending: true });
 
   if (error || !data) return [];
-  return (data as unknown as RawCalendarItemRow[])
-    .map(mapCalendarItemRow)
+  const rows = data as unknown as RawCalendarItemRow[];
+  const customerNames = await getAppointmentCustomerNames(supabase, tenantId, rows.map((r) => r.appointment_id));
+  return rows
+    .map((r) => mapCalendarItemRow(r, customerNames))
     .filter((r): r is CalendarItemRow => r !== null);
 }
 

@@ -54,6 +54,50 @@ before.
   the DB password — never paste that password, or any Supabase key, into
   chat/logs).
 
+## Changing a role template or the permission catalog (Faz SAAS.1E.1)
+
+A tenant gets a _copy_ of a role template when its default roles are
+provisioned (`private.provision_default_roles`, called by
+`create_tenant_with_owner`). Changing `role_templates` /
+`role_template_permissions` later therefore never reaches roles that already
+exist — which is how one production tenant's Salon Sahibi ended up holding
+19 of the 23 permissions. So any migration that changes a template's
+permission set, adds a permission key, or otherwise touches `role_templates`,
+`role_template_permissions` or `permissions` must:
+
+1. Keep the SALON_OWNER template equal to the ENTIRE permission catalog (a new
+   key needs its `role_template_permissions` row for SALON_OWNER in the same
+   migration; `tests/system-role-drift.test.ts` fails otherwise).
+2. End with `select * from private.sync_pristine_default_roles();`. It adds the
+   missing keys to every _pristine_ system-default role (`customized_at is
+   null`), writes one `role.template_synced` audit row per role changed, and
+   never removes anything. Roles an unrestricted owner customized through
+   `update_role_permissions` (that is what sets `roles.customized_at`) and
+   owner-created custom roles are never touched.
+3. If the change TIGHTENS a template (takes a key away), scope the removal to
+   that template: `select * from
+   private.sync_pristine_default_roles(null, true, '<TEMPLATE_KEY>');`.
+   Removal is opt-in and never the default.
+4. Never edit existing tenants' `role_permissions` rows by hand in a
+   migration — the sync is the audited path, and the only one that respects
+   `customized_at`.
+
+A migration that skips step 2 fails `tests/system-role-drift.test.ts`. To see
+where the live roles stand against their templates (read-only):
+
+```sql
+select * from private.role_template_drift()
+where drift_state not in ('in_sync', 'customized_in_sync');
+```
+
+`pristine_missing` / `pristine_extra` are what the sync repairs;
+`customized_drift` is an owner's deliberate choice and is only reported.
+
+Adding a fifth primary role: set `role_templates.provision_by_default` (and
+`display_order`) for it and end the migration with
+`select private.provision_default_roles(id) from public.tenants where
+deleted_at is null;` (idempotent), then the sync.
+
 ## Lessons (read before adding more `private.*`-calling RPCs)
 
 `private` has `usage` revoked from `authenticated`/`anon` (20260815120014) —

@@ -45,7 +45,6 @@ let secondAccepter: TestUser;
 let ownerAClient: SupabaseClient;
 let managerAClient: SupabaseClient;
 let primaryAccepterClient: SupabaseClient;
-let secondAccepterClient: SupabaseClient;
 
 let limitedRoleId: string; // tenantA — appointments.view only, within managerA's ceiling
 let managerRoleId: string; // tenantA — staff.manage only (not manage_unrestricted)
@@ -93,7 +92,6 @@ beforeAll(async () => {
   ownerAClient = await signInAs(ownerA);
   managerAClient = await signInAs(managerA);
   primaryAccepterClient = await signInAs(primaryAccepter);
-  secondAccepterClient = await signInAs(secondAccepter);
 }, 60000);
 
 const createdTenantIds: string[] = [];
@@ -711,14 +709,22 @@ describe("ACCEPT", () => {
     const otherMembershipId = await addMembership(tenant.id, secondAccepter.id, roleId);
     await testDb`update staff_members set tenant_membership_id = ${otherMembershipId} where id = ${staff!.id}`;
 
-    const { data: invitation } = await createInvitation(ownerAClient, {
-      tenantId: tenant.id,
-      email: primaryAccepter.email,
-      roleId,
-      staffMemberId: staff!.id,
-    });
+    // Faz SAAS.1E.1 (F): create_team_invitation itself now refuses an
+    // already-linked staff target (staff_already_linked — see
+    // staff-invitation-guards.test.ts), so this state can no longer be
+    // reached through the RPC. accept_team_invitation's own no-overwrite
+    // behavior is still real, still worth proving, and still reachable for
+    // an invitation that predates this migration — built directly here the
+    // same way other now-RPC-unreachable defensive branches in this suite
+    // are (see invitation-accept-revalidation.test.ts's "already_member"
+    // case).
+    const rawToken = randomTokenHex();
+    await testDb`
+      insert into team_invitations (tenant_id, email, role_id, staff_member_id, invited_by, status, token_hash, expires_at)
+      values (${tenant.id}, ${primaryAccepter.email}, ${roleId}, ${staff!.id}, ${ownerA.id}, 'pending', ${sha256Hex(rawToken)}, now() + interval '7 days')
+    `;
 
-    const { data, error } = await primaryAccepterClient.rpc("accept_team_invitation", { p_token: invitation!.token });
+    const { data, error } = await primaryAccepterClient.rpc("accept_team_invitation", { p_token: rawToken });
     expect(error).toBeNull();
     const row = (data as { membership_id: string; staff_linked: boolean; staff_link_reason: string | null }[])[0]!;
     expect(row.staff_linked).toBe(false);
@@ -732,7 +738,21 @@ describe("ACCEPT", () => {
     expect(staffRow?.tenant_membership_id).toBe(otherMembershipId);
   });
 
-  it("handles a concurrent staff-link race safely: both memberships are created, only one link wins", async () => {
+  // Faz SAAS.1E.1 (F) retired this test's original scenario — two pending
+  // invitations to the SAME staff member racing at ACCEPT time — because it
+  // can no longer be constructed at all: team_invitations_tenant_staff_
+  // pending_idx (a real unique index, not just an application check) refuses
+  // a second PENDING row for the same (tenant, staff member) outright, even
+  // via a direct multi-row INSERT. The race this test used to exercise at
+  // accept time is now impossible earlier, deterministically, at create
+  // time instead — see staff-invitation-guards.test.ts's own "two truly
+  // CONCURRENT invitations for the same staff member: exactly one winner"
+  // for that guarantee. What remains genuinely this file's concern —
+  // accept_team_invitation still links correctly under the normal,
+  // now-only-possible shape (one pending invitation, one staff target) — is
+  // covered by "links an unlinked optional staff member on acceptance"
+  // directly above.
+  it("a second invitation to an already-pending staff target is refused before any race can occur", async () => {
     const tenant = await createTestTenant(`test-tenant-inv-stafflink-race-${Date.now().toString(36)}`, ownerA.id);
     createdTenantIds.push(tenant.id);
     const roleId = await createRoleForTenant(tenant.id, "Sınırlı", ["appointments.view"]);
@@ -740,41 +760,20 @@ describe("ACCEPT", () => {
       insert into staff_members (tenant_id, full_name) values (${tenant.id}, 'Race Staff') returning id
     `;
 
-    const inv1 = await createInvitation(ownerAClient, {
-      tenantId: tenant.id,
-      email: primaryAccepter.email,
-      roleId,
-      staffMemberId: staff!.id,
-    });
-    const inv2 = await createInvitation(ownerAClient, {
-      tenantId: tenant.id,
-      email: secondAccepter.email,
-      roleId,
-      staffMemberId: staff!.id,
-    });
+    const first = await createInvitation(ownerAClient, { tenantId: tenant.id, email: primaryAccepter.email, roleId, staffMemberId: staff!.id });
+    expect(first.error).toBeNull();
 
-    const [result1, result2] = await Promise.all([
-      primaryAccepterClient.rpc("accept_team_invitation", { p_token: inv1.data!.token }),
-      secondAccepterClient.rpc("accept_team_invitation", { p_token: inv2.data!.token }),
-    ]);
+    const second = await createInvitation(ownerAClient, { tenantId: tenant.id, email: secondAccepter.email, roleId, staffMemberId: staff!.id });
+    expect(second.data).toBeNull();
+    expect(second.error?.message).toContain("staff_pending_invitation_exists");
 
-    expect(result1.error).toBeNull();
-    expect(result2.error).toBeNull();
-    const row1 = (result1.data as { membership_id: string; staff_linked: boolean }[])[0]!;
-    const row2 = (result2.data as { membership_id: string; staff_linked: boolean }[])[0]!;
+    const { data, error } = await primaryAccepterClient.rpc("accept_team_invitation", { p_token: first.data!.token });
+    expect(error).toBeNull();
+    const row = (data as { membership_id: string; staff_linked: boolean }[])[0]!;
+    expect(row.staff_linked).toBe(true);
 
-    // Both memberships were created regardless of the link outcome.
-    expect(row1.membership_id).toBeTruthy();
-    expect(row2.membership_id).toBeTruthy();
-
-    // Exactly one of the two won the link.
-    const linkedCount = [row1.staff_linked, row2.staff_linked].filter(Boolean).length;
-    expect(linkedCount).toBe(1);
-
-    const [staffRow] = await testDb<{ tenant_membership_id: string | null }[]>`
-      select tenant_membership_id from staff_members where id = ${staff!.id}
-    `;
-    expect([row1.membership_id, row2.membership_id]).toContain(staffRow?.tenant_membership_id);
+    const [staffRow] = await testDb<{ tenant_membership_id: string | null }[]>`select tenant_membership_id from staff_members where id = ${staff!.id}`;
+    expect(staffRow?.tenant_membership_id).toBe(row.membership_id);
   });
 });
 

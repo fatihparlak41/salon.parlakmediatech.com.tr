@@ -10,6 +10,7 @@
  */
 import { createClient } from "@/lib/supabase/client";
 import type { ServiceForBranch, CalendarItemRow, CalendarStaffOption } from "./queries";
+import { CUSTOMER_NAME_FALLBACK, getAppointmentCustomerNames } from "./customer-display";
 
 export async function fetchServicesForBranch(tenantId: string, branchId: string): Promise<ServiceForBranch[]> {
   const supabase = createClient();
@@ -52,11 +53,14 @@ export async function fetchEligibleStaff(serviceId: string, branchId: string): P
 // unqualified staff_members(...) embed is ambiguous to PostgREST. Mirror
 // this exact hint in queries.ts's own CALENDAR_ITEM_SELECT if either
 // ever changes — see that file's comment for the full explanation.
+//
+// Faz SAAS.1E.1: no customers embed (it needs customers.view) — names come
+// from get_appointment_customer_display, exactly as in queries.ts.
 const CALENDAR_ITEM_SELECT = `
   id, appointment_id, sequence, scheduled_start_at, scheduled_end_at, appointment_status,
   services(name),
   staff_members!appointment_items_staff_member_id_fkey(id, full_name),
-  appointments!inner(branch_id, customers(full_name))
+  appointments!inner(branch_id)
 `;
 
 type RawCalendarItemRow = {
@@ -68,10 +72,10 @@ type RawCalendarItemRow = {
   appointment_status: string;
   services: { name: string } | null;
   staff_members: { id: string; full_name: string } | null;
-  appointments: { branch_id: string; customers: { full_name: string } | null } | null;
+  appointments: { branch_id: string } | null;
 };
 
-function mapCalendarItemRow(r: RawCalendarItemRow): CalendarItemRow | null {
+function mapCalendarItemRow(r: RawCalendarItemRow, customerNames: Map<string, string>): CalendarItemRow | null {
   if (!r.services || !r.staff_members || !r.appointments) return null;
   return {
     id: r.id,
@@ -83,7 +87,7 @@ function mapCalendarItemRow(r: RawCalendarItemRow): CalendarItemRow | null {
     serviceName: r.services.name,
     staffMemberId: r.staff_members.id,
     staffMemberFullName: r.staff_members.full_name,
-    customerName: r.appointments.customers?.full_name ?? "—",
+    customerName: customerNames.get(r.appointment_id) ?? CUSTOMER_NAME_FALLBACK,
   };
 }
 
@@ -111,8 +115,10 @@ export async function fetchCalendarItems(
     .order("scheduled_start_at", { ascending: true });
 
   if (error || !data) return [];
-  return (data as unknown as RawCalendarItemRow[])
-    .map(mapCalendarItemRow)
+  const rows = data as unknown as RawCalendarItemRow[];
+  const customerNames = await getAppointmentCustomerNames(supabase, tenantId, rows.map((r) => r.appointment_id));
+  return rows
+    .map((r) => mapCalendarItemRow(r, customerNames))
     .filter((r): r is CalendarItemRow => r !== null);
 }
 

@@ -43,9 +43,9 @@ export default async function TenantAppLayout({
     hasPermission(access.tenant.id, "settings.manage"),
     // Faz 5A.3C — reports.staff is a distinct permission, not implied
     // by staff.view or any other permission checked above (confirmed
-    // against the role_template_permissions seed: STYLIST holds
-    // appointments.view/update, customers.view, services.view,
-    // schedules.view — never staff.view or reports.staff). It is the
+    // against the role_template_permissions seed: since Faz SAAS.1E.1 the
+    // STYLIST template — shown as "Personel" — holds appointments.view only,
+    // and it never held staff.view or reports.staff). It is the
     // only gate for this nav entry, matching the RPCs' own check.
     hasPermission(access.tenant.id, "reports.staff"),
     // Faz SAAS.1D.1 — the Team page is gated by staff.manage alone, the

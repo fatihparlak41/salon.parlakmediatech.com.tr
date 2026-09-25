@@ -150,10 +150,18 @@ beforeAll(async () => {
   roleOf.personel = await createCustomRole(tenantA.id, "Personel", PERSONEL_KEYS);
   // Literally keyed SALON_OWNER, but with three permissions and no
   // unrestricted key: a name/key must confer no authority whatsoever.
+  // Since Faz SAAS.1E.1 a key is unique among a tenant's live roles, so the
+  // real owner role hands its key over first and keeps its full permission
+  // set under another one — authority is the effective set, never a key.
+  await testDb`update roles set key = 'SALON_OWNER_FIXTURE' where id = ${tenantA.ownerRoleId}`;
   roleOf.fake = await createCustomRole(tenantA.id, "SALON_OWNER", ["appointments.view", "staff.manage", "staff.view"], {
     key: "SALON_OWNER",
   });
-  roleOf.systemReception = await createCustomRole(tenantA.id, "Sistem Resepsiyon", RECEPTION_KEYS, { isSystemDefault: true });
+  // A system-default role must carry a key (Faz SAAS.1E.1): the real one.
+  roleOf.systemReception = await createCustomRole(tenantA.id, "Sistem Resepsiyon", RECEPTION_KEYS, {
+    key: "RECEPTIONIST",
+    isSystemDefault: true,
+  });
   roleOf.withSettings = await createCustomRole(tenantA.id, "Ayar Yetkilisi", ["appointments.view", "settings.manage"]);
   roleOf.deleted = await createCustomRole(tenantA.id, "Silinmiş Rol", PERSONEL_KEYS);
   await testDb`update roles set deleted_at = now() where id = ${roleOf.deleted}`;

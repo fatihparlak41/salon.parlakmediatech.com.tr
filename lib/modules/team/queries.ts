@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
+import { getStaffManagementDetails } from "@/lib/modules/staff/management-details";
 
 /**
  * Faz SAAS.1D.1 — tenant-scoped, authenticated-client-only reads for the
@@ -68,15 +69,19 @@ export async function getTeamMembers(supabase: AnySupabaseClient, tenantId: stri
     : { data: [] as { id: string; full_name: string | null }[] };
   const nameById = new Map((profiles ?? []).map((p) => [p.id, p.full_name]));
 
-  const { data: linkedStaff } = await supabase
-    .from("staff_members")
-    .select("tenant_membership_id, full_name")
-    .eq("tenant_id", tenantId)
-    .is("deleted_at", null)
-    .not("tenant_membership_id", "is", null);
-  const staffNameByMembershipId = new Map(
-    (linkedStaff ?? []).map((s) => [s.tenant_membership_id as string, s.full_name]),
-  );
+  // Faz SAAS.1E.1: tenant_membership_id is no longer a selectable column
+  // directly (staff.view/staff.manage required, which the Team page's own
+  // nav gate already requires to reach here) — read through
+  // get_staff_management_details and cross-reference by staff id.
+  const [staffRes, details] = await Promise.all([
+    supabase.from("staff_members").select("id, full_name").eq("tenant_id", tenantId).is("deleted_at", null),
+    getStaffManagementDetails(supabase, tenantId),
+  ]);
+  const staffNameByMembershipId = new Map<string, string>();
+  for (const s of staffRes.data ?? []) {
+    const membershipId = details.get(s.id)?.tenantMembershipId;
+    if (membershipId) staffNameByMembershipId.set(membershipId, s.full_name);
+  }
 
   return memberships
     .filter((m): m is typeof m & { roles: { name: string } } => m.roles !== null)
@@ -143,15 +148,17 @@ export async function getEligibleStaffForLinking(
   supabase: AnySupabaseClient,
   tenantId: string,
 ): Promise<EligibleStaffOption[]> {
-  const { data } = await supabase
-    .from("staff_members")
-    .select("id, full_name")
-    .eq("tenant_id", tenantId)
-    .is("deleted_at", null)
-    .is("tenant_membership_id", null)
-    .order("full_name", { ascending: true });
+  // Faz SAAS.1E.1: tenant_membership_id is no longer a selectable/filterable
+  // column directly — fetch the roster (safe columns) and the link state
+  // (get_staff_management_details) separately, then filter to unlinked.
+  const [staffRes, details] = await Promise.all([
+    supabase.from("staff_members").select("id, full_name").eq("tenant_id", tenantId).is("deleted_at", null).order("full_name", { ascending: true }),
+    getStaffManagementDetails(supabase, tenantId),
+  ]);
 
-  return (data ?? []).map((s) => ({ id: s.id, fullName: s.full_name }));
+  return (staffRes.data ?? [])
+    .filter((s) => (details.get(s.id)?.tenantMembershipId ?? null) === null)
+    .map((s) => ({ id: s.id, fullName: s.full_name }));
 }
 
 export type RoleOption = { id: string; name: string };

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { AppointmentListRow, AppointmentListScope } from "@/lib/modules/appointments/queries";
 import { APPOINTMENTS_PAGE_SIZE } from "@/lib/modules/appointments/constants";
 import { getTenantTodayRangeUtc } from "@/lib/modules/appointments/timezone";
+import { CUSTOMER_NAME_FALLBACK, getAppointmentCustomerNames } from "@/lib/modules/appointments/customer-display";
 import { APPOINTMENT_STATUSES, STATUS_LABELS_TR } from "@/lib/modules/appointments/status";
 import type { BranchOption } from "@/lib/modules/staff/queries";
 import { Button } from "@/components/ui/button";
@@ -45,9 +46,10 @@ type Labels = {
 // staff_members, so an unqualified embed is ambiguous to PostgREST. Keep
 // this in sync with lib/modules/appointments/queries.ts's own
 // LIST_SELECT (see its comment for the full explanation).
+// Faz SAAS.1E.1: no customers embed (it needs customers.view) — names come
+// from get_appointment_customer_display, one call per fetched page.
 const LIST_SELECT = `
   id, status, scheduled_start_at, scheduled_end_at,
-  customers(full_name),
   branches(name),
   appointment_items(services(name), staff_members!appointment_items_staff_member_id_fkey(full_name))
 `;
@@ -57,18 +59,17 @@ type RawAppointmentRow = {
   status: string;
   scheduled_start_at: string;
   scheduled_end_at: string;
-  customers: { full_name: string } | null;
   branches: { name: string } | null;
   appointment_items: { services: { name: string } | null; staff_members: { full_name: string } | null }[];
 };
 
-function mapListRow(r: RawAppointmentRow): AppointmentListRow {
+function mapListRow(r: RawAppointmentRow, customerNames: Map<string, string>): AppointmentListRow {
   return {
     id: r.id,
     status: r.status,
     scheduledStartAt: r.scheduled_start_at,
     scheduledEndAt: r.scheduled_end_at,
-    customerName: r.customers?.full_name ?? "—",
+    customerName: customerNames.get(r.id) ?? CUSTOMER_NAME_FALLBACK,
     branchName: r.branches?.name ?? "—",
     serviceNames: Array.from(new Set(r.appointment_items.map((i) => i.services?.name).filter((n): n is string => !!n))),
     staffNames: Array.from(new Set(r.appointment_items.map((i) => i.staff_members?.full_name).filter((n): n is string => !!n))),
@@ -105,7 +106,9 @@ async function fetchAppointments(
 
   const { data, error } = await query;
   if (error || !data) return [];
-  return (data as unknown as RawAppointmentRow[]).map(mapListRow);
+  const rows = data as unknown as RawAppointmentRow[];
+  const customerNames = await getAppointmentCustomerNames(supabase, tenantId, rows.map((r) => r.id));
+  return rows.map((r) => mapListRow(r, customerNames));
 }
 
 export function AppointmentsPageClient({

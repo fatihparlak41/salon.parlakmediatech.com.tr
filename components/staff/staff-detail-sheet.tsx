@@ -43,6 +43,7 @@ import {
   type UpdateStaffServicesInput,
 } from "@/lib/modules/staff/actions";
 import { ScheduleTab } from "@/components/staff/tabs/schedule-tab";
+import { getOneStaffManagementDetail } from "@/lib/modules/staff/management-details";
 
 type Loaded = {
   detail: StaffDetail;
@@ -50,6 +51,13 @@ type Loaded = {
   exceptions: ExceptionRow[];
 };
 
+// Faz SAAS.1E.1: email/phone/tenant_membership_id (staff_members) and reason
+// (staff_schedule_exceptions) are no longer selectable columns for a plain
+// member — staff.view/staff.manage is required, enforced by
+// get_staff_management_details / get_staff_exception_reasons. This edit
+// dialog is only ever opened from the staff MANAGEMENT screen (an
+// authorized context), so both calls are expected to succeed there; they
+// degrade to null/empty rather than failing the sheet if not.
 async function loadStaffData(staffMemberId: string): Promise<Loaded | null> {
   const supabase = createClient();
 
@@ -57,7 +65,7 @@ async function loadStaffData(staffMemberId: string): Promise<Loaded | null> {
     supabase
       .from("staff_members")
       .select(
-        `id, full_name, email, phone, status, tenant_membership_id, concurrent_capacity,
+        `id, tenant_id, full_name, status, concurrent_capacity,
          staff_branches(branch_id), staff_services(service_id)`,
       )
       .eq("id", staffMemberId)
@@ -70,7 +78,7 @@ async function loadStaffData(staffMemberId: string): Promise<Loaded | null> {
       .is("deleted_at", null),
     supabase
       .from("staff_schedule_exceptions")
-      .select("id, exception_date, type, start_time, end_time, reason")
+      .select("id, exception_date, type, start_time, end_time")
       .eq("staff_member_id", staffMemberId)
       .is("deleted_at", null)
       .order("exception_date", { ascending: true }),
@@ -79,14 +87,20 @@ async function loadStaffData(staffMemberId: string): Promise<Loaded | null> {
   if (!detailRes.data) return null;
 
   const d = detailRes.data;
+  const [managementDetail, reasonsRes] = await Promise.all([
+    getOneStaffManagementDetail(supabase, d.tenant_id, d.id),
+    supabase.rpc("get_staff_exception_reasons", { p_tenant_id: d.tenant_id, p_staff_member_id: d.id }),
+  ]);
+  const reasons = new Map((reasonsRes.data ?? []).map((r) => [r.exception_id, r.reason] as const));
+
   return {
     detail: {
       id: d.id,
       fullName: d.full_name,
-      email: d.email,
-      phone: d.phone,
+      email: managementDetail?.email ?? null,
+      phone: managementDetail?.phone ?? null,
       status: d.status,
-      tenantMembershipId: d.tenant_membership_id,
+      tenantMembershipId: managementDetail?.tenantMembershipId ?? null,
       branchIds: d.staff_branches.map((b) => b.branch_id),
       serviceIds: d.staff_services.map((s) => s.service_id),
       concurrentCapacity: d.concurrent_capacity,
@@ -104,7 +118,7 @@ async function loadStaffData(staffMemberId: string): Promise<Loaded | null> {
       type: r.type,
       startTime: r.start_time?.slice(0, 5) ?? null,
       endTime: r.end_time?.slice(0, 5) ?? null,
-      reason: r.reason,
+      reason: reasons.get(r.id) ?? null,
     })),
   };
 }

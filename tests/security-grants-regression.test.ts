@@ -69,8 +69,8 @@ const AUTHENTICATED_TABLE_WHITELIST: Record<string, string[]> = {
   // column-level UPDATE either: `status` used to be writable through a
   // single column-level grant (20260816090002/090006) and is now changed
   // only by suspend_membership / reactivate_membership /
-  // remove_membership_access — asserted below by the "no column-level
-  // grant anywhere" test.
+  // remove_membership_access — asserted below by the column-level-grant
+  // test (the only column grants allowed anywhere are appointments').
   // No INSERT either, as of Faz SAAS.1B (20260917070000): the
   // tenant_memberships_insert_staff_manage policy never checked the
   // inserted row's role_id against private.caller_can_grant_permissions
@@ -91,14 +91,30 @@ const AUTHENTICATED_TABLE_WHITELIST: Record<string, string[]> = {
   // deliberately SELECT-only — every mutation goes through the
   // create_appointment/reschedule_appointment/update_appointment_status
   // RPCs (20260819052733), never a direct grant.
-  staff_members: ["INSERT", "SELECT", "UPDATE"],
+  //
+  // staff_members and staff_schedule_exceptions carry NO "SELECT" here since
+  // Faz SAAS.1E.1 (20260921132701): authenticated holds only the column-level
+  // SELECT grants pinned in STAFF_MEMBERS_SELECT_COLUMNS /
+  // STAFF_SCHEDULE_EXCEPTIONS_SELECT_COLUMNS below, which leave
+  // email/phone/tenant_membership_id and .reason unreadable directly — see
+  // that migration's header for why. INSERT/UPDATE are untouched (staff.manage
+  // still writes full rows; the login link is RPC-only regardless, since
+  // Faz SAAS.1E.0).
+  staff_members: ["INSERT", "UPDATE"],
   services: ["INSERT", "SELECT", "UPDATE"],
   staff_services: ["DELETE", "INSERT", "SELECT"],
   customers: ["INSERT", "SELECT", "UPDATE"],
   staff_schedules: ["INSERT", "SELECT", "UPDATE"],
-  staff_schedule_exceptions: ["INSERT", "SELECT", "UPDATE"],
-  appointments: ["SELECT"],
-  appointment_items: ["SELECT"],
+  staff_schedule_exceptions: ["INSERT", "UPDATE"],
+  // appointments and appointment_items are deliberately ABSENT: since Faz
+  // SAAS.1E.1 (20260921113335, then narrowed further by 20260921132656)
+  // authenticated holds NO table-level privilege on either — only the
+  // column-level SELECT grants pinned in APPOINTMENTS_SELECT_COLUMNS /
+  // APPOINTMENT_ITEMS_SELECT_COLUMNS below. appointments hides
+  // idempotency_key / idempotency_fingerprint (an md5 over the guest's
+  // phone/e-mail), notes and created_by; appointment_items hides price —
+  // all four are appointments.update-gated instead, through
+  // get_appointment_private_details.
   // Phase 2A.1 (20260819062000) — replaces the old decorative
   // staff_members.branch_id/services.branch_id columns.
   staff_branches: ["DELETE", "INSERT", "SELECT"],
@@ -266,6 +282,27 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   "public.resend_team_invitation",
   "public.revoke_team_invitation",
   "public.accept_team_invitation",
+  // Faz SAAS.1E.1 (20260921113330) — appointment-scoped customer display.
+  // Authenticated only, never anon: gated internally by appointments.view in
+  // the requested tenant, returns (appointment_id, customer_display_name)
+  // and nothing else — the reason a member who may see appointments but not
+  // the customer directory (Personel) still gets names on the calendar. Its
+  // private.* implementation carries an explicit revoke from public and is
+  // never granted to authenticated directly.
+  "public.get_appointment_customer_display",
+  // Faz SAAS.1E.1 residual A-F (20260921132656..20260921132720) — the five
+  // RPCs that replace direct reads of the columns/tables this second
+  // hardening pass restricted. Each requires appointments.view (private
+  // fields) or staff.view/staff.manage (staff contact/link/reasons) — except
+  // get_staff_link_for_membership, free for the caller's OWN membership id
+  // and gated the same way for anyone else's — and every one carries a
+  // private.* implementation with an explicit revoke from public, never
+  // granted to authenticated directly.
+  "public.get_appointment_private_details",
+  "public.get_staff_management_details",
+  "public.get_staff_exception_reasons",
+  "public.get_my_staff_link",
+  "public.get_staff_link_for_membership",
 ];
 
 // Phase 2F's public read surface — the only functions anon has ever
@@ -380,6 +417,74 @@ type FunctionAuditRow = {
 };
 type RlsStatusRow = { table_name: string; rls_enabled: boolean; policy_count: number };
 type ColumnGrantRow = { table_name: string; column_name: string; grantee: string; privilege_type: string };
+
+// Faz SAAS.1E.1 (20260921113335, narrowed by 20260921132656) — every
+// appointments column EXCEPT idempotency_key / idempotency_fingerprint /
+// notes / created_by (the last two moved to appointments.update-gated
+// get_appointment_private_details). Adding a column to appointments without
+// deciding here whether authenticated may read it fails this suite.
+const APPOINTMENTS_SELECT_COLUMNS = [
+  "id",
+  "tenant_id",
+  "branch_id",
+  "customer_id",
+  "status",
+  "source",
+  "scheduled_start_at",
+  "scheduled_end_at",
+  "created_at",
+  "updated_at",
+] as const;
+
+// Faz SAAS.1E.1 (20260921132656) — every appointment_items column except
+// price (also appointments.update-gated, through the same RPC).
+const APPOINTMENT_ITEMS_SELECT_COLUMNS = [
+  "id",
+  "tenant_id",
+  "appointment_id",
+  "service_id",
+  "staff_member_id",
+  "scheduled_start_at",
+  "scheduled_end_at",
+  "duration_minutes",
+  "sequence",
+  "appointment_status",
+  "created_at",
+  "updated_at",
+  "actual_staff_member_id",
+] as const;
+
+// Faz SAAS.1E.1 (20260921132701) — every staff_members column except
+// email/phone/tenant_membership_id/created_by (staff.view/staff.manage-
+// gated instead, through get_staff_management_details).
+const STAFF_MEMBERS_SELECT_COLUMNS = [
+  "id",
+  "tenant_id",
+  "full_name",
+  "color",
+  "status",
+  "display_order",
+  "concurrent_capacity",
+  "created_at",
+  "updated_at",
+  "deleted_at",
+] as const;
+
+// Faz SAAS.1E.1 (20260921132701) — every staff_schedule_exceptions column
+// except reason (staff.view/staff.manage-gated, through
+// get_staff_exception_reasons).
+const STAFF_SCHEDULE_EXCEPTIONS_SELECT_COLUMNS = [
+  "id",
+  "tenant_id",
+  "staff_member_id",
+  "exception_date",
+  "type",
+  "start_time",
+  "end_time",
+  "created_at",
+  "updated_at",
+  "deleted_at",
+] as const;
 type DefaultPrivilegeRow = {
   for_role: string;
   schema_name: string;
@@ -659,26 +764,65 @@ describe("security grants regression", () => {
     expect(problems).toEqual([]);
   });
 
-  it("there is NO column-level grant anywhere in the schema (tenant_memberships.status is RPC-only since Faz SAAS.1E.0)", async () => {
+  it("the ONLY column-level grants in the schema are authenticated's pinned SELECT columns on appointments / appointment_items / staff_members / staff_schedule_exceptions (tenant_memberships.status is RPC-only since Faz SAAS.1E.0)", async () => {
     // Table-level ACLs never surface column-restricted grants (Postgres
     // stores them separately on pg_attribute.attacl), so the whitelist
     // test above can't see this boundary — this is the actual security
     // check for it. Until Faz SAAS.1E.0 the ONE column-level grant was
     // tenant_memberships.status (a direct PATCH with no ceiling and no
     // audit row); suspend_membership / reactivate_membership replaced it
-    // and the grant was revoked. Any column-level grant reappearing —
-    // above all on role_id or status — must be a deliberate, reviewed
-    // decision that updates this test.
+    // and the grant was revoked. Any column-level grant reappearing on a
+    // table not listed below must be a deliberate, reviewed decision that
+    // updates this test.
+    //
+    // Faz SAAS.1E.1 (both batches) is why the four tables below carry a
+    // pinned column list instead of a table-level grant or no grant at all:
+    //   appointments        — hides idempotency_key/idempotency_fingerprint
+    //                         (md5 over phone/e-mail — brute-forceable for a
+    //                         ten-digit phone), notes and created_by.
+    //   appointment_items   — hides price.
+    //   staff_members       — hides email, phone, tenant_membership_id,
+    //                         created_by.
+    //   staff_schedule_exceptions — hides reason.
+    // Every hidden column is read only through a permission-checked RPC
+    // (get_appointment_private_details / get_staff_management_details /
+    // get_staff_exception_reasons), never a direct grant — not even to the
+    // Owner. No other table, grantee or privilege may appear.
     const data = await testDb<ColumnGrantRow[]>`select * from security_audit_column_grants()`;
 
-    const rows = data.map((r) => ({
-      table: r.table_name,
-      column: r.column_name,
-      grantee: r.grantee,
-      privilege: r.privilege_type,
-    }));
+    const rows = data
+      .map((r) => ({
+        table: r.table_name,
+        column: r.column_name,
+        grantee: r.grantee,
+        privilege: r.privilege_type,
+      }))
+      .sort((a, b) => `${a.table}.${a.column}`.localeCompare(`${b.table}.${b.column}`));
 
-    expect(rows).toEqual([]);
+    const pinned: { table: string; columns: readonly string[]; expectedHidden: string[] }[] = [
+      { table: "appointments", columns: APPOINTMENTS_SELECT_COLUMNS, expectedHidden: ["created_by", "idempotency_fingerprint", "idempotency_key", "notes"] },
+      { table: "appointment_items", columns: APPOINTMENT_ITEMS_SELECT_COLUMNS, expectedHidden: ["price"] },
+      { table: "staff_members", columns: STAFF_MEMBERS_SELECT_COLUMNS, expectedHidden: ["created_by", "email", "phone", "tenant_membership_id"] },
+      { table: "staff_schedule_exceptions", columns: STAFF_SCHEDULE_EXCEPTIONS_SELECT_COLUMNS, expectedHidden: ["reason"] },
+    ];
+
+    const expectedRows = pinned
+      .flatMap(({ table, columns }) => columns.map((column) => ({ table, column, grantee: "authenticated", privilege: "SELECT" })))
+      .sort((a, b) => `${a.table}.${a.column}`.localeCompare(`${b.table}.${b.column}`));
+    expect(rows).toEqual(expectedRows);
+
+    for (const { table, columns, expectedHidden } of pinned) {
+      for (const hidden of expectedHidden) expect(rows.map((r) => r.column), `${table}.${hidden}`).not.toContain(hidden);
+
+      // The complement, so a NEW column on any of these four tables forces a decision here: apart from the
+      // pinned readable columns, the table has exactly its known hidden set — a column added later is
+      // neither readable nor silently classified until this list is updated.
+      const allColumns = await testDb<{ column_name: string }[]>`
+        select column_name from information_schema.columns
+        where table_schema = 'public' and table_name = ${table} order by column_name`;
+      const actualHidden = allColumns.map((c) => c.column_name).filter((c) => !(columns as readonly string[]).includes(c));
+      expect(actualHidden.sort(), table).toEqual([...expectedHidden].sort());
+    }
   });
 
   it("authenticated has no USAGE on the private schema at all", async () => {

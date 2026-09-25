@@ -89,9 +89,12 @@ async function setupTwoHolderTenant(slugSuffix: string) {
   `;
   if (!template) throw new Error("SALON_OWNER role template is missing");
 
+  // Faz SAAS.1E.1: a system-default role must carry a key, and the tenant's
+  // SALON_OWNER key is already taken by the role createTestTenant made — so
+  // the clone gets its own distinct key.
   const [ownerRoleB] = await testDb<{ id: string }[]>`
-    insert into roles (tenant_id, name, is_system_default, cloned_from_template_id)
-    values (${tenant.id}, 'Owner Clone B', true, ${template.id})
+    insert into roles (tenant_id, key, name, is_system_default, cloned_from_template_id)
+    values (${tenant.id}, 'SALON_OWNER_CLONE_B', 'Owner Clone B', true, ${template.id})
     returning id
   `;
   if (!ownerRoleB) throw new Error("failed to clone second owner role");

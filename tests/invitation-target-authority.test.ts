@@ -180,6 +180,11 @@ beforeAll(async () => {
   roleOf.higher = await createCustomRole(tenantA.id, "Yönetici Artı", [...MANAGER_KEYS, EXTRA_KEY]);
   roleOf.incomparable = await createCustomRole(tenantA.id, "Ayar Yetkilisi", ["staff.manage", EXTRA_KEY]);
   // Literally keyed SALON_OWNER, three permissions, no unrestricted key.
+  // Since Faz SAAS.1E.1 a key is unique among a tenant's live roles, so the
+  // real owner role hands its key over first: it keeps its full permission
+  // set under another key, which is exactly the point — authority is the
+  // effective permission set, never a key or a name.
+  await testDb`update roles set key = 'SALON_OWNER_FIXTURE' where id = ${tenantA.ownerRoleId}`;
   roleOf.fake = await createCustomRole(tenantA.id, "SALON_OWNER", ["appointments.view", "staff.manage", "staff.view"], {
     key: "SALON_OWNER",
   });

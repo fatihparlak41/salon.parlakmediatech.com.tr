@@ -4,6 +4,11 @@ import {
   getTenantTodayRangeUtc,
   getTenantMonthRangeUtc,
 } from "@/lib/modules/appointments/timezone";
+import {
+  CUSTOMER_NAME_FALLBACK,
+  getAppointmentCustomerNames,
+} from "@/lib/modules/appointments/customer-display";
+import { getStaffLinkForMembership } from "@/lib/modules/staff/management-details";
 
 /**
  * Faz DASHBOARD.1 — every query here is bounded to "today" or "this
@@ -47,7 +52,6 @@ type RawTodayRow = {
   status: string;
   scheduled_start_at: string;
   scheduled_end_at: string;
-  customers: { full_name: string } | null;
   appointment_items: {
     services: { name: string } | null;
     staff_members: { id: string; full_name: string } | null;
@@ -138,7 +142,9 @@ export function selectNextAppointment(
  * just its name, for accurate per-staff counting — a distinct enough
  * shape to warrant its own minimal SELECT rather than overloading the
  * shared one). No phone/email/notes are selected — nothing to redact,
- * the column is simply never read.
+ * the column is simply never read. The customer's display name comes
+ * from get_appointment_customer_display (Faz SAAS.1E.1: appointments.view
+ * is enough — no customers.view, no customers row read at all).
  */
 export async function getTodayAppointments(
   client: DashboardSupabaseClient,
@@ -150,7 +156,6 @@ export async function getTodayAppointments(
     .from("appointments")
     .select(
       `id, status, scheduled_start_at, scheduled_end_at,
-       customers(full_name),
        appointment_items(services(name), staff_members!appointment_items_staff_member_id_fkey(id, full_name))`,
     )
     .eq("tenant_id", tenantId)
@@ -160,7 +165,10 @@ export async function getTodayAppointments(
 
   if (error || !data) return [];
 
-  return (data as unknown as RawTodayRow[]).map((r) => {
+  const rows = data as unknown as RawTodayRow[];
+  const customerNames = await getAppointmentCustomerNames(client, tenantId, rows.map((r) => r.id));
+
+  return rows.map((r) => {
     const staffById = new Map<string, DashboardStaffRef>();
     for (const item of r.appointment_items) {
       if (item.staff_members)
@@ -174,7 +182,7 @@ export async function getTodayAppointments(
       status: r.status,
       scheduledStartAt: r.scheduled_start_at,
       scheduledEndAt: r.scheduled_end_at,
-      customerName: r.customers?.full_name ?? "—",
+      customerName: customerNames.get(r.id) ?? CUSTOMER_NAME_FALLBACK,
       serviceNames: Array.from(
         new Set(
           r.appointment_items
@@ -313,21 +321,21 @@ export async function getMyMembershipId(
 
 /** The active, non-deleted staff_members row (if any) linked to this
  * membership — "staff-linked" for Faz DASHBOARD.1 section 14 means
- * exactly this, nothing looser. */
+ * exactly this, nothing looser.
+ *
+ * Faz SAAS.1E.1: staff_members.tenant_membership_id is no longer a
+ * selectable/filterable column directly (staff.view/staff.manage
+ * required) — get_staff_link_for_membership is the DB-authoritative
+ * replacement: free for the CALLER's own membership id (self-information,
+ * no permission needed — every call site here passes the caller's own,
+ * from getMyMembershipId), staff.view/staff.manage required for anyone
+ * else's. */
 export async function getStaffLinkByMembership(
   client: DashboardSupabaseClient,
   tenantId: string,
   membershipId: string,
 ): Promise<DashboardStaffRef | null> {
-  const { data } = await client
-    .from("staff_members")
-    .select("id, full_name")
-    .eq("tenant_id", tenantId)
-    .eq("tenant_membership_id", membershipId)
-    .eq("status", "active")
-    .is("deleted_at", null)
-    .maybeSingle();
-  return data ? { id: data.id, fullName: data.full_name } : null;
+  return getStaffLinkForMembership(client, tenantId, membershipId);
 }
 
 /** profiles.full_name for the greeting — first token only (a person's

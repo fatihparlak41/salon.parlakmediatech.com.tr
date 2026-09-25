@@ -32,11 +32,28 @@ export function mapCreateInvitationError(error: { message: string }): ActionResu
   if (msg.includes("role not found in this tenant")) {
     return fail("VALIDATION", "Geçersiz rol");
   }
+  // Staged-release gate (private.release_gates, added to
+  // staff_invitation_guards for the SAAS.1E.1 expand/contract split) — the
+  // three new standard roles aren't invitable yet during the Wave-1-only
+  // window, before Wave 2's privacy REVOKEs land.
+  if (msg.includes("non_owner_roles_not_yet_available")) {
+    return fail("UNAUTHORIZED", "Bu rol için davet gönderme henüz kullanıma açılmadı, lütfen daha sonra tekrar deneyin");
+  }
   if (msg.includes("staff member not found in this tenant")) {
     return fail("VALIDATION", "Geçersiz personel");
   }
+  // Faz SAAS.1E.1 (F) — distinct, useful message: the caller is already
+  // staff.manage-authorized to see this fact through the staff roster.
+  if (msg.includes("staff_already_linked")) {
+    return fail("CONFLICT", "Bu personelin zaten bir hesabı var");
+  }
   if (msg.includes("invalid_email")) {
     return fail("VALIDATION", "Geçersiz e-posta adresi");
+  }
+  // Checked BEFORE the plain pending_invitation_exists below — its message
+  // contains that string as a substring.
+  if (msg.includes("staff_pending_invitation_exists")) {
+    return fail("CONFLICT", "Bu personel için zaten bekleyen bir davet var");
   }
   if (msg.includes("pending_invitation_exists")) {
     return fail("CONFLICT", "Bu e-posta için zaten bekleyen bir davet var");

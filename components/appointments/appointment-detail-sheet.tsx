@@ -26,6 +26,8 @@ import {
 } from "@/components/ui/select";
 import type { ActionResult } from "@/lib/errors";
 import type { AppointmentDetail, ServiceForBranch } from "@/lib/modules/appointments/queries";
+import { getAppointmentCustomerNames } from "@/lib/modules/appointments/customer-display";
+import { getAppointmentPrivateDetails } from "@/lib/modules/appointments/private-details";
 import {
   fetchServicesForBranch,
   fetchEligibleStaff,
@@ -76,9 +78,15 @@ async function loadAppointmentDetail(appointmentId: string): Promise<Appointment
       // for the actual performer — see
       // lib/modules/appointments/queries.ts's comment on its own
       // (server-side) mirror of this exact query for the full reasoning.
-      `id, status, scheduled_start_at, scheduled_end_at, notes, created_at,
-       customers(id, full_name), branches(id, name),
-       appointment_items(id, sequence, scheduled_start_at, scheduled_end_at, duration_minutes, price,
+      // Faz SAAS.1E.1: the customer row is not embedded (customers.view
+      // gate); the display NAME comes from get_appointment_customer_display,
+      // the id from appointments.customer_id — same as queries.ts. notes and
+      // appointment_items.price are ALSO not selected — both are column-
+      // restricted to appointments.update holders (not Personel); they come
+      // from get_appointment_private_details below, merged in.
+      `id, tenant_id, customer_id, status, scheduled_start_at, scheduled_end_at, created_at,
+       branches(id, name),
+       appointment_items(id, sequence, scheduled_start_at, scheduled_end_at, duration_minutes,
          services(id, name), staff_members!appointment_items_staff_member_id_fkey(id, full_name),
          actual_staff_members:staff_members!appointment_items_actual_staff_member_id_fkey(id, full_name))`,
     )
@@ -88,12 +96,12 @@ async function loadAppointmentDetail(appointmentId: string): Promise<Appointment
   if (error || !data) return null;
   const d = data as unknown as {
     id: string;
+    tenant_id: string;
+    customer_id: string;
     status: string;
     scheduled_start_at: string;
     scheduled_end_at: string;
-    notes: string | null;
     created_at: string;
-    customers: { id: string; full_name: string } | null;
     branches: { id: string; name: string } | null;
     appointment_items: {
       id: string;
@@ -101,26 +109,31 @@ async function loadAppointmentDetail(appointmentId: string): Promise<Appointment
       scheduled_start_at: string;
       scheduled_end_at: string;
       duration_minutes: number;
-      price: string;
       services: { id: string; name: string } | null;
       staff_members: { id: string; full_name: string } | null;
       actual_staff_members: { id: string; full_name: string } | null;
     }[];
   };
-  // customers is null (not an error) when the caller has appointments.view
-  // but not customers.view — RLS omits the embedded resource. The sheet
-  // must still render for that caller, so only branches (member-readable,
-  // never permission-gated) is treated as required. See AppointmentDetail.
+  // Only branches (member-readable, never permission-gated) is treated as
+  // required: the sheet must render for a caller with appointments.view but
+  // no customers.view (Personel) — the name arrives through the display
+  // projection, so it is present for them too. See AppointmentDetail.
   if (!d.branches) return null;
+
+  const [customerNames, privateDetails] = await Promise.all([
+    getAppointmentCustomerNames(supabase, d.tenant_id, [d.id]),
+    getAppointmentPrivateDetails(supabase, d.tenant_id, d.id),
+  ]);
+  const customerName = customerNames.get(d.id);
 
   return {
     id: d.id,
     status: d.status,
     scheduledStartAt: d.scheduled_start_at,
     scheduledEndAt: d.scheduled_end_at,
-    notes: d.notes,
+    notes: privateDetails.notes,
     createdAt: d.created_at,
-    customer: d.customers ? { id: d.customers.id, fullName: d.customers.full_name } : null,
+    customer: customerName ? { id: d.customer_id, fullName: customerName } : null,
     branch: { id: d.branches.id, name: d.branches.name },
     items: d.appointment_items
       .filter((i) => i.services && i.staff_members)
@@ -131,7 +144,7 @@ async function loadAppointmentDetail(appointmentId: string): Promise<Appointment
         scheduledStartAt: i.scheduled_start_at,
         scheduledEndAt: i.scheduled_end_at,
         durationMinutes: i.duration_minutes,
-        price: String(i.price),
+        price: privateDetails.prices.get(i.id) ?? null,
         service: { id: i.services!.id, name: i.services!.name },
         staffMember: { id: i.staff_members!.id, fullName: i.staff_members!.full_name },
         actualStaffMember: i.actual_staff_members ? { id: i.actual_staff_members.id, fullName: i.actual_staff_members.full_name } : null,
@@ -309,7 +322,11 @@ function AppointmentDetailBody({
                       <span>{item.staffMember.fullName}</span>
                     )}
                     <span>
-                      {item.durationMinutes} dk · ₺{item.price}
+                      {/* Faz SAAS.1E.1: price is null for a caller who holds
+                          appointments.view but not appointments.update
+                          (Personel) — omit the segment rather than show a
+                          placeholder that implies a price of zero. */}
+                      {item.durationMinutes} dk{item.price !== null ? ` · ₺${item.price}` : ""}
                     </span>
                   </div>
                 </div>

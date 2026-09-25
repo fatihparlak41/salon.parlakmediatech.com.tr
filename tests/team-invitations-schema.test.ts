@@ -224,6 +224,13 @@ describe("team_invitations schema (Faz SAAS.1B)", () => {
   });
 
   it("14. creating invitation fixtures never modifies existing tenant_memberships/staff_members rows", async () => {
+    // A fresh staff member, not the shared staffA fixture: test 10 above
+    // already left staffA with a live pending invitation, and Faz SAAS.1E.1's
+    // one-pending-per-staff unique index (team_invitations_tenant_staff_
+    // pending_idx) now refuses a second one for the same staff member —
+    // this test's own point (inserting an invitation touches nothing else)
+    // doesn't depend on which staff member it targets.
+    const freshStaff = await createStaffMember(tenantA.id, "SAAS.1B Fixture Isolation Staff");
     const beforeMemberships = await testDb<{ id: string; role_id: string; status: string }[]>`
       select id, role_id, status from tenant_memberships where tenant_id = ${tenantA.id} order by id
     `;
@@ -231,7 +238,7 @@ describe("team_invitations schema (Faz SAAS.1B)", () => {
       select id, tenant_membership_id from staff_members where tenant_id = ${tenantA.id} order by id
     `;
 
-    await insertInvitation({ staffMemberId: staffA.id });
+    await insertInvitation({ staffMemberId: freshStaff.id });
 
     const afterMemberships = await testDb<{ id: string; role_id: string; status: string }[]>`
       select id, role_id, status from tenant_memberships where tenant_id = ${tenantA.id} order by id

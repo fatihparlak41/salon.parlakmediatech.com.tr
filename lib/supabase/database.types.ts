@@ -1214,23 +1214,29 @@ export type Database = {
         Row: {
           created_at: string
           description: string | null
+          display_order: number | null
           id: string
           key: string
           name: string
+          provision_by_default: boolean
         }
         Insert: {
           created_at?: string
           description?: string | null
+          display_order?: number | null
           id?: string
           key: string
           name: string
+          provision_by_default?: boolean
         }
         Update: {
           created_at?: string
           description?: string | null
+          display_order?: number | null
           id?: string
           key?: string
           name?: string
+          provision_by_default?: boolean
         }
         Relationships: []
       }
@@ -1238,6 +1244,7 @@ export type Database = {
         Row: {
           cloned_from_template_id: string | null
           created_at: string
+          customized_at: string | null
           deleted_at: string | null
           description: string | null
           id: string
@@ -1250,6 +1257,7 @@ export type Database = {
         Insert: {
           cloned_from_template_id?: string | null
           created_at?: string
+          customized_at?: string | null
           deleted_at?: string | null
           description?: string | null
           id?: string
@@ -1262,6 +1270,7 @@ export type Database = {
         Update: {
           cloned_from_template_id?: string | null
           created_at?: string
+          customized_at?: string | null
           deleted_at?: string | null
           description?: string | null
           id?: string
@@ -2050,6 +2059,17 @@ export type Database = {
         Args: { p_name: string; p_slug: string }
         Returns: string
       }
+      get_appointment_customer_display: {
+        Args: { p_appointment_ids: string[]; p_tenant_id: string }
+        Returns: {
+          appointment_id: string
+          customer_display_name: string
+        }[]
+      }
+      get_appointment_private_details: {
+        Args: { p_appointment_id: string; p_tenant_id: string }
+        Returns: Json
+      }
       get_customer_account_link_status: {
         Args: { p_customer_id: string }
         Returns: Json
@@ -2067,6 +2087,13 @@ export type Database = {
       get_my_reschedule_slots: {
         Args: { p_appointment_id: string; p_date: string }
         Returns: Json
+      }
+      get_my_staff_link: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          full_name: string
+          staff_member_id: string
+        }[]
       }
       get_notification_delivery_activation: { Args: never; Returns: string }
       get_public_availability_slots: {
@@ -2094,6 +2121,29 @@ export type Database = {
       get_push_subscriptions_for_test_send: {
         Args: { p_tenant_id: string; p_user_id: string }
         Returns: Json
+      }
+      get_staff_exception_reasons: {
+        Args: { p_staff_member_id: string; p_tenant_id: string }
+        Returns: {
+          exception_id: string
+          reason: string
+        }[]
+      }
+      get_staff_link_for_membership: {
+        Args: { p_membership_id: string; p_tenant_id: string }
+        Returns: {
+          full_name: string
+          staff_member_id: string
+        }[]
+      }
+      get_staff_management_details: {
+        Args: { p_staff_member_ids?: string[]; p_tenant_id: string }
+        Returns: {
+          email: string
+          phone: string
+          staff_member_id: string
+          tenant_membership_id: string
+        }[]
       }
       get_staff_performance_summary: {
         Args: {

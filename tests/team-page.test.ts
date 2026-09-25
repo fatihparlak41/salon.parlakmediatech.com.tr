@@ -265,13 +265,30 @@ describe("revokeTeamInvitationCore", () => {
     expect(after?.token_hash).toBe(crossTenantInv!.token_hash);
   });
 
-  it("permission ceiling: cannot revoke an invitation into a role with permissions the caller does not hold", async () => {
+  it("permission ceiling: cannot revoke an invitation into a role with permissions the caller does not hold — NOT_FOUND, not UNAUTHORIZED, since Faz SAAS.1E.1 (A)", async () => {
+    // revokeTeamInvitationCore prelooks up the target through
+    // list_team_invitations before calling revoke_team_invitation itself.
+    // Since Faz SAAS.1E.1 (A) that list is authority-scoped — a Manager
+    // (2 keys) does not see an invitation into a role whose permissions
+    // are not a strict subset of their own (the Owner role here) — so the
+    // prelookup finds nothing and the action returns NOT_FOUND, exactly
+    // like the cross-tenant and no-staff.manage cases below. This is a
+    // deliberate, desirable side effect: a Manager guessing/forging the id
+    // of an invitation above their authority gets the SAME answer as a
+    // nonexistent id — never a confirmation that it exists. The RPC's own
+    // ceiling (assert_invitation_role_authority, "UNAUTHORIZED") remains
+    // the enforcement; this prelookup adds visibility-level defense in
+    // depth on top of it.
     const ownerRoleInvite = await createInvitation(freshEmail("revoke-ceiling"), tenantA.ownerRoleId);
     const result = await revokeTeamInvitationCore(managerAClient, {
       tenantId: tenantA.id,
       invitationId: ownerRoleInvite.id,
     });
-    expect(result).toMatchObject({ success: false, error: { code: "UNAUTHORIZED" } });
+    expect(result).toMatchObject({ success: false, error: { code: "NOT_FOUND" } });
+
+    // The invitation itself is untouched — the action never reached revoke_team_invitation at all.
+    const [row] = await testDb<{ status: string }[]>`select status from team_invitations where id = ${ownerRoleInvite.id}`;
+    expect(row!.status).toBe("pending");
   });
 
   it("a caller without staff.manage is denied", async () => {

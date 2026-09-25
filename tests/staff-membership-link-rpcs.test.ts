@@ -219,16 +219,20 @@ describe("direct writes to staff_members.tenant_membership_id cannot bypass the 
   it("a real signed-in staff.manage holder's raw PATCH that CHANGES the link is refused (42501), for set and for clear", async () => {
     await setLink(staffOf.s1!, membershipOf.member1!);
 
-    const set = await managerClient.from("staff_members").update({ tenant_membership_id: membershipOf.member2! }).eq("id", staffOf.s2!).select();
+    // Faz SAAS.1E.1: staff_members.email/phone/tenant_membership_id are no
+    // longer SELECT-granted columns, so a RETURNING * (bare .select()) would
+    // be refused before the trigger even runs — .select("id") keeps this
+    // test about the trigger's own error, not the unrelated column grant.
+    const set = await managerClient.from("staff_members").update({ tenant_membership_id: membershipOf.member2! }).eq("id", staffOf.s2!).select("id");
     expect(set.error?.code).toBe("42501");
     expect(set.error?.message).toMatch(/staff_membership_link_via_rpc_only/);
     expect(await linkOf(staffOf.s2!)).toBeNull();
 
-    const clear = await managerClient.from("staff_members").update({ tenant_membership_id: null }).eq("id", staffOf.s1!).select();
+    const clear = await managerClient.from("staff_members").update({ tenant_membership_id: null }).eq("id", staffOf.s1!).select("id");
     expect(clear.error?.code).toBe("42501");
     expect(await linkOf(staffOf.s1!)).toBe(membershipOf.member1);
 
-    const takeover = await managerClient.from("staff_members").update({ tenant_membership_id: membershipOf.member1! }).eq("id", staffOf.s4!).select();
+    const takeover = await managerClient.from("staff_members").update({ tenant_membership_id: membershipOf.member1! }).eq("id", staffOf.s4!).select("id");
     expect(takeover.error?.code).toBe("42501");
     expect(await linkOf(staffOf.s4!)).toBeNull();
     await setLink(staffOf.s1!, null);
@@ -238,13 +242,13 @@ describe("direct writes to staff_members.tenant_membership_id cannot bypass the 
     const insert = await managerClient
       .from("staff_members")
       .insert({ tenant_id: tenant.id, full_name: "Bağlı Ekleme", tenant_membership_id: membershipOf.member2! })
-      .select();
+      .select("id");
     expect(insert.error?.code).toBe("42501");
 
     const upsert = await managerClient
       .from("staff_members")
       .upsert({ id: staffOf.s2!, tenant_id: tenant.id, full_name: "Personel s2", tenant_membership_id: membershipOf.member2! })
-      .select();
+      .select("id");
     expect(upsert.error?.code).toBe("42501");
     expect(await linkOf(staffOf.s2!)).toBeNull();
 
@@ -268,7 +272,7 @@ describe("direct writes to staff_members.tenant_membership_id cannot bypass the 
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    const patch = await spoofed.from("staff_members").update({ tenant_membership_id: membershipOf.member2! }).eq("id", staffOf.s2!).select();
+    const patch = await spoofed.from("staff_members").update({ tenant_membership_id: membershipOf.member2! }).eq("id", staffOf.s2!).select("id");
     expect(patch.error?.code).toBe("42501");
     expect(await linkOf(staffOf.s2!)).toBeNull();
 
@@ -280,8 +284,14 @@ describe("direct writes to staff_members.tenant_membership_id cannot bypass the 
   });
 
   it("writes that do NOT change the link keep working — which is what keeps the deployed Personnel forms alive", async () => {
+    // Faz SAAS.1E.1: .select("id") throughout — a bare .select() (RETURNING
+    // *) would fail on the column grant alone (phone/tenant_membership_id
+    // are no longer SELECT-granted), independent of whatever this test is
+    // actually checking. The app's own write action never chains .select()
+    // at all (lib/modules/staff/actions.ts), so this mirrors it more
+    // closely than the original bare form did.
     // other columns only
-    const rename = await managerClient.from("staff_members").update({ full_name: "Yeni Ad" }).eq("id", staffOf.s4!).select();
+    const rename = await managerClient.from("staff_members").update({ full_name: "Yeni Ad" }).eq("id", staffOf.s4!).select("id");
     expect(rename.error).toBeNull();
 
     // resending the CURRENT value alongside other columns (what the existing form does)
@@ -289,7 +299,7 @@ describe("direct writes to staff_members.tenant_membership_id cannot bypass the 
       .from("staff_members")
       .update({ full_name: "Yeni Ad 2", tenant_membership_id: null })
       .eq("id", staffOf.s4!)
-      .select();
+      .select("id");
     expect(resend.error).toBeNull();
 
     await setLink(staffOf.s1!, membershipOf.member1!);
@@ -297,7 +307,7 @@ describe("direct writes to staff_members.tenant_membership_id cannot bypass the 
       .from("staff_members")
       .update({ phone: "+905550000000", tenant_membership_id: membershipOf.member1! })
       .eq("id", staffOf.s1!)
-      .select();
+      .select("id");
     expect(resendLinked.error).toBeNull();
     expect(await linkOf(staffOf.s1!)).toBe(membershipOf.member1);
     await setLink(staffOf.s1!, null);

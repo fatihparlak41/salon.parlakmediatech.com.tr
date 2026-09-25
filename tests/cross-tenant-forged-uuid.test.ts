@@ -101,7 +101,11 @@ describe("cross-tenant forged UUID — staff", () => {
     expect(data).toHaveLength(0);
   });
   it("tenant B cannot update tenant A's staff member by forged id", async () => {
-    const { data } = await clientB.from("staff_members").update({ full_name: "Hijacked" }).eq("id", staffA.id).select();
+    // Faz SAAS.1E.1: .select("id") — a bare .select() (RETURNING *) needs
+    // SELECT on every staff_members column, including the now-restricted
+    // email/phone/tenant_membership_id/created_by, independent of the
+    // tenant-isolation question this test is actually about.
+    const { data } = await clientB.from("staff_members").update({ full_name: "Hijacked" }).eq("id", staffA.id).select("id");
     expect(data).toHaveLength(0);
     const [row] = await testDb<{ full_name: string }[]>`select full_name from staff_members where id = ${staffA.id}`;
     expect(row!.full_name).toBe("Forged Staff A");

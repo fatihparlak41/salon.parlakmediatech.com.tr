@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getAppointmentCustomerNames } from "@/lib/modules/appointments/customer-display";
 import {
   cleanupTenants,
   cleanupUsers,
@@ -39,11 +40,15 @@ import {
 // keeping this literally byte-identical to client-queries.ts's own
 // CALENDAR_ITEM_SELECT is this test file's whole point (see the header
 // comment above).
+// Faz SAAS.1E.1: no customers embed — that embed needs customers.view, which
+// Personel must not hold. The calendar takes customer NAMES from
+// get_appointment_customer_display (see customer-display.ts), one call per
+// load, so this select stays free of any customer relation.
 const CALENDAR_ITEM_SELECT = `
   id, appointment_id, sequence, scheduled_start_at, scheduled_end_at, appointment_status,
   services(name),
   staff_members!appointment_items_staff_member_id_fkey(id, full_name),
-  appointments!inner(branch_id, customers(full_name))
+  appointments!inner(branch_id)
 `;
 
 async function queryCalendarItems(
@@ -255,7 +260,7 @@ describe("calendar item model — appointment_items, not headers", () => {
     const rangeStart = plusMinutes(start, -30);
     const rangeEnd = plusMinutes(start, 180);
     const { data } = await queryCalendarItems(ownerAClient, tenantA.id, branchA, rangeStart, rangeEnd);
-    type Row = { appointment_id: string; staff_members: { id: string; full_name: string } | null; appointments: { customers: { full_name: string } | null } | null };
+    type Row = { appointment_id: string; staff_members: { id: string; full_name: string } | null };
     const rows = (data as unknown as Row[]).filter((r) => r.appointment_id === appointmentId);
 
     expect(rows).toHaveLength(2);
@@ -267,9 +272,17 @@ describe("calendar item model — appointment_items, not headers", () => {
     // ...but the same appointment_id and the same grouped customer —
     // this is the "same customer journey, one appointment, two staff
     // columns" shape the calendar's grouping (appointmentItemCounts in
-    // day-view.tsx/week-view.tsx) depends on.
+    // day-view.tsx/week-view.tsx) depends on. The customer name comes from
+    // the appointment-scoped projection the calendar itself uses, once for
+    // the whole fetched range (deduplicated by appointment id).
+    const names = await getAppointmentCustomerNames(
+      ownerAClient as unknown as Parameters<typeof getAppointmentCustomerNames>[0],
+      tenantA.id,
+      rows.map((r) => r.appointment_id),
+    );
+    expect(names.size).toBe(1);
     for (const row of rows) {
-      expect(row.appointments?.customers?.full_name).toBe(customerA.fullName);
+      expect(names.get(row.appointment_id)).toBe(customerA.fullName);
     }
   });
 });
