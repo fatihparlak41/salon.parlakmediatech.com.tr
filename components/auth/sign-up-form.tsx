@@ -33,7 +33,11 @@ export function SignUpForm({ next }: { next?: string }) {
           type="text"
           autoComplete="name"
           required
+          aria-describedby="fullName-hint"
         />
+        <p id="fullName-hint" className="text-muted-foreground text-xs">
+          {t("fullNameHint")}
+        </p>
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="email">{t("emailLabel")}</Label>

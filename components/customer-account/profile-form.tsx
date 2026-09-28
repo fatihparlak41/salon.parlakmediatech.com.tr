@@ -21,11 +21,15 @@ export function ProfileForm({ profile }: { profile: AccountProfile }) {
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="fullName">{t("fullNameLabel")}</Label>
-        <Input id="fullName" name="fullName" type="text" autoComplete="name" defaultValue={current.fullName ?? ""} required />
+        {/* defaultValue comes from the INITIAL profile prop, never from the
+            post-save `current`: an uncontrolled input whose default value
+            changes after mount makes Base UI warn on every save (and the
+            field already shows what the person just typed). */}
+        <Input id="fullName" name="fullName" type="text" autoComplete="name" defaultValue={profile.fullName ?? ""} required />
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="phone">{t("phoneLabel")}</Label>
-        <Input id="phone" name="phone" type="tel" autoComplete="tel" defaultValue={current.phone ?? ""} />
+        <Input id="phone" name="phone" type="tel" autoComplete="tel" defaultValue={profile.phone ?? ""} />
       </div>
       {state && !state.success ? (
         <p className="text-destructive text-sm" role="alert">

@@ -5,6 +5,7 @@ import {
   getUserMemberships,
   isPlatformAdmin,
 } from "@/lib/auth/session";
+import { getMyAccountProfile } from "@/lib/modules/customer-account/queries";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -21,14 +22,19 @@ export default async function HomePage() {
     return <SignedOutHome />;
   }
 
-  const [memberships, platformAdmin] = await Promise.all([
+  // The greeting name is the person's CURRENT profile name (profiles.full_name,
+  // the same source the salon dashboard greets from and the one they can edit
+  // on their Hesabım page) — not user_metadata.full_name, which is only the
+  // value typed once at sign-up and never changes when the profile is edited.
+  const [memberships, platformAdmin, profile] = await Promise.all([
     getUserMemberships(),
     isPlatformAdmin(),
+    getMyAccountProfile(),
   ]);
 
   return (
     <SignedInHome
-      fullName={user.user_metadata?.full_name as string | undefined}
+      fullName={profile?.fullName?.trim() || undefined}
       memberships={memberships}
       platformAdmin={platformAdmin}
     />
@@ -72,7 +78,7 @@ async function SignedInHome({
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-6 py-16">
       <h1 className="text-2xl font-semibold tracking-tight">
-        {t("greeting", { name: fullName || "" })}
+        {fullName ? t("greeting", { name: fullName }) : t("greetingAnonymous")}
       </h1>
 
       <h2 className="text-muted-foreground mt-8 mb-3 text-sm font-medium">

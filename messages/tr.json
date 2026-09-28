@@ -20,6 +20,7 @@
     "signUp": {
       "title": "Kayıt ol",
       "fullNameLabel": "Ad Soyad",
+      "fullNameHint": "Kişisel adınızı yazın (salon adını değil). Panelde bu adla karşılanırsınız.",
       "emailLabel": "E-posta",
       "passwordLabel": "Şifre",
       "passwordHint": "En az 8 karakter",
@@ -77,6 +78,7 @@
     },
     "signedIn": {
       "greeting": "Merhaba, {name}",
+      "greetingAnonymous": "Merhaba",
       "yourSalons": "Salonlarınız",
       "openSalon": "Aç",
       "noSalons": "Henüz bir salonunuz yok.",
