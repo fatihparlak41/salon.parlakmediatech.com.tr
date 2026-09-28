@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { getCurrentUser } from "@/lib/auth/session";
+import { deviceOwnerTag } from "@/lib/pwa/device-owner-tag";
 import { getMyLinkSalonContext } from "@/lib/modules/customer-account/queries";
 import { AccountShell } from "@/components/customer-account/account-shell";
 import { LinkSalonCodeGenerator } from "@/components/customer-account/link-salon-code-generator";
@@ -39,6 +40,7 @@ export default async function LinkSalonPage({
     <AccountShell
       navLabels={{ home: tNav("home"), appointments: tNav("appointments"), profile: tNav("profile") }}
       signOutLabel={tAuth("signOut")}
+      deviceOwnerTag={deviceOwnerTag(user.id)}
     >
       <div className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-8">
         {context ? (

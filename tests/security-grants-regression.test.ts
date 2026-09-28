@@ -336,8 +336,11 @@ const BOOKING_GATEWAY_FUNCTION_WHITELIST = ["public.create_guest_booking"];
 // grants" relaxed to "anything goes". get_push_subscriptions_for_test_send
 // takes p_tenant_id + p_user_id explicitly (service_role has no
 // auth.uid()) and is called only from lib/modules/settings/actions.ts's
-// sendTestPushNotificationAction, only AFTER that action has already
-// verified settings.manage through the normal user-session path.
+// sendTestPushNotificationAction, only AFTER requireUser() has resolved the
+// signed-in user server-side (that user's id is the only p_user_id it ever
+// passes; the function itself re-verifies an active membership). Faz
+// ACCOUNT.1: the action no longer also requires settings.manage — it sends
+// to the caller's OWN devices only, the same class as save/remove.
 const SERVICE_ROLE_FUNCTION_WHITELIST = [
   "public.get_push_subscriptions_for_test_send",
   // Faz NOTIF.2E.1 — recipient-resolution/delivery-outbox materialization

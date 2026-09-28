@@ -2,7 +2,8 @@
 
 import type { ReactNode } from "react";
 import { Link, usePathname } from "@/lib/i18n/navigation";
-import { signOutAction } from "@/lib/modules/auth/actions";
+import { SignOutForm } from "@/components/auth/sign-out-form";
+import { PushDeviceGuard } from "@/components/pwa/push-device-guard";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -15,10 +16,13 @@ import { Button } from "@/components/ui/button";
 export function AccountShell({
   navLabels,
   signOutLabel,
+  deviceOwnerTag,
   children,
 }: {
   navLabels: { home: string; appointments: string; profile: string };
   signOutLabel: string;
+  /** Server-computed tag of the signed-in user (lib/pwa/device-owner-tag.ts). */
+  deviceOwnerTag: string;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -30,6 +34,7 @@ export function AccountShell({
 
   return (
     <div className="bg-background flex min-h-screen flex-col">
+      <PushDeviceGuard ownerTag={deviceOwnerTag} />
       <header className="border-b">
         <div className="mx-auto flex max-w-2xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <nav className="flex items-center gap-1">
@@ -47,11 +52,11 @@ export function AccountShell({
               );
             })}
           </nav>
-          <form action={signOutAction}>
+          <SignOutForm>
             <Button type="submit" variant="ghost" size="sm">
               {signOutLabel}
             </Button>
-          </form>
+          </SignOutForm>
         </div>
       </header>
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-8">{children}</main>

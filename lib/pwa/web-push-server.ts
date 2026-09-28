@@ -1,5 +1,10 @@
 import "server-only";
 import webpush from "web-push";
+import {
+  extraAllowedPushHostsFromEnv,
+  validatePushEndpoint,
+  validatePushKeys,
+} from "./push-endpoint-policy";
 
 /**
  * Faz NOTIF.2D — the ONLY place WEB_PUSH_VAPID_PRIVATE_KEY is read. The
@@ -15,6 +20,15 @@ import webpush from "web-push";
  * needs to send real event notifications should still funnel through
  * web-push's setVapidDetails/sendNotification the same way, but that is
  * a new function to add then, not a reason to widen this one now.
+ *
+ * Faz ACCOUNT.1 (security) — EVERY send in this file first passes
+ * checkSubscriptionForSend: the endpoint must be a canonical https URL on a
+ * listed push-service host (lib/pwa/push-endpoint-policy.ts) and the keys
+ * must be well-formed, otherwise NO network request is made. The stored
+ * endpoint is client-supplied and the database accepts any string, so this
+ * is the boundary that keeps a member from making the server call an
+ * arbitrary host. The request always goes to the validated canonical href,
+ * never to the original string, and carries a hard timeout.
  */
 
 let configured = false;
@@ -31,15 +45,46 @@ function ensureConfigured(): void {
   configured = true;
 }
 
+/** No push service needs longer; a slower answer is treated as a network error. */
+const SEND_TIMEOUT_MS = 10_000;
+
 export type TestPushSubscription = {
   endpoint: string;
   p256dh: string;
   authKey: string;
 };
 
+export type SubscriptionSendCheck =
+  | { ok: true; endpoint: string }
+  | { ok: false; reason: string };
+
+/**
+ * The gate every send goes through. `env` is injectable for tests; in
+ * production the extra-host escape hatch used by local browser tests is
+ * ignored regardless of what the environment says.
+ */
+export function checkSubscriptionForSend(
+  subscription: TestPushSubscription,
+  env: Record<string, string | undefined> = process.env,
+): SubscriptionSendCheck {
+  const endpoint = validatePushEndpoint(subscription.endpoint, {
+    extraAllowedHosts: extraAllowedPushHostsFromEnv(env),
+  });
+  if (!endpoint.ok) return { ok: false, reason: `endpoint:${endpoint.reason}` };
+  const keys = validatePushKeys(subscription.p256dh, subscription.authKey);
+  if (!keys.ok) return { ok: false, reason: `keys:${keys.reason}` };
+  return { ok: true, endpoint: endpoint.href };
+}
+
+/** Log line for a refused subscription: the reason code only — never the endpoint or keys. */
+function logRefused(where: string, reason: string): void {
+  console.warn(`[${where}] subscription refused before any network request`, { reason });
+}
+
 export type SendTestPushResult =
   | { outcome: "sent" }
   | { outcome: "stale" }
+  | { outcome: "rejected" }
   | { outcome: "failed" };
 
 const TEST_PUSH_PAYLOAD = JSON.stringify({
@@ -54,16 +99,25 @@ const TEST_PUSH_PAYLOAD = JSON.stringify({
  * gone) is distinguished from "failed" (any other error, e.g. a
  * transient network/5xx issue) so the caller soft-revokes only on the
  * former, per Faz NOTIF.2D Step 14 — never on a transient failure.
+ * "rejected" (Faz ACCOUNT.1) means the subscription can never be sent to
+ * (disallowed host, malformed keys): nothing was sent, and the caller
+ * treats it like a dead device.
  */
 export async function sendTestPush(subscription: TestPushSubscription): Promise<SendTestPushResult> {
   ensureConfigured();
+  const check = checkSubscriptionForSend(subscription);
+  if (!check.ok) {
+    logRefused("sendTestPush", check.reason);
+    return { outcome: "rejected" };
+  }
   try {
     await webpush.sendNotification(
       {
-        endpoint: subscription.endpoint,
+        endpoint: check.endpoint,
         keys: { p256dh: subscription.p256dh, auth: subscription.authKey },
       },
       TEST_PUSH_PAYLOAD,
+      { timeout: SEND_TIMEOUT_MS },
     );
     return { outcome: "sent" };
   } catch (error) {
@@ -112,6 +166,7 @@ export type PushSendOutcome =
  *   404/410            -> stale (endpoint permanently gone, never retry)
  *   429 or 5xx          -> retry (transient)
  *   any other 4xx       -> failed (permanent/config — e.g. bad key, 400/401/403/413)
+ *   3xx                 -> failed (a redirect is never followed, so it is never a success)
  *   no statusCode at all -> retry (a network-level exception — ECONNRESET/
  *                            ETIMEDOUT/DNS failure/etc — rather than a
  *                            push-service HTTP response, transient by
@@ -140,19 +195,35 @@ export function classifyPushSendError(error: unknown): PushSendOutcome {
 
 /** Sends one real automatic-delivery push. Never throws — every failure
  * path is classified and returned, never propagated, so a caller looping
- * over many targets never has one bad send abort the batch. */
+ * over many targets never has one bad send abort the batch.
+ *
+ * A subscription the endpoint policy refuses is reported as "stale": it
+ * can never be delivered to, and "stale" is the outcome that makes the
+ * database revoke the row (record_notification_delivery_target_result), so
+ * junk registered through a direct RPC call cleans itself up on its first
+ * delivery attempt instead of being retried or lingering. */
 export async function sendDeliveryPush(
   subscription: DeliveryPushSubscription,
   payload: DeliveryPushPayload,
 ): Promise<PushSendOutcome> {
   ensureConfigured();
+  const check = checkSubscriptionForSend(subscription);
+  if (!check.ok) {
+    logRefused("sendDeliveryPush", check.reason);
+    return {
+      outcome: "stale",
+      errorCode: "endpoint_rejected",
+      errorMessage: "subscription refused by the push endpoint policy",
+    };
+  }
   try {
     await webpush.sendNotification(
       {
-        endpoint: subscription.endpoint,
+        endpoint: check.endpoint,
         keys: { p256dh: subscription.p256dh, auth: subscription.authKey },
       },
       JSON.stringify(payload),
+      { timeout: SEND_TIMEOUT_MS },
     );
     return { outcome: "sent" };
   } catch (error) {

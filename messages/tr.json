@@ -106,6 +106,80 @@
       "reports": "Raporlar",
       "settings": "Ayarlar"
     },
+    "userMenu": {
+      "account": "Hesabım",
+      "notifications": "Bildirimler"
+    },
+    "account": {
+      "title": "Hesabım",
+      "description": "Kişisel bilgileriniz ve bildirim tercihleriniz. Buradaki ayarlar yalnızca sizi etkiler, salon ayarlarını değiştirmez.",
+      "profile": {
+        "heading": "Profil",
+        "description": "Panelde ve karşılama mesajında bu adla görünürsünüz.",
+        "salonLabel": "Salon",
+        "roleLabel": "Rol",
+        "loadError": "Profil yüklenemedi."
+      },
+      "notifications": {
+        "heading": "Bildirimler",
+        "description": "Randevu hareketlerinden bu cihazda anında haberdar olun. Bu ayar yalnızca sizin bu cihazınızı etkiler.",
+        "recipientAll": "Bu salondaki tüm randevu hareketlerini alırsınız.",
+        "recipientAssigned": "Size atanan randevuların hareketlerini alırsınız.",
+        "recipientNone": "Bu hesap bir personel kaydına bağlı olmadığı için şu an randevu bildirimi almazsınız. Yöneticinizden hesabınızı personel kaydınıza bağlamasını isteyin.",
+        "checking": "Kontrol ediliyor…",
+        "unsupported": "Bu cihaz veya tarayıcı bildirimleri desteklemiyor. Güncel bir Chrome, Edge, Firefox veya Safari sürümüyle deneyin.",
+        "iosInstall": {
+          "title": "Bildirimleri kullanmak için SalonOS'u Ana Ekrana ekleyin.",
+          "steps": "Safari'de paylaş menüsünü açıp \"Ana Ekrana Ekle\"ye dokunun, sonra SalonOS'u Ana Ekran simgesinden açın."
+        },
+        "enablePrompt": "Bildirimleri açtığınızda yeni randevu ve değişiklikler bu cihaza anında ulaşır.",
+        "enableAction": "Bu cihazda bildirimleri aç",
+        "enabling": "Açılıyor…",
+        "permissionDismissed": "Bildirim izni verilmedi. Hazır olduğunuzda tekrar deneyebilirsiniz.",
+        "checkingDevice": "Bu cihaz kontrol ediliyor…",
+        "notConnected": "Bu cihazda bildirimler henüz açık değil.",
+        "expired": "Bu cihazın bildirim bağlantısı sona ermiş. Yeniden açmanız gerekiyor.",
+        "connectError": "Bildirimler açılamadı, lütfen tekrar deneyin.",
+        "readyTitle": "Bu cihazda bildirimler açık",
+        "testSendAction": "Test bildirimi gönder",
+        "testSending": "Gönderiliyor…",
+        "testSent": "Test bildirimi gönderildi. Birkaç saniye içinde cihazınızda görünmeli.",
+        "testSendError": "Test bildirimi gönderilemedi, lütfen tekrar deneyin.",
+        "disconnectAction": "Bu cihazda bildirimleri kapat",
+        "disconnecting": "Kapatılıyor…",
+        "disconnectError": "Bildirimler bu cihazda kapatılamadı, lütfen tekrar deneyin.",
+        "disconnectPartialError": "Bildirimler bu cihazda kapatıldı, ancak kayıt güncellenemedi.",
+        "signOutNote": "Çıkış yaptığınızda bu cihazdaki bildirimler kapatılır; tekrar giriş yaptığınızda yeniden açmanız gerekir. Ortak kullanılan bir cihazda başkasının bildirimleri size gelmez.",
+        "deniedTitle": "Bildirimler tarayıcıda engellenmiş",
+        "deniedHelp": "Bildirimleri açmak için tarayıcınızın adres çubuğundaki site ayarlarından SalonOS için bildirim iznini etkinleştirin, ardından bu sayfaya dönün."
+      },
+      "categories": {
+        "heading": "Bildirim türleri",
+        "description": "Hangi randevu hareketlerinden haberdar olmak istediğinizi seçin. Tercihleriniz bu salondaki tüm cihazlarınız için geçerlidir.",
+        "newAppointment": {
+          "label": "Yeni randevu",
+          "description": "Yeni bir randevu oluşturulduğunda."
+        },
+        "cancellation": {
+          "label": "Randevu iptali",
+          "description": "Bir randevu iptal edildiğinde."
+        },
+        "reschedule": {
+          "label": "Randevu güncellendi",
+          "description": "Bir randevunun tarihi veya saati değiştiğinde."
+        },
+        "assignmentChange": {
+          "label": "Personel değişikliği",
+          "description": "Bir randevunun personeli değiştiğinde."
+        },
+        "reminder": {
+          "label": "Yaklaşan randevu hatırlatması",
+          "description": "Randevudan önce hatırlatma bildirimi.",
+          "soon": "Yakında"
+        },
+        "saveError": "Tercih kaydedilemedi, lütfen tekrar deneyin."
+      }
+    },
     "dashboard": {
       "greetingFallback": "Bugünün özeti",
       "greetingGoodMorning": "Günaydın",
@@ -545,34 +619,9 @@
       "hours": "saat",
       "days": "gün"
     },
-    "notifications": {
-      "heading": "Bildirimler",
-      "description": "Randevu hareketlerinden bu cihazda anında haberdar olun.",
-      "checking": "Kontrol ediliyor…",
-      "unsupported": "Bu cihaz veya tarayıcı bildirimleri desteklemiyor.",
-      "iosInstall": {
-        "title": "Bildirimleri kullanmak için SalonOS'u Ana Ekrana ekleyin.",
-        "steps": "Safari'de paylaş menüsünü açıp \"Ana Ekrana Ekle\"ye dokunun, sonra SalonOS'u Ana Ekran simgesinden açın."
-      },
-      "enablePrompt": "İzin verdiğinizde yeni randevu ve değişiklikler size bildirim olarak gelir.",
-      "enableAction": "Bildirimleri Aç",
-      "granted": "Bildirim izni verildi",
-      "checkingDevice": "Bu cihaz kontrol ediliyor…",
-      "notConnected": "Bu cihaz henüz bağlanmadı",
-      "connectAction": "Bu cihazı bildirimlere bağla",
-      "connecting": "Bağlanıyor…",
-      "connectError": "Cihaz bağlanamadı, lütfen tekrar deneyin.",
-      "readyTitle": "Bu cihaz bildirim almaya hazır",
-      "testSendAction": "Test bildirimi gönder",
-      "testSending": "Gönderiliyor…",
-      "testSent": "Test bildirimi gönderildi. Birkaç saniye içinde cihazınızda görünmeli.",
-      "testSendError": "Test bildirimi gönderilemedi, lütfen tekrar deneyin.",
-      "disconnectAction": "Bu cihazda bildirimleri kapat",
-      "disconnecting": "Kapatılıyor…",
-      "disconnectError": "Bildirimler bu cihazda kapatılamadı, lütfen tekrar deneyin.",
-      "disconnectPartialError": "Bildirimler bu cihazda kapatıldı, ancak kayıt güncellenemedi.",
-      "deniedTitle": "Bildirimler kapalı",
-      "deniedHelp": "Bildirimleri açmak için cihazınızın veya tarayıcınızın ayarlarından SalonOS bildirim iznini yeniden etkinleştirin."
+    "personalNotifications": {
+      "text": "Kişisel bildirim tercihleriniz (bu cihazda bildirimleri açma dahil) Hesabım sayfasındadır.",
+      "link": "Hesabım'a git"
     }
   },
   "SuperAdmin": {

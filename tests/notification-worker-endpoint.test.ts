@@ -1,3 +1,4 @@
+import { createECDH, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -43,6 +44,14 @@ vi.mock("web-push", () => ({
 
 const TEST_CRON_SECRET = "test-only-cron-secret-not-a-real-value";
 const ORIGINAL_ENV = { ...process.env };
+
+const b64url = (buf: Buffer) => buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+/** A genuine uncompressed P-256 public key (87 base64url chars) and a 16-byte auth secret (22 chars). */
+function policyValidKeys() {
+  const ecdh = createECDH("prime256v1");
+  ecdh.generateKeys();
+  return { p256dh: b64url(ecdh.getPublicKey()), authKey: b64url(randomBytes(16)) };
+}
 
 beforeEach(() => {
   process.env.CRON_SECRET = TEST_CRON_SECRET;
@@ -283,10 +292,15 @@ describe("D/G — real eligible work, overlap safety", () => {
       values (${tenant.id}, ${label}, ${membershipId}, 'active')
       returning id
     `;
-    const endpoint = `https://example-push.test/notif2e3-${label}-${Date.now()}`;
+    // Faz ACCOUNT.1 (security): the worker refuses — as "stale", before web-push is ever
+    // called — any subscription whose endpoint is not on a real push service or whose keys are
+    // not a genuine P-256 point + 16-byte secret. `web-push` stays mocked above, so the fixture
+    // only has to be POLICY-VALID (a supported vendor host, real-shaped keys), not deliverable.
+    const endpoint = `https://fcm.googleapis.com/fcm/send/notif2e3-${label}-${Date.now()}`;
+    const keys = policyValidKeys();
     await testDb`
       insert into push_subscriptions (tenant_membership_id, endpoint, p256dh, auth_key)
-      values (${membershipId}, ${endpoint}, ${"p256dh-" + label}, ${"authkey-" + label})
+      values (${membershipId}, ${endpoint}, ${keys.p256dh}, ${keys.authKey})
     `;
 
     await testDb`

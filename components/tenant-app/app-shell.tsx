@@ -3,8 +3,9 @@
 import { useState, type ReactNode } from "react";
 import { usePathname } from "@/lib/i18n/navigation";
 import { Link } from "@/lib/i18n/navigation";
-import { Menu as MenuIcon, LogOut } from "lucide-react";
-import { signOutAction } from "@/lib/modules/auth/actions";
+import { Menu as MenuIcon, LogOut, Bell, UserRound } from "lucide-react";
+import { SignOutForm } from "@/components/auth/sign-out-form";
+import { PushDeviceGuard } from "@/components/pwa/push-device-guard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -75,14 +76,25 @@ function NavLinks({
   );
 }
 
+export type UserMenuLabels = {
+  account: string;
+  notifications: string;
+};
+
 function UserMenu({
   roleName,
   userEmail,
   signOutLabel,
+  basePath,
+  labels,
+  onNavigate,
 }: {
   roleName: string;
   userEmail: string;
   signOutLabel: string;
+  basePath: string;
+  labels: UserMenuLabels;
+  onNavigate?: () => void;
 }) {
   return (
     <DropdownMenu>
@@ -106,14 +118,35 @@ function UserMenu({
           <DropdownMenuLabel>{userEmail}</DropdownMenuLabel>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <form action={signOutAction}>
+        {/* Faz ACCOUNT.1 — personal, per-member pages. Deliberately NOT gated
+            on any permission (unlike the "Ayarlar" nav entry): every active
+            member of the salon, whatever their role, can reach their own
+            profile and device notification controls from here. */}
+        <DropdownMenuGroup>
+          <DropdownMenuItem
+            render={<Link href={`${basePath}/account`} onClick={onNavigate} />}
+            className="cursor-pointer"
+          >
+            <UserRound />
+            {labels.account}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            render={<Link href={`${basePath}/account#notifications`} onClick={onNavigate} />}
+            className="cursor-pointer"
+          >
+            <Bell />
+            {labels.notifications}
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <SignOutForm>
           <button type="submit" className="w-full">
             <DropdownMenuItem variant="destructive" className="cursor-pointer">
               <LogOut />
               {signOutLabel}
             </DropdownMenuItem>
           </button>
-        </form>
+        </SignOutForm>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -126,6 +159,8 @@ export function TenantAppShell({
   userEmail,
   navItems,
   signOutLabel,
+  userMenuLabels,
+  deviceOwnerTag,
   children,
 }: {
   tenantSlug: string;
@@ -134,6 +169,9 @@ export function TenantAppShell({
   userEmail: string;
   navItems: TenantNavItem[];
   signOutLabel: string;
+  userMenuLabels: UserMenuLabels;
+  /** Server-computed tag of the signed-in user (lib/pwa/device-owner-tag.ts). */
+  deviceOwnerTag: string;
   children: ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -141,6 +179,7 @@ export function TenantAppShell({
 
   return (
     <div className="bg-background flex min-h-screen">
+      <PushDeviceGuard ownerTag={deviceOwnerTag} />
       {/* Desktop sidebar */}
       <aside className="bg-sidebar border-sidebar-border sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r md:flex">
         <div className="flex items-center gap-2 px-4 py-4">
@@ -152,7 +191,13 @@ export function TenantAppShell({
           <NavLinks items={navItems} basePath={basePath} />
         </div>
         <div className="border-sidebar-border border-t p-3">
-          <UserMenu roleName={roleName} userEmail={userEmail} signOutLabel={signOutLabel} />
+          <UserMenu
+            roleName={roleName}
+            userEmail={userEmail}
+            signOutLabel={signOutLabel}
+            basePath={basePath}
+            labels={userMenuLabels}
+          />
         </div>
       </aside>
 
@@ -182,7 +227,14 @@ export function TenantAppShell({
                   />
                 </div>
                 <div className="border-sidebar-border border-t p-3">
-                  <UserMenu roleName={roleName} userEmail={userEmail} signOutLabel={signOutLabel} />
+                  <UserMenu
+                    roleName={roleName}
+                    userEmail={userEmail}
+                    signOutLabel={signOutLabel}
+                    basePath={basePath}
+                    labels={userMenuLabels}
+                    onNavigate={() => setMobileOpen(false)}
+                  />
                 </div>
               </div>
             </SheetContent>

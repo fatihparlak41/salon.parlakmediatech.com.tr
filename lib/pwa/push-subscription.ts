@@ -82,21 +82,51 @@ export function extractSubscriptionKeys(subscription: PushSubscription): Extract
   };
 }
 
-/** The browser's existing subscription for this origin, if any. Never creates one. */
-export async function getExistingPushSubscription(): Promise<PushSubscription | null> {
-  const registration = await navigator.serviceWorker.ready;
+/**
+ * How long to wait for an active Service Worker before giving up.
+ * navigator.serviceWorker.ready never settles when no worker was ever
+ * registered (blocked by the browser, a failed registration, an insecure
+ * origin), which used to leave the notification card on "checking" or
+ * "connecting" forever. Ten seconds is far above a normal activation and
+ * short enough that the member gets an actionable error instead.
+ */
+export const SERVICE_WORKER_READY_TIMEOUT_MS = 10_000;
+
+async function whenServiceWorkerReady(
+  timeoutMs: number = SERVICE_WORKER_READY_TIMEOUT_MS,
+): Promise<ServiceWorkerRegistration> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("service worker did not become ready")), timeoutMs);
+  });
+  try {
+    return await Promise.race([navigator.serviceWorker.ready, timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+/**
+ * The browser's existing subscription for this origin, if any. Never
+ * creates one. `timeoutMs` bounds the wait for an active Service Worker
+ * (sign-out passes a short one: it must never hold a logout hostage).
+ */
+export async function getExistingPushSubscription(
+  options: { timeoutMs?: number } = {},
+): Promise<PushSubscription | null> {
+  const registration = await whenServiceWorkerReady(options.timeoutMs);
   return registration.pushManager.getSubscription();
 }
 
 /**
  * Creates a NEW browser-level PushSubscription. Call ONLY from the "Bu
- * cihazı bildirimlere bağla" button's own click handler. userVisibleOnly
+ * cihazda bildirimleri aç" button's own click handler. userVisibleOnly
  * must be true — this app only ever sends notifications the user can
  * see, never silent/background pushes, and the browser requires this
  * flag to say so up front.
  */
 export async function subscribeToPush(vapidPublicKey: string): Promise<PushSubscription> {
-  const registration = await navigator.serviceWorker.ready;
+  const registration = await whenServiceWorkerReady();
   return registration.pushManager.subscribe({
     userVisibleOnly: true,
     // Uint8Array's own type is generic over ArrayBufferLike (which also

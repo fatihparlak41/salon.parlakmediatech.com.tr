@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { Link } from "@/lib/i18n/navigation";
 import { acceptTeamInvitationAction } from "@/lib/modules/team/accept-actions";
-import { signOutAction } from "@/lib/modules/auth/actions";
+import { SignOutForm } from "@/components/auth/sign-out-form";
 import { Button } from "@/components/ui/button";
 
 type Labels = {
@@ -71,12 +71,12 @@ export function AcceptInvitePanel({ labels }: { labels: Labels }) {
         // still holds the parked invitation) so the RIGHT account can
         // sign in and continue. Never reveals the invited address, and
         // there is no override.
-        <form action={signOutAction} className="flex flex-col gap-3">
+        <SignOutForm className="flex flex-col gap-3">
           <input type="hidden" name="next" value={ACCEPT_INVITE_PATH} />
           <Button type="submit" variant="outline" className="w-full">
             {labels.switchAccountCta}
           </Button>
-        </form>
+        </SignOutForm>
       ) : null}
 
       {reason === "unauthenticated" ? (

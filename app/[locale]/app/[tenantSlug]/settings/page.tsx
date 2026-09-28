@@ -1,12 +1,12 @@
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
+import { Link } from "@/lib/i18n/navigation";
 import { getTenantAccess, hasPermission } from "@/lib/auth/session";
 import { getSelfServicePolicy, getOnlineBookingEnabled } from "@/lib/modules/settings/queries";
 import { getOwnerManagedBranches } from "@/lib/modules/branches/queries";
 import { SelfServicePolicyForm } from "@/components/settings/self-service-policy-form";
 import { OnlineBookingToggle } from "@/components/settings/online-booking-toggle";
 import { BranchContactForm } from "@/components/settings/branch-contact-form";
-import { NotificationSettingsCard } from "@/components/settings/notification-settings-card";
 
 export default async function SettingsPage({
   params,
@@ -47,10 +47,18 @@ export default async function SettingsPage({
         initialPolicy={policy}
       />
       {branches.length > 0 && <BranchContactForm tenantSlug={tenantSlug} branches={branches} />}
-      <NotificationSettingsCard
-        tenantId={access.tenant.id}
-        vapidPublicKey={process.env.NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY}
-      />
+      {/* Faz ACCOUNT.1 — this page is salon configuration only. Device
+          notifications are personal (every member, no permission) and live
+          on the member's own Hesabım page. */}
+      <p className="text-muted-foreground text-sm">
+        {t("personalNotifications.text")}{" "}
+        <Link
+          href={`/app/${tenantSlug}/account#notifications`}
+          className="text-foreground underline underline-offset-4"
+        >
+          {t("personalNotifications.link")}
+        </Link>
+      </p>
     </div>
   );
 }

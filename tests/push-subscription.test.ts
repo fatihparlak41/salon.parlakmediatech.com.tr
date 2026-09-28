@@ -1,3 +1,4 @@
+import { createECDH, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import vm from "node:vm";
@@ -375,6 +376,18 @@ async function loadActions() {
   return import("@/lib/modules/settings/actions");
 }
 
+// Faz ACCOUNT.1 (security): the action now validates the endpoint and keys
+// before the RPC, so the fixtures below are REAL-shaped: a supported push
+// service host and a genuine P-256 key pair.
+const b64url = (buf: Buffer) => buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+function realKeyPair() {
+  const ecdh = createECDH("prime256v1");
+  ecdh.generateKeys();
+  return { p256dh: b64url(ecdh.getPublicKey()), authKey: b64url(randomBytes(16)) };
+}
+const VALID_ENDPOINT = "https://fcm.googleapis.com/fcm/send/fixture-token-1";
+const VALID_KEYS = realKeyPair();
+
 describe("savePushSubscriptionAction", () => {
   it("10. calls the existing save_push_subscription RPC with exactly the expected args, nothing else", async () => {
     rpcMock.mockResolvedValueOnce({ data: { id: "sub-1", deviceLabel: "iPhone" }, error: null });
@@ -382,18 +395,18 @@ describe("savePushSubscriptionAction", () => {
 
     const result = await savePushSubscriptionAction(null, {
       tenantId: "tenant-1",
-      endpoint: "https://push.example.test/ep/x",
-      p256dh: "p256dh-x",
-      authKey: "auth-x",
+      endpoint: VALID_ENDPOINT,
+      p256dh: VALID_KEYS.p256dh,
+      authKey: VALID_KEYS.authKey,
       deviceLabel: "iPhone",
     });
 
     expect(requireUserMock).toHaveBeenCalled();
     expect(rpcMock).toHaveBeenCalledWith("save_push_subscription", {
       p_tenant_id: "tenant-1",
-      p_endpoint: "https://push.example.test/ep/x",
-      p_p256dh: "p256dh-x",
-      p_auth_key: "auth-x",
+      p_endpoint: VALID_ENDPOINT,
+      p_p256dh: VALID_KEYS.p256dh,
+      p_auth_key: VALID_KEYS.authKey,
       p_device_label: "iPhone",
     });
     expect(result).toEqual({ success: true, data: { id: "sub-1", deviceLabel: "iPhone" } });
@@ -404,9 +417,9 @@ describe("savePushSubscriptionAction", () => {
     const { savePushSubscriptionAction } = await loadActions();
     const result = await savePushSubscriptionAction(null, {
       tenantId: "tenant-1",
-      endpoint: "e",
-      p256dh: "p",
-      authKey: "a",
+      endpoint: VALID_ENDPOINT,
+      p256dh: VALID_KEYS.p256dh,
+      authKey: VALID_KEYS.authKey,
     });
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.code).toBe("UNAUTHORIZED");
@@ -415,8 +428,76 @@ describe("savePushSubscriptionAction", () => {
   it("12. does not revalidate any path — no SSR-rendered data depends on subscription state", async () => {
     rpcMock.mockResolvedValueOnce({ data: { id: "sub-1", deviceLabel: null }, error: null });
     const { savePushSubscriptionAction } = await loadActions();
-    await savePushSubscriptionAction(null, { tenantId: "t", endpoint: "e", p256dh: "p", authKey: "a" });
+    await savePushSubscriptionAction(null, { tenantId: "t", endpoint: VALID_ENDPOINT, p256dh: VALID_KEYS.p256dh, authKey: VALID_KEYS.authKey });
     expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("12b. Faz ACCOUNT.1 — an endpoint outside the push-service allow-list (or malformed keys) is refused with VALIDATION BEFORE the RPC, and never logged", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { savePushSubscriptionAction } = await loadActions();
+    const attempts: Array<[string, Partial<typeof VALID_KEYS> & { endpoint?: string }]> = [
+      ["endpoint:host_not_allowed", { endpoint: "https://evil.example/collect" }],
+      ["endpoint:ip_literal", { endpoint: "https://169.254.169.254/latest/meta-data/" }],
+      ["endpoint:not_https", { endpoint: "http://fcm.googleapis.com/fcm/send/x" }],
+      ["endpoint:credentials", { endpoint: "https://user:pw@fcm.googleapis.com/x" }],
+      ["endpoint:port", { endpoint: "https://fcm.googleapis.com:8443/x" }],
+      ["keys:p256dh_format", { p256dh: "p256dh-val" }],
+      ["keys:auth_format", { authKey: "auth-val" }],
+    ];
+    for (const [reason, override] of attempts) {
+      const result = await savePushSubscriptionAction(null, {
+        tenantId: "tenant-1",
+        endpoint: VALID_ENDPOINT,
+        p256dh: VALID_KEYS.p256dh,
+        authKey: VALID_KEYS.authKey,
+        ...override,
+      });
+      expect(result.success, reason).toBe(false);
+      if (!result.success) expect(result.error.code, reason).toBe("VALIDATION");
+      expect(warn).toHaveBeenLastCalledWith("[savePushSubscriptionAction] subscription refused", { tenantId: "tenant-1", reason });
+    }
+    expect(rpcMock).not.toHaveBeenCalled();
+    // the log carries reason codes only — never the endpoint or a key
+    expect(JSON.stringify(warn.mock.calls)).not.toMatch(/evil\.example|169\.254|p256dh-val|auth-val/);
+    warn.mockRestore();
+  });
+
+  it("12c. only the canonical endpoint is stored, and an unprintable / oversized device label is cleaned before the RPC", async () => {
+    rpcMock.mockResolvedValueOnce({ data: { id: "sub-1", deviceLabel: "Windows" }, error: null });
+    const { savePushSubscriptionAction } = await loadActions();
+    await savePushSubscriptionAction(null, {
+      tenantId: "tenant-1",
+      endpoint: "https://fcm.googleapis.com:443/fcm/send/fixture-token-1",
+      p256dh: VALID_KEYS.p256dh,
+      authKey: VALID_KEYS.authKey,
+      deviceLabel: "Win\u0000dows\n" + "x".repeat(200),
+    });
+    const args = rpcMock.mock.calls[0]![1] as Record<string, string>;
+    expect(args.p_endpoint).toBe("https://fcm.googleapis.com/fcm/send/fixture-token-1"); // :443 dropped
+    expect(args.p_device_label).toMatch(/^Windowsx+$/);
+    expect(args.p_device_label.length).toBeLessThanOrEqual(60);
+  });
+
+  it("12d. an Apple Web Push (web.push.apple.com) subscription — the host both current production subscriptions use — is saved exactly as sent", async () => {
+    const appleEndpoint =
+      "https://web.push.apple.com/QRs1xJ_9-0aB3cD5eF7gH2iJ4kL6mN8oP0qR2sT4uV6wX8yZ1a3C5e7G9iK1mO3qS5uW7yA9bD2fH4jL6nP8rT0vX2zB4dF6hJ8lN1pR3tV5xZ7bC";
+    rpcMock.mockResolvedValueOnce({ data: { id: "sub-apple", deviceLabel: "iPhone" }, error: null });
+    const { savePushSubscriptionAction } = await loadActions();
+    const result = await savePushSubscriptionAction(null, {
+      tenantId: "tenant-1",
+      endpoint: appleEndpoint,
+      p256dh: VALID_KEYS.p256dh,
+      authKey: VALID_KEYS.authKey,
+      deviceLabel: "iPhone",
+    });
+    expect(result).toEqual({ success: true, data: { id: "sub-apple", deviceLabel: "iPhone" } });
+    expect(rpcMock).toHaveBeenCalledWith("save_push_subscription", {
+      p_tenant_id: "tenant-1",
+      p_endpoint: appleEndpoint, // already canonical: stored unchanged
+      p_p256dh: VALID_KEYS.p256dh,
+      p_auth_key: VALID_KEYS.authKey,
+      p_device_label: "iPhone",
+    });
   });
 });
 
@@ -483,23 +564,39 @@ describe("sendTestPushNotificationAction", () => {
     expect(inputType).not.toMatch(/userId|user_id/i);
   });
 
-  it("18. settings.manage is checked via hasPermission() (the normal user-session path) BEFORE the admin client is ever touched", async () => {
-    hasPermissionMock.mockResolvedValueOnce(false);
-    const { sendTestPushNotificationAction } = await loadActions();
-    const result = await sendTestPushNotificationAction(null, { tenantId: "tenant-1" });
-
-    expect(hasPermissionMock).toHaveBeenCalledWith("tenant-1", "settings.manage");
-    expect(adminRpcMock).not.toHaveBeenCalled(); // never reached — authorization failed first
-    expect(result.success).toBe(false);
-    if (!result.success) expect(result.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("18b. settings.manage true lets execution proceed to the privileged read", async () => {
-    hasPermissionMock.mockResolvedValueOnce(true);
+  // Faz ACCOUNT.1 — 18/18b used to pin "settings.manage is checked before the
+  // admin client is touched". That gate is deliberately gone: the action
+  // sends only to the CALLER's own devices (user id from requireUser(), never
+  // the input; the RPC re-verifies an active membership), so it belongs to
+  // every member like saving/removing a device — not to salon settings.
+  it("18. is NOT gated on settings.manage: any signed-in member's own test-send reaches the privileged read, and hasPermission() is never consulted", async () => {
+    // Even if a permission check WERE consulted, this member has none.
+    hasPermissionMock.mockResolvedValue(false);
     adminRpcMock.mockResolvedValueOnce({ data: [], error: null });
     const { sendTestPushNotificationAction } = await loadActions();
     await sendTestPushNotificationAction(null, { tenantId: "tenant-1" });
-    expect(adminRpcMock).toHaveBeenCalled();
+
+    expect(hasPermissionMock).not.toHaveBeenCalled();
+    expect(adminRpcMock).toHaveBeenCalledWith("get_push_subscriptions_for_test_send", {
+      p_tenant_id: "tenant-1",
+      p_user_id: "mock-user-id",
+    });
+    hasPermissionMock.mockResolvedValue(true);
+  });
+
+  it("18b. the action source never imports or calls hasPermission / mentions settings.manage as a gate", () => {
+    const src = codeOnly(read("lib/modules/settings/actions.ts"));
+    const fnStart = src.indexOf("export async function sendTestPushNotificationAction");
+    const fnBody = src.slice(fnStart, src.indexOf("\n}", fnStart));
+    expect(fnBody).not.toMatch(/hasPermission|settings\.manage/);
+    expect(src).not.toMatch(/import\s*\{[^}]*\bhasPermission\b[^}]*\}\s*from\s*["']@\/lib\/auth\/session["']/);
+  });
+
+  it("18c. an unauthenticated caller never reaches the privileged read (requireUser() runs first)", async () => {
+    requireUserMock.mockRejectedValueOnce(new Error("NEXT_REDIRECT"));
+    const { sendTestPushNotificationAction } = await loadActions();
+    await expect(sendTestPushNotificationAction(null, { tenantId: "tenant-1" })).rejects.toThrow("NEXT_REDIRECT");
+    expect(adminRpcMock).not.toHaveBeenCalled();
   });
 
   it("19. NF003 from the privileged read (structural membership check) still maps to UNAUTHORIZED", async () => {
@@ -530,6 +627,37 @@ describe("sendTestPushNotificationAction", () => {
     // Reused unchanged — no admin client involved in the revoke path.
     expect(adminRpcMock).not.toHaveBeenCalledWith("remove_push_subscription", expect.anything());
     expect(result.success).toBe(false); // nothing was actually delivered
+  });
+
+  it("21b. Faz ACCOUNT.1 — when EVERY subscription was stale the caller gets NOT_FOUND ('connection expired'), which the account page reads as the expired state, not a generic error", async () => {
+    adminRpcMock.mockResolvedValueOnce({ data: [{ id: "sub-stale", endpoint: "e", p256dh: "p", authKey: "a" }], error: null });
+    rpcMock.mockResolvedValueOnce({ error: null });
+    sendTestPushMock.mockResolvedValueOnce({ outcome: "stale" });
+    const { sendTestPushNotificationAction } = await loadActions();
+    const result = await sendTestPushNotificationAction(null, { tenantId: "tenant-1" });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe("NOT_FOUND");
+      expect(result.error.message).toMatch(/sona ermiş/);
+    }
+  });
+
+  it("21c. one stale + one delivered subscription is still a success (the member's other device got it)", async () => {
+    adminRpcMock.mockResolvedValueOnce({
+      data: [
+        { id: "sub-stale", endpoint: "e1", p256dh: "p", authKey: "a" },
+        { id: "sub-live", endpoint: "e2", p256dh: "p", authKey: "a" },
+      ],
+      error: null,
+    });
+    rpcMock.mockResolvedValueOnce({ error: null }); // revoke of the stale one
+    sendTestPushMock.mockResolvedValueOnce({ outcome: "stale" });
+    sendTestPushMock.mockResolvedValueOnce({ outcome: "sent" });
+    const { sendTestPushNotificationAction } = await loadActions();
+    const result = await sendTestPushNotificationAction(null, { tenantId: "tenant-1" });
+    expect(result).toEqual({ success: true, data: { sent: true } });
+    expect(rpcMock).toHaveBeenCalledWith("remove_push_subscription", { p_subscription_id: "sub-stale" });
+    expect(rpcMock).not.toHaveBeenCalledWith("remove_push_subscription", { p_subscription_id: "sub-live" });
   });
 
   it("22. a transient ('outcome: failed') delivery never calls remove_push_subscription", async () => {
@@ -598,7 +726,8 @@ describe("sendTestPushNotificationAction", () => {
 
 describe("client wrapper contracts", () => {
   const pushSub = codeOnly(read("lib/pwa/push-subscription.ts"));
-  const card = read("components/settings/notification-settings-card.tsx");
+  // Faz ACCOUNT.1 — the card now lives on the member's own account page.
+  const card = read("components/account/device-notifications-card.tsx");
 
   it("22. subscribeToPush always sets userVisibleOnly: true", () => {
     expect(pushSub).toMatch(/userVisibleOnly:\s*true/);
@@ -626,27 +755,50 @@ describe("client wrapper contracts", () => {
   });
 
   it("26. subscribeToPush/unsubscribeFromPush are invoked ONLY from click handlers in the card, never from a bare useEffect body", () => {
-    const connectHandlerIdx = card.indexOf("handleConnectClick");
+    // Faz ACCOUNT.1 — one "Bu cihazda bildirimleri aç" button: its handler
+    // (handleEnableClick) is the ONLY caller of connectDevice, which is the
+    // only place subscribeToPush( is invoked.
+    const connectDeviceIdx = card.indexOf("connectDevice = useCallback");
     const subscribeCallIdx = card.indexOf("subscribeToPush(");
-    expect(connectHandlerIdx).toBeGreaterThan(-1);
-    expect(subscribeCallIdx).toBeGreaterThan(connectHandlerIdx);
+    expect(connectDeviceIdx).toBeGreaterThan(-1);
+    expect(subscribeCallIdx).toBeGreaterThan(connectDeviceIdx);
+    expect(card.match(/subscribeToPush\(/g)?.length).toBe(1);
+    const connectCalls = card.match(/connectDevice\(/g) ?? [];
+    expect(connectCalls.length).toBe(1);
+    const enableHandlerIdx = card.indexOf("handleEnableClick = useCallback");
+    expect(enableHandlerIdx).toBeGreaterThan(-1);
+    expect(card.indexOf("connectDevice(")).toBeGreaterThan(enableHandlerIdx);
 
-    const disconnectHandlerIdx = card.indexOf("handleDisconnectClick");
-    const unsubscribeCallIdx = card.indexOf("unsubscribeFromPush(");
+    // unsubscribeFromPush( has exactly three call sites, all inside
+    // functions only a click can reach: connectDevice twice (dropping a
+    // browser subscription the server just reported dead — or that another
+    // person connected — before re-subscribing, and dropping the one it has
+    // just REFUSED to save) and the disconnect handler.
+    const disconnectHandlerIdx = card.indexOf("handleDisconnectClick = useCallback");
     expect(disconnectHandlerIdx).toBeGreaterThan(-1);
-    expect(unsubscribeCallIdx).toBeGreaterThan(disconnectHandlerIdx);
+    const unsubscribeCalls = Array.from(card.matchAll(/unsubscribeFromPush\(/g)).map((m) => m.index!);
+    expect(unsubscribeCalls).toHaveLength(3);
+    const [inConnect, inConnectRefused, inDisconnect] = unsubscribeCalls;
+    expect(inConnect).toBeGreaterThan(connectDeviceIdx);
+    expect(inConnect).toBeLessThan(enableHandlerIdx);
+    expect(inConnectRefused).toBeGreaterThan(inConnect);
+    expect(inConnectRefused).toBeLessThan(enableHandlerIdx);
+    expect(inDisconnect).toBeGreaterThan(disconnectHandlerIdx);
 
     // The mount-time effect only reads (getExistingPushSubscription) and
     // reconciles via save — it must never itself call subscribeToPush or
     // unsubscribeFromPush.
-    const effectMatch = card.match(/useEffect\(\(\) => \{[\s\S]*?\n {2}\}, \[granted, tenantId\]\);/);
+    const effectMatch = card.match(/useEffect\(\(\) => \{[\s\S]*?\n {2}\}, \[granted, tenantId, ownerTag\]\);/);
     expect(effectMatch).toBeTruthy();
     expect(effectMatch![0]).not.toContain("subscribeToPush(");
     expect(effectMatch![0]).not.toContain("unsubscribeFromPush(");
   });
 
-  it("27. the connect button is disabled while not in the not-subscribed state — no double-submit path to a duplicate subscribe", () => {
-    expect(card).toMatch(/disabled=\{device\.status !== "not-subscribed"\}/);
+  it("27. the enable button is disabled while a connection is in flight — no double-submit path to a duplicate subscribe", () => {
+    expect(card).toMatch(/const enableBusy = device\.status === "connecting"/);
+    const disabledUses = card.match(/disabled=\{enableBusy\}/g) ?? [];
+    // one on the permission-default button, one on the granted-but-not-connected button
+    expect(disabledUses.length).toBe(2);
   });
 
   it("28. disconnect ordering: browser unsubscribe is attempted before the DB association is removed", () => {
@@ -672,15 +824,20 @@ describe("client wrapper contracts", () => {
   });
 
   it("31. NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY is read server-side and passed down as a prop, never read directly inside the client card", () => {
-    const settingsPage = read("app/[locale]/app/[tenantSlug]/settings/page.tsx");
-    expect(settingsPage).toContain("process.env.NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY");
+    // Faz ACCOUNT.1 — the account page (not the settings page) renders the card.
+    const accountPage = read("app/[locale]/app/[tenantSlug]/account/page.tsx");
+    expect(accountPage).toContain("process.env.NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY");
     expect(card).not.toContain("process.env.NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY");
     expect(card).toContain("vapidPublicKey");
   });
 
   it("32. no technical jargon (VAPID, endpoint, PushSubscription, p256dh, auth key) appears in any user-facing tr.json string", () => {
     const messages = JSON.parse(read("messages/tr.json"));
-    const notifStrings = JSON.stringify(messages.Settings.notifications);
+    const notifStrings = JSON.stringify([
+      messages.TenantApp.account.notifications,
+      messages.TenantApp.account.categories,
+      messages.TenantApp.userMenu,
+    ]);
     expect(notifStrings).not.toMatch(/VAPID|endpoint|PushSubscription|p256dh/i);
   });
 
@@ -708,7 +865,7 @@ describe("client wrapper contracts", () => {
     expect(catchBody).toContain("setTestSend(");
   });
 
-  it("34. every setTestSend branch inside handleTestSendClick's try/catch sets a terminal status ('sent' or 'error'), never re-enters 'sending'", () => {
+  it("34. every setTestSend branch inside handleTestSendClick's try/catch sets a terminal status ('sent', 'error', or 'idle' for the expired-device reset), never re-enters 'sending'", () => {
     const fnStart = card.indexOf("handleTestSendClick = useCallback");
     const fnBody = card.slice(fnStart, card.indexOf("[tenantId, t]);", fnStart));
     const tryStart = fnBody.indexOf("try {");
@@ -716,7 +873,10 @@ describe("client wrapper contracts", () => {
     const statuses = Array.from(restOfFn.matchAll(/setTestSend\(\{\s*status:\s*"(\w+)"/g)).map((m) => m[1]);
     expect(statuses.length).toBeGreaterThan(0);
     expect(statuses).not.toContain("sending");
-    expect(new Set(statuses)).toEqual(new Set(["sent", "error"]));
+    // 'idle' only ever accompanies the NOT_FOUND branch that also moves the
+    // device to the not-connected/expired state (Faz ACCOUNT.1).
+    expect(new Set(statuses)).toEqual(new Set(["sent", "idle", "error"]));
+    expect(restOfFn).toMatch(/NOT_FOUND[\s\S]*setDevice\(\{ status: "not-connected", expired: true \}\)/);
   });
 });
 
@@ -759,7 +919,7 @@ describe("security regressions", () => {
   const NEW_FILES = [
     "lib/pwa/push-subscription.ts",
     "lib/pwa/web-push-server.ts",
-    "components/settings/notification-settings-card.tsx",
+    "components/account/device-notifications-card.tsx",
   ];
   const sources = codeOnly(NEW_FILES.map((f) => read(f)).join("\n"));
   const originalMigration = read("supabase/migrations/20260914120000_push_subscription_test_send_read.sql");

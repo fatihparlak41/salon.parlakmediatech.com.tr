@@ -11,6 +11,7 @@ export type AppErrorCode =
   | "NOT_FOUND"
   | "VALIDATION"
   | "CONFLICT"
+  | "RATE_LIMITED"
   | "UNEXPECTED";
 
 export class AppError extends Error {

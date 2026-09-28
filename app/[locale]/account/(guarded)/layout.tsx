@@ -1,5 +1,6 @@
 import { getTranslations } from "next-intl/server";
 import { requireAccountUser } from "@/lib/auth/session";
+import { deviceOwnerTag } from "@/lib/pwa/device-owner-tag";
 import { AccountShell } from "@/components/customer-account/account-shell";
 
 /**
@@ -16,7 +17,7 @@ export default async function AccountGuardedLayout({
 }: {
   children: React.ReactNode;
 }) {
-  await requireAccountUser();
+  const user = await requireAccountUser();
   const t = await getTranslations("Account.nav");
   const tAuth = await getTranslations("Auth");
 
@@ -24,6 +25,7 @@ export default async function AccountGuardedLayout({
     <AccountShell
       navLabels={{ home: t("home"), appointments: t("appointments"), profile: t("profile") }}
       signOutLabel={tAuth("signOut")}
+      deviceOwnerTag={deviceOwnerTag(user.id)}
     >
       {children}
     </AccountShell>

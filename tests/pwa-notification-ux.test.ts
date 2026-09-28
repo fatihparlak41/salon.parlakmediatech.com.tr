@@ -295,7 +295,9 @@ describe("permission UX state", () => {
   });
 
   it("17. the card never calls requestPermission on render / from an effect", () => {
-    const card = read("components/settings/notification-settings-card.tsx");
+    // Faz ACCOUNT.1 — the card moved from the settings page to the member's
+    // own account page; the rule it must keep is unchanged.
+    const card = read("components/account/device-notifications-card.tsx");
     // The gesture-gated request is referenced exactly once, only in the
     // click handler.
     const calls = card.match(/requestNotificationPermissionOnGesture\(/g) ?? [];
@@ -398,7 +400,7 @@ describe("security / regression", () => {
     "lib/pwa/notification-permission.ts",
     "lib/pwa/use-notification-env.ts",
     "components/pwa/service-worker-register.tsx",
-    "components/settings/notification-settings-card.tsx",
+    "components/account/device-notifications-card.tsx",
     "scripts/generate-pwa-icons.mjs",
     "scripts/_png-lib.mjs",
   ];
@@ -412,7 +414,7 @@ describe("security / regression", () => {
   // 22/23 originally asserted that NOTHING in NEW_FILES mentioned VAPID or
   // created a PushSubscription — true for Faz NOTIF.2C, deliberately no
   // longer true since Faz NOTIF.2D added the real subscription flow to
-  // notification-settings-card.tsx (see tests/push-subscription.test.ts
+  // device-notifications-card.tsx (see tests/push-subscription.test.ts
   // for that phase's own, much larger regression suite). What must still
   // hold, and is what these two now check, is the boundary NOTIF.2C's own
   // doc comment promises: the permission-only modules never grow VAPID or

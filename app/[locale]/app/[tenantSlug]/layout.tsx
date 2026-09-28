@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { LayoutDashboard, Users, UsersRound, Scissors, Contact, CalendarClock, CalendarDays, ChartColumn, Settings as SettingsIcon } from "lucide-react";
 import { getTenantAccess, hasPermission } from "@/lib/auth/session";
+import { deviceOwnerTag } from "@/lib/pwa/device-owner-tag";
 import { TenantAppShell, type TenantNavItem } from "@/components/tenant-app/app-shell";
 
 export default async function TenantAppLayout({
@@ -21,6 +22,7 @@ export default async function TenantAppLayout({
   }
 
   const t = await getTranslations("TenantApp.nav");
+  const tUserMenu = await getTranslations("TenantApp.userMenu");
   const tAuth = await getTranslations("Auth");
 
   // Nav visibility only — never the authorization boundary itself. RLS is
@@ -95,6 +97,8 @@ export default async function TenantAppLayout({
       userEmail={access.user.email ?? ""}
       navItems={navItems}
       signOutLabel={tAuth("signOut")}
+      userMenuLabels={{ account: tUserMenu("account"), notifications: tUserMenu("notifications") }}
+      deviceOwnerTag={deviceOwnerTag(access.user.id)}
     >
       {children}
     </TenantAppShell>
