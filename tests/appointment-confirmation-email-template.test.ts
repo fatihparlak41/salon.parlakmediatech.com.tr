@@ -33,12 +33,11 @@ describe("subject and headline", () => {
     expect(buildAppointmentConfirmationEmail(baseInput()).subject).toBe("Randevunuz Onaylandı — Gökhan İlhan Hair Studio");
   });
 
-  it("the HTML carries the salon name, the 'Randevunuz onaylandı ✓' headline and the greeting by first name", () => {
+  it("the HTML carries the salon name and a 'Ayşe, randevunuz onaylandı ✓' headline", () => {
     const { html } = buildAppointmentConfirmationEmail(baseInput());
     expect(html).toContain("Gökhan İlhan Hair Studio");
     // the check mark stays glued to the last word so it can never wrap onto a line of its own
-    expect(html).toMatch(/Randevunuz <span[^>]*>onaylandı <span[^>]*>&#10003;<\/span><\/span>/);
-    expect(html).toContain("Merhaba Ayşe,");
+    expect(html).toMatch(/Ayşe, randevunuz <span[^>]*>onaylandı <span[^>]*>&#10003;<\/span><\/span>/);
   });
 
   it("a control character in the salon name can never reach the subject header", () => {
@@ -51,6 +50,21 @@ describe("subject and headline", () => {
 
   it("an empty/whitespace salon name falls back rather than producing an empty subject tail", () => {
     expect(buildAppointmentConfirmationEmail(baseInput({ salonName: "  \n " })).subject).toBe("Randevunuz Onaylandı — Salon");
+  });
+
+  // Faz NOTIF.1B, test 6: the customer's name lives only inside the opened
+  // email (the headline), never in the subject or preheader — both can
+  // surface in a lock-screen/notification preview before the email opens.
+  it("the subject never contains the customer's name, regardless of greetingName", () => {
+    const { subject } = buildAppointmentConfirmationEmail(baseInput({ greetingName: "Ayşe" }));
+    expect(subject).toBe("Randevunuz Onaylandı — Gökhan İlhan Hair Studio");
+    expect(subject).not.toContain("Ayşe");
+  });
+
+  it("the preheader never contains the customer's name either", () => {
+    const { html } = buildAppointmentConfirmationEmail(baseInput({ greetingName: "Ayşe" }));
+    const preheaderMatch = html.match(/mso-hide:all;">([^<]*)</);
+    expect(preheaderMatch?.[1]).not.toContain("Ayşe");
   });
 });
 
@@ -194,10 +208,9 @@ describe("C15. plain-text alternative", () => {
       [
         "Gökhan İlhan Hair Studio",
         "",
-        "Randevunuz onaylandı ✓",
+        "Ayşe, randevunuz onaylandı ✓",
         "",
-        "Merhaba Ayşe,",
-        "Randevunuz Gökhan İlhan Hair Studio tarafından onaylandı. Sizi bekliyoruz.",
+        "Sizi Gökhan İlhan Hair Studio'da ağırlamak için sabırsızlanıyoruz.",
         "",
         "Tarih: Çarşamba, 7 Ekim 2026",
         "Saat: 14:30",
@@ -272,7 +285,7 @@ describe("the location button", () => {
       const { html, text } = buildAppointmentConfirmationEmail(baseInput({ locationUrl }));
       expect(html).not.toContain("Yol Tarifi Al");
       expect(text).not.toContain("Yol tarifi");
-      expect(html).toContain("Randevunuz onaylandı");
+      expect(html).toContain("randevunuz <span");
     }
   });
 
@@ -354,13 +367,39 @@ describe("sanitizeEmailLocationUrl", () => {
 });
 
 describe("greeting name", () => {
-  it("greets by the first name as typed, or plainly when there is none", () => {
-    expect(buildAppointmentConfirmationEmail(baseInput({ greetingName: "Zeynep" })).html).toContain("Merhaba Zeynep,");
+  // Faz NOTIF.1B, test 1: named headline.
+  it("a greetingName produces a headline of '{name}, randevunuz onaylandı'", () => {
+    const { html, text } = buildAppointmentConfirmationEmail(baseInput({ greetingName: "Ayşe" }));
+    expect(html).toContain("Ayşe, randevunuz");
+    expect(text).toContain("Ayşe, randevunuz onaylandı ✓");
+  });
+
+  // Faz NOTIF.1B, test 2: no separate salutation line duplicating the name.
+  it("does not also render a separate 'Merhaba Ayşe,' line", () => {
+    const { html, text } = buildAppointmentConfirmationEmail(baseInput({ greetingName: "Ayşe" }));
+    expect(html).not.toContain("Merhaba Ayşe,");
+    expect(html).not.toContain("Merhaba,");
+    expect(text).not.toContain("Merhaba");
+  });
+
+  // Faz NOTIF.1B, test 3: generic fallback headline.
+  it("null/blank greetingName falls back to the generic 'Randevunuz onaylandı' headline", () => {
     for (const greetingName of [null, "", "   "]) {
       const { html, text } = buildAppointmentConfirmationEmail(baseInput({ greetingName }));
-      expect(html).toContain(">Merhaba,<");
-      expect(text).toContain("\nMerhaba,\n");
+      expect(html).toMatch(/>Randevunuz <span[^>]*>onaylandı/);
+      expect(text).toContain("\nRandevunuz onaylandı ✓\n");
     }
+  });
+
+  // Faz NOTIF.1B, test 4: a hostile name cannot break out of the headline markup.
+  it("a hostile greetingName remains HTML-escaped inside the headline", () => {
+    const { html } = buildAppointmentConfirmationEmail(baseInput({ greetingName: `<b>Ali</b>` }));
+    expect(html).not.toContain("<b>Ali</b>");
+    expect(html).toContain("&lt;b&gt;Ali&lt;/b&gt;, randevunuz");
+  });
+
+  it("greets by the first name as typed in the headline", () => {
+    expect(buildAppointmentConfirmationEmail(baseInput({ greetingName: "Zeynep" })).html).toContain("Zeynep, randevunuz");
   });
 
   it("only a name typed entirely in capitals is normalised (Turkish casing rules); anything else is left alone", () => {

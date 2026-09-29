@@ -15,7 +15,7 @@ export const PUBLIC_BOOKING_ERROR_MESSAGES: Record<string, string> = {
   BK003: "Geçersiz hizmet.",
   BK004: "Seçilen personel şu anda uygun değil.",
   BK005: "Bu saat artık müsait değil. Lütfen başka bir saat seçin.",
-  BK006: "Lütfen ad soyad ve telefon bilgilerinizi kontrol edin.",
+  BK006: "Lütfen ad soyad, telefon ve e-posta bilgilerinizi kontrol edin.",
   BK007: "Bu randevu zaten oluşturulmuş.",
 };
 

@@ -255,15 +255,21 @@ describe("B. recipient — the address typed for THIS booking, captured once", (
     expect((await jobsForAppointment(booking.appointmentId))[0]!.status).toBe("pending");
   });
 
-  it("8. a booking with no email is confirmed normally; the job is recorded as skipped (no_recipient), never pending", async () => {
+  // Faz NOTIF.1B — email is now required at public.create_guest_booking
+  // itself, so a missing/blank address can no longer produce a *booking*
+  // at all (with or without confirmation email being active for the
+  // tenant) — it is rejected outright, before any of this outbox logic
+  // ever runs. This replaces the old "booking succeeds, job is
+  // skipped/no_recipient" test with that rejection. The no_recipient
+  // skip-reason itself is still very much alive — test 10e below proves
+  // it via a genuinely valid email whose capture fails for an unrelated
+  // reason (the only way that path is still reachable post-NOTIF.1B).
+  it("8. a booking with no email is rejected outright (BK006), tenant activation notwithstanding", async () => {
     for (const email of [null, "", "   "]) {
-      const booking = await bookPublicly(fxA, { dayOffset: nextDay(), email });
-      expect(await contactForAppointment(booking.appointmentId), String(email)).toBeUndefined();
-      await confirmAs(fxA.owner.id, booking.appointmentId);
-      expect(await appointmentStatus(booking.appointmentId)).toBe("confirmed");
-      const jobs = await jobsForAppointment(booking.appointmentId);
-      expect(jobs, String(email)).toHaveLength(1);
-      expect(jobs[0]).toMatchObject({ status: "skipped", skip_reason: "no_recipient" });
+      const before = await testDb<{ n: string }[]>`select count(*)::text as n from appointments where tenant_id = ${fxA.tenant.id}`;
+      await expect(bookPublicly(fxA, { dayOffset: nextDay(), email }), String(email)).rejects.toMatchObject({ code: "BK006" });
+      const after = await testDb<{ n: string }[]>`select count(*)::text as n from appointments where tenant_id = ${fxA.tenant.id}`;
+      expect(after[0]!.n, String(email)).toBe(before[0]!.n);
     }
   });
 

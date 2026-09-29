@@ -74,10 +74,12 @@ export async function processGuestBooking(
   // raw value lives exclusively in this function's local variable and,
   // moments later, actions.ts's HttpOnly cookie write. Never generated
   // for an authenticated booker (Phase 2G.1's trusted linking already
-  // owns that case) and never without an email to bind proof B to.
+  // owns that case). customerEmail is unconditionally present since Faz
+  // NOTIF.1B (the schema now requires it), so proof B always has an
+  // address to bind to whenever wantAccountClaim is set.
   let rawClaimSecret: string | undefined;
   let claimSecretHash: string | undefined;
-  if (trustedAccountUserId === null && input.wantAccountClaim && input.customerEmail) {
+  if (trustedAccountUserId === null && input.wantAccountClaim) {
     rawClaimSecret = randomBytes(32).toString("hex");
     claimSecretHash = createHash("sha256").update(rawClaimSecret).digest("hex");
   }

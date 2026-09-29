@@ -61,7 +61,7 @@ export async function submitGuestBookingAction(input: GuestBookingGatewayInput):
   const user = await getCurrentUser();
   const result = await processGuestBooking(input, user?.id ?? null);
 
-  if (result.success && result.claimSecret && result.claimRef && input.customerEmail) {
+  if (result.success && result.claimSecret && result.claimRef) {
     await setBookingClaimSecretCookie(result.claimRef, result.claimSecret);
 
     const supabase = await createClient();

@@ -52,6 +52,11 @@ function validInput(overrides: Partial<GuestBookingGatewayInput> = {}): GuestBoo
     customerFullName: "Gateway Test Customer",
     customerPhone: "5551230000",
     staffMemberId: staffId,
+    // Faz NOTIF.1B — every public booking now requires a real, single,
+    // well-formed email; a fresh-looking default here keeps every
+    // existing test in this file (which is about Turnstile/DB-response
+    // mapping, not email itself) unaffected, same as before.
+    customerEmail: "gateway-test@example.test",
     idempotencyKey: crypto.randomUUID(),
     turnstileToken: "test-token",
     wantAccountClaim: false,
@@ -279,21 +284,30 @@ describe("gateway — claim secret generation (Faz 2G.3.1)", () => {
     if (result.success) expect(result.claimSecret).toBeUndefined();
   });
 
-  it("opt-in without an email never generates a secret — nothing to bind proof B to", async () => {
-    let receivedHash: string | undefined = "unset";
+  // Faz NOTIF.1B — email is required for every public booking now, so
+  // "opt-in without an email" can no longer happen as a valid booking at
+  // all; missing email is rejected at the schema, before Turnstile is
+  // even checked, let alone the database.
+  it("a missing email is rejected at the schema — Turnstile is never checked and the database is never called", async () => {
+    let turnstileCalled = false;
+    let dbCalled = false;
     const result = await processGuestBooking(
       validInput({ customerEmail: undefined, wantAccountClaim: true }),
       null,
       {
-        verifyTurnstile: OK_VERIFIER,
-        callDb: async (dbInput) => {
-          receivedHash = dbInput.claimSecretHash;
+        verifyTurnstile: async () => {
+          turnstileCalled = true;
+          return { success: true as const };
+        },
+        callDb: async () => {
+          dbCalled = true;
           return { success: true, data: { appointmentReference: "diag", claimIssued: false } };
         },
       },
     );
-    expect(result.success).toBe(true);
-    expect(receivedHash).toBeUndefined();
+    expect(result.success).toBe(false);
+    expect(turnstileCalled).toBe(false);
+    expect(dbCalled).toBe(false);
   });
 
   it("an authenticated booker (trustedAccountUserId set) never generates a secret, even with opt-in + email", async () => {

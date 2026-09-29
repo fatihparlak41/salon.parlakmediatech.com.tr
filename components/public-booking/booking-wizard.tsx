@@ -17,6 +17,7 @@ import {
   type GuestBookingConfirmation,
 } from "@/lib/modules/public-booking/client-queries";
 import { submitGuestBookingAction } from "@/lib/modules/public-booking/actions";
+import { isValidSingleEmail } from "@/lib/modules/public-booking/email-validation";
 import { PUBLIC_BOOKING_HORIZON_DAYS } from "@/lib/modules/public-booking/constants";
 import { tenantLocalToUtcIso, formatTenantLocalDateTime, getTenantTodayRangeUtc } from "@/lib/modules/appointments/timezone";
 
@@ -259,7 +260,8 @@ export function BookingWizard({
     goNext();
   }
 
-  const contactValid = customerFullName.trim().length > 0 && customerPhone.trim().length >= 7;
+  const contactValid =
+    customerFullName.trim().length > 0 && customerPhone.trim().length >= 7 && isValidSingleEmail(customerEmail);
   const canSubmit = !!branchId && !!serviceId && !!dateStr && !!timeStr && contactValid && !!turnstileToken;
 
   async function submitBooking() {
@@ -276,7 +278,7 @@ export function BookingWizard({
       customerFullName: customerFullName.trim(),
       customerPhone: customerPhone.trim(),
       staffMemberId: staffChoice === "any" ? undefined : (staffChoice ?? undefined),
-      customerEmail: customerEmail.trim() || undefined,
+      customerEmail: customerEmail.trim(),
       wantAccountClaim,
       idempotencyKey,
       turnstileToken,
@@ -457,7 +459,14 @@ export function BookingWizard({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="pb-email">{labels.emailLabel}</Label>
-            <Input id="pb-email" type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} />
+            <Input
+              id="pb-email"
+              type="email"
+              autoComplete="email"
+              value={customerEmail}
+              onChange={(e) => setCustomerEmail(e.target.value)}
+              required
+            />
           </div>
           {!isAuthenticated && customerEmail.trim().length > 0 && (
             <label className="flex items-start gap-2 text-sm">

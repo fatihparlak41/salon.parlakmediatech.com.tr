@@ -2,19 +2,25 @@ import { utcIsoToTenantLocalParts } from "@/lib/modules/appointments/timezone";
 import { sanitizeEmailLocationUrl } from "@/lib/email/location-url";
 
 /**
- * Faz NOTIF.1A — the customer appointment-confirmation email, in Turkish.
- * Pure by design, like the invitation template: no Supabase import, no
- * env reads, no DB access, no logging. Everything it renders is passed in
- * by the worker (lib/modules/customer-notifications/confirmation-email-
- * worker.ts); this module only turns that data into {subject, html, text}.
+ * Faz NOTIF.1A/1B — the customer appointment-confirmation email, in
+ * Turkish. Pure by design, like the invitation template: no Supabase
+ * import, no env reads, no DB access, no logging. Everything it renders
+ * is passed in by the worker (lib/modules/customer-notifications/
+ * confirmation-email-worker.ts); this module only turns that data into
+ * {subject, html, text}.
  *
  * What the email carries — and, on purpose, nothing else: the salon's
- * name, "Randevunuz onaylandı ✓", a greeting by first name, the
- * appointment date and time in the SALON'S OWN timezone, the service
- * name(s), and — only when the branch has a valid https location link —
- * a "Yol Tarifi Al" button. No notes, no prices, no staff names or
+ * name, a headline of "{first name}, randevunuz onaylandı ✓" (or plain
+ * "Randevunuz onaylandı ✓" with no name) that doubles as the greeting —
+ * there is no separate "Merhaba X," line repeating the name again below
+ * it — the appointment date and time in the SALON'S OWN timezone, the
+ * service name(s), and — only when the branch has a valid https location
+ * link — a "Yol Tarifi Al" button. No notes, no prices, no staff names or
  * contact details, no internal ids, no roles, no marketing call to
- * action, no tracking pixel, no remote image, no remote font.
+ * action, no tracking pixel, no remote image, no remote font. The
+ * customer's name never appears in the subject or preheader (both can
+ * surface in a lock-screen/notification preview) — only in the headline,
+ * inside the opened email.
  *
  * Every database-controlled value is HTML-escaped where it is placed in
  * the markup, and the subject is stripped of control characters (a value
@@ -151,12 +157,15 @@ export function buildAppointmentConfirmationEmail(
   const serviceLabelText = services.length > 1 ? "Hizmetler" : "Hizmet";
 
   const subject = `Randevunuz Onaylandı — ${salonName}`;
-  const greeting = greetingName ? `Merhaba ${greetingName},` : "Merhaba,";
-  const intro = `Randevunuz ${salonName} tarafından onaylandı. Sizi bekliyoruz.`;
+  // Faz NOTIF.1B — the headline itself is the greeting now: named when a
+  // greetingName exists, generic otherwise. No separate "Merhaba X," line
+  // follows it (that would just repeat the same name twice in a row).
+  const headlineLead = greetingName ? `${greetingName}, randevunuz` : "Randevunuz";
+  const intro = `Sizi ${salonName}'da ağırlamak için sabırsızlanıyoruz.`;
   const preheader = `Randevunuz onaylandı · ${dateLine}, ${time}`;
 
   const salonHtml = escapeHtml(salonName);
-  const greetingHtml = escapeHtml(greeting);
+  const headlineLeadHtml = escapeHtml(headlineLead);
   const introHtml = escapeHtml(intro);
   const dateLineHtml = escapeHtml(dateLine);
   const timeHtml = escapeHtml(time);
@@ -215,10 +224,7 @@ export function buildAppointmentConfirmationEmail(
               <td style="background-color:#FFFFFF;border:1px solid ${HAIRLINE};border-radius:16px;padding:32px 28px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                   <tr>
-                    <td style="font-family:${FONT_STACK};font-size:24px;font-weight:700;line-height:30px;color:${INK};padding-bottom:20px;">Randevunuz <span style="white-space:nowrap;">onaylandı <span style="color:${SUCCESS};">&#10003;</span></span></td>
-                  </tr>
-                  <tr>
-                    <td style="font-family:${FONT_STACK};font-size:16px;line-height:24px;color:${INK};padding-bottom:4px;">${greetingHtml}</td>
+                    <td style="font-family:${FONT_STACK};font-size:24px;font-weight:700;line-height:30px;color:${INK};padding-bottom:20px;">${headlineLeadHtml} <span style="white-space:nowrap;">onaylandı <span style="color:${SUCCESS};">&#10003;</span></span></td>
                   </tr>
                   <tr>
                     <td style="font-family:${FONT_STACK};font-size:16px;line-height:24px;color:${MUTED};padding-bottom:24px;">${introHtml}</td>
@@ -258,9 +264,8 @@ export function buildAppointmentConfirmationEmail(
   const textLines = [
     salonName,
     "",
-    "Randevunuz onaylandı ✓",
+    `${headlineLead} onaylandı ✓`,
     "",
-    greeting,
     intro,
     "",
     `Tarih: ${dateLine}`,

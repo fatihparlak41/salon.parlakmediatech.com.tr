@@ -205,12 +205,13 @@ describe("claim creation", () => {
     expect(await getClaimRow(result.appointmentReference)).toBeNull();
   });
 
-  it("guest booking without an email creates no claim row, even with a secret hash", async () => {
+  // Faz NOTIF.1B — email is now required at the public.create_guest_booking
+  // boundary itself, so "a guest booking with no email" can no longer
+  // succeed at all (with or without a claim secret hash) — this replaces
+  // the old "...creates no claim row" test with the stronger guarantee.
+  it("a booking with no email is rejected outright, even with a claim secret hash", async () => {
     const { hash } = newSecret();
-    const result = await bookDirect({ email: null, claimSecretHash: hash });
-    expect(result.claimIssued).toBe(false);
-    expect(result.claimRef).toBeNull();
-    expect(await getClaimRow(result.appointmentReference)).toBeNull();
+    await expect(bookDirect({ email: null, claimSecretHash: hash })).rejects.toMatchObject({ code: "BK006" });
   });
 
   it("guest booking with email + secret hash creates exactly one claim row, and claimRef matches its id", async () => {
@@ -639,7 +640,7 @@ describe("concurrency", () => {
     const otherBookingPhone = uniquePhone();
     const [otherResult] = await Promise.all([
       bookDirect({
-        email: null,
+        email: "concurrent-self-booking@example.test",
         claimSecretHash: null,
         customerAccountUserId: claimUserA.id,
         phone: otherBookingPhone,
@@ -908,9 +909,16 @@ describe("non-claim guest regression (Faz 2G.3.1A)", () => {
     const pastEnd = new Date(pastStart.getTime() + 30 * 60000);
     await testDb`insert into appointments (tenant_id, branch_id, customer_id, status, scheduled_start_at, scheduled_end_at) values (${tenant.id}, ${branchId}, ${legacyCustomer!.id}, 'completed', ${pastStart.toISOString()}::timestamptz, ${pastEnd.toISOString()}::timestamptz)`;
 
-    // No email, no claimSecretHash — ordinary guest booking, exactly the
-    // pre-2G.3.1 behavior this must not change.
-    const newBooking = await bookDirect({ email: null, claimSecretHash: null, fullName: "Regression Legacy Guest", phone });
+    // No claimSecretHash — ordinary guest booking, exactly the pre-2G.3.1
+    // behavior this must not change. (Email itself is required since Faz
+    // NOTIF.1B, so a throwaway address stands in here; it isn't what this
+    // test is about.)
+    const newBooking = await bookDirect({
+      email: "legacy-regression@example.test",
+      claimSecretHash: null,
+      fullName: "Regression Legacy Guest",
+      phone,
+    });
     const [newApptRow] = await testDb<{ customer_id: string }[]>`select customer_id from appointments where id = ${newBooking.appointmentReference}`;
     expect(newApptRow!.customer_id).toBe(legacyCustomer!.id);
   });

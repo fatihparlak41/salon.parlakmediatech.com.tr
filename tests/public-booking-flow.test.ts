@@ -61,9 +61,21 @@ function asConfirmation(data: unknown): GuestBookingConfirmation {
  * with the same {data,error} shape anonClient().rpc(...) used to return
  * so every existing assertion below is unchanged.
  */
+// Faz NOTIF.1B — email is now required at the public.create_guest_booking
+// boundary too. Callers below that never cared about email (tenant,
+// branch, service, time, idempotency, ...) omit p_customer_email
+// entirely and get a valid default here so they keep exercising exactly
+// what they always tested; a caller that explicitly sets p_customer_email
+// (including to null, for the "contact validation policy" block's own
+// email tests) has that exact value sent through unchanged.
+const DEFAULT_DIRECT_BOOKING_EMAIL = "guest-booking-direct@example.test";
+
 async function createGuestBookingDirect(
   params: Record<string, unknown>,
 ): Promise<{ data: unknown; error: { code: string; message: string } | null }> {
+  const email = "p_customer_email" in params
+    ? (params.p_customer_email as string | null | undefined)
+    : DEFAULT_DIRECT_BOOKING_EMAIL;
   try {
     const [row] = await testDb`
       select public.create_guest_booking(
@@ -74,7 +86,7 @@ async function createGuestBookingDirect(
         ${params.p_customer_full_name as string},
         ${params.p_customer_phone as string},
         ${(params.p_staff_member_id as string | undefined) ?? null}::uuid,
-        ${(params.p_customer_email as string | undefined) ?? null},
+        ${email ?? null},
         ${(params.p_idempotency_key as string | undefined) ?? null}::uuid
       ) as result
     `;
@@ -857,6 +869,11 @@ describe("contact validation policy (BK006) — Phase 2F.1", () => {
   // against otherwise-valid booking parameters, on its own date so a
   // rejected call never collides with another test's slot.
   async function attempt(dateOffset: number, overrides: { name?: string; phone?: string; email?: string | null }) {
+    // "email" undefined here means "this scenario isn't about email" ->
+    // a valid default, so the name/phone-focused tests below keep
+    // reaching (and genuinely exercising) their own check. An explicit
+    // null is the email tests' own way of asking for "omitted".
+    const email = overrides.email === undefined ? "contact-policy@example.test" : overrides.email;
     return createGuestBookingDirect({
       p_tenant_slug: tenantA.slug,
       p_branch_id: branchA1,
@@ -864,7 +881,7 @@ describe("contact validation policy (BK006) — Phase 2F.1", () => {
       p_scheduled_start_at: `${futureDateStr(dateOffset)}T13:00:00.000Z`,
       p_customer_full_name: overrides.name ?? "Valid Name",
       p_customer_phone: overrides.phone ?? "5551234567",
-      p_customer_email: overrides.email ?? undefined,
+      p_customer_email: email,
       p_staff_member_id: staffA1.id,
       p_idempotency_key: crypto.randomUUID(),
     });
@@ -930,9 +947,31 @@ describe("contact validation policy (BK006) — Phase 2F.1", () => {
     expect(error).toBeNull();
   });
 
-  it("omitted email (null) is accepted — email stays optional", async () => {
+  // Faz NOTIF.1B — email is now required at this same boundary. These
+  // replace the old "email stays optional" test with its opposite.
+  it("omitted email (null) is rejected — email is required", async () => {
     const { error } = await attempt(52, { email: null });
-    expect(error).toBeNull();
+    expect(error!.code).toBe("BK006");
+  });
+
+  it("empty-string email is rejected", async () => {
+    const { error } = await attempt(53, { email: "" });
+    expect(error!.code).toBe("BK006");
+  });
+
+  it("whitespace-only email is rejected", async () => {
+    const { error } = await attempt(54, { email: "   " });
+    expect(error!.code).toBe("BK006");
+  });
+
+  it("a comma-joined recipient list is rejected, not treated as one address", async () => {
+    const { error } = await attempt(55, { email: "a@example.com,b@example.com" });
+    expect(error!.code).toBe("BK006");
+  });
+
+  it("a semicolon-joined recipient list is rejected", async () => {
+    const { error } = await attempt(56, { email: "a@example.com;b@example.com" });
+    expect(error!.code).toBe("BK006");
   });
 });
 
