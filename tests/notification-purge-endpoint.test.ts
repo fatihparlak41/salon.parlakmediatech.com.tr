@@ -220,8 +220,13 @@ describe("vercel.json cron configuration", () => {
     expect(entry?.schedule).toBe("17 * * * *");
   });
 
-  it("no other vercel.json cron entries exist", () => {
-    expect(config.crons).toHaveLength(2);
+  it("no other vercel.json cron entries exist (the customer-confirmation-email worker, Faz NOTIF.1A, is the one reviewed addition)", () => {
+    expect(config.crons).toHaveLength(3);
+    expect((config.crons ?? []).map((c) => c.path).sort()).toEqual([
+      "/api/internal/customer-notifications/process",
+      "/api/internal/notifications/process",
+      "/api/internal/notifications/purge-display-snapshots",
+    ]);
   });
 });
 

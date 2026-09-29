@@ -1965,6 +1965,10 @@ export type Database = {
           tenant_id: string
         }[]
       }
+      begin_customer_notification_send: {
+        Args: { p_job_id: string; p_lock_token: string }
+        Returns: boolean
+      }
       cancel_my_appointment: {
         Args: { p_appointment_id: string }
         Returns: Json
@@ -1983,6 +1987,10 @@ export type Database = {
           reason: string
           scheduled_end_at: string
         }[]
+      }
+      claim_customer_notification_jobs: {
+        Args: { p_batch_size?: number; p_lease_seconds?: number }
+        Returns: Json
       }
       claim_my_recent_booking: {
         Args: { p_claim_ref: string; p_claim_secret_hash: string }
@@ -2229,6 +2237,10 @@ export type Database = {
         Args: { p_batch_size?: number }
         Returns: Json
       }
+      purge_customer_notification_data: {
+        Args: { p_batch_size?: number; p_retention_days?: number }
+        Returns: number
+      }
       purge_expired_notification_event_display_snapshots: {
         Args: { p_batch_size?: number }
         Returns: number
@@ -2236,6 +2248,17 @@ export type Database = {
       reactivate_membership: {
         Args: { p_membership_id: string; p_tenant_id: string }
         Returns: undefined
+      }
+      record_customer_notification_result: {
+        Args: {
+          p_disposition: string
+          p_error_class?: string
+          p_job_id: string
+          p_lock_token: string
+          p_provider_message_id?: string
+          p_skip_reason?: string
+        }
+        Returns: Json
       }
       record_notification_delivery_target_result: {
         Args: {

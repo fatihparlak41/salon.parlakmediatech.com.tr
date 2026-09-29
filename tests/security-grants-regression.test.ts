@@ -393,6 +393,19 @@ const SERVICE_ROLE_FUNCTION_WHITELIST = [
   // trusting RLS/auth.uid() the way every authenticated-grantable RPC
   // in this schema otherwise does.
   "public.log_team_invitation_email_delivery",
+  // Faz NOTIF.1A (20260928100000) — the customer appointment-confirmation
+  // EMAIL worker's four narrow RPCs: claim (returns the booking-time
+  // recipient address — same never-to-a-browser posture as
+  // claim_notification_delivery_targets), begin-send marker, fenced result
+  // record, and the 30-day snapshot purge. Same private/public split and
+  // service_role-only posture as every entry above. Reached only by
+  // app/api/internal/customer-notifications/process (CRON_SECRET-protected).
+  // The operator functions (activate/deactivate/status) have NO public
+  // wrapper and NO grant to any role — they are run from the SQL editor.
+  "public.claim_customer_notification_jobs",
+  "public.begin_customer_notification_send",
+  "public.record_customer_notification_result",
+  "public.purge_customer_notification_data",
 ];
 
 // Expected output of security_audit_default_privileges() in a healthy

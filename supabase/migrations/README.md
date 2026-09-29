@@ -110,3 +110,32 @@ originally `security invoker`, which meant every RPC call — including
 schema private`. Caught by the cross-tenant isolation test suite, not code
 review; fixed in 20260815120020. Any new `public.*` wrapper around a
 `private.*` function must be `security definer`.
+
+## Customer notifications (Faz NOTIF.1A: the appointment-confirmation email)
+
+The outbox (`private.customer_notification_jobs`), the per-tenant activation
+switch (`private.customer_notification_activation`) and the booking-time
+recipient snapshot (`private.appointment_booking_contacts`) live in `private`
+with RLS on and every table privilege revoked; the worker reaches them only
+through four `service_role`-only `public.*` wrappers. A new customer channel or
+type (reminder, cancellation, ...) extends the CHECK vocabularies and the
+activation rows — it does not get a new table, and it never reuses the Web
+Push outbox (`notification_*`), which is membership/device shaped and globally
+gated.
+
+- Hooks into the booking and status flows are thin and swallow their own
+  errors (a `raise warning` with the SQLSTATE only): a booking or an approval
+  must never fail because of an email. The booking hook wraps only the small
+  PUBLIC `create_guest_booking` wrapper and carries a drift guard that refuses
+  to overwrite anything but the plain pass-through it was written against.
+- A feature is switched on per tenant by the operator (SQL editor), never by
+  application code; there is no row = off default, and a watermark so nothing
+  historical is ever sent. See `private.activate_customer_confirmation_email`.
+- Real SMTP is reachable only when `VERCEL_ENV` is `production`
+  (`lib/email/smtp-transport.ts`); tests and local runs can only reach a
+  loopback catcher (`tests/smtp-catcher.ts`).
+- A new `service_role` function grant is a reviewed event: add it to
+  `SERVICE_ROLE_FUNCTION_WHITELIST` in `tests/security-grants-regression.test.ts`
+  AND to the two baseline pins in `tests/customer-reschedule.test.ts` and
+  `tests/customer-cancellation.test.ts`, with the reason. A new `vercel.json`
+  cron entry is pinned the same way in `tests/notification-purge-endpoint.test.ts`.

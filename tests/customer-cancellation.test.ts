@@ -734,7 +734,7 @@ describe("security", () => {
     expect(anonResult.error!.code).toBe("42501");
   });
 
-  it("service_role's function execute grants exactly match the reviewed Faz NOTIF.2D.1/2E.1A/2E.2/2F.1 + SAAS.1C.2C additions (baseline was zero through Faz 2F, deliberately no longer zero) — via the project's own audit function, not a raw information_schema query (which also surfaces harmless PUBLIC-granted extension functions)", async () => {
+  it("service_role's function execute grants exactly match the reviewed Faz NOTIF.1A/2D.1/2E.1A/2E.2/2F.1 + SAAS.1C.2C additions (baseline was zero through Faz 2F, deliberately no longer zero) — via the project's own audit function, not a raw information_schema query (which also surfaces harmless PUBLIC-granted extension functions)", async () => {
     const data = await testDb<{ schema_name: string; function_name: string; grantee: string }[]>`select * from security_audit_function_grants()`;
     const serviceRoleGrants = data.filter((g) => g.grantee === "service_role");
     // Faz NOTIF.2D.1 (get_push_subscriptions_for_test_send), Faz NOTIF.2E.1
@@ -744,12 +744,15 @@ describe("security", () => {
     // (purge_expired_notification_event_display_snapshots), and Faz
     // SAAS.1C.2C (log_team_invitation_email_delivery — see
     // 20260918070000's own header for why this one narrow write can't
-    // reuse private.log_audit_event) are the only service_role function
-    // grants in this project's history — all narrow, all reviewed
+    // reuse private.log_audit_event), and Faz NOTIF.1A (the customer
+    // confirmation-email worker's 4 narrow RPCs) are the only service_role
+    // function grants in this project's history — all narrow, all reviewed
     // elsewhere (security-grants-regression.test.ts's own
     // SERVICE_ROLE_FUNCTION_WHITELIST). This test's job is only to confirm
     // this baseline never grew an UNREVIEWED one.
     expect(serviceRoleGrants.map((g) => g.function_name).sort()).toEqual([
+      "begin_customer_notification_send",
+      "claim_customer_notification_jobs",
       "claim_notification_delivery_targets",
       "get_notification_delivery_activation",
       "get_push_subscriptions_for_test_send",
@@ -757,7 +760,9 @@ describe("security", () => {
       "materialize_notification_deliveries",
       "materialize_pending_notification_events",
       "prepare_notification_delivery_targets",
+      "purge_customer_notification_data",
       "purge_expired_notification_event_display_snapshots",
+      "record_customer_notification_result",
       "record_notification_delivery_target_result",
     ]);
   });

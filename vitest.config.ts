@@ -16,6 +16,23 @@ import { config } from "dotenv";
 // free of third-party promotional text either way.
 const { parsed } = config({ path: ".env.local", quiet: true });
 
+// Faz NOTIF.1A — real SMTP credentials must NEVER reach a test process.
+// .env.local can legitimately hold the real Google Workspace SMTP settings
+// (the local dev server reads them too), and passing every .env.local
+// variable into the test environment would hand them to any test that
+// happens to reach the default email transport. They are removed here — from
+// this process (dotenv just populated process.env, which forked workers
+// inherit) and from the explicit test.env below. A test that needs an SMTP
+// endpoint sets one itself, and only ever a loopback catcher: the transport
+// (lib/email/smtp-transport.ts) additionally refuses any non-loopback host
+// outside a Vercel production deployment, so this is the second lock, not
+// the only one.
+const SMTP_ENV_KEYS = ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_APP_PASSWORD", "EMAIL_FROM_ADDRESS"];
+for (const key of SMTP_ENV_KEYS) delete process.env[key];
+const testEnv = Object.fromEntries(
+  Object.entries(parsed ?? {}).filter(([key]) => !SMTP_ENV_KEYS.includes(key)),
+);
+
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
@@ -24,7 +41,7 @@ export default defineConfig({
     include: ["tests/**/*.test.ts"],
     testTimeout: 20000,
     hookTimeout: 30000,
-    env: parsed,
+    env: testEnv,
     // All test files hit the same live remote Supabase project (no local
     // Docker stack — see README "Supabase"), including real
     // signInWithPassword calls against Supabase Auth's rate limiter.

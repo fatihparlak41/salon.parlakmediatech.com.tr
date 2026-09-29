@@ -306,6 +306,16 @@ async function cleanupTenantsInner(tenantIds: string[]): Promise<void> {
   // NO ACTION FK (like every other tenant-scoped table here), so this
   // must run before the tenants delete regardless.
   await testDb`delete from notification_events where tenant_id in ${testDb(tenantIds)}`;
+  // customer_notification_jobs / appointment_booking_contacts /
+  // customer_notification_activation (Faz NOTIF.1A): private-schema tables.
+  // The first two carry a composite FK into appointments (ON DELETE
+  // CASCADE) and the third cascades from tenants, but — matching this
+  // function's own convention of never relying on a cascade alone — all
+  // three are deleted explicitly and early. Each has its own tenant_id
+  // column, so no separate id-collection step is needed.
+  await testDb`delete from private.customer_notification_jobs where tenant_id in ${testDb(tenantIds)}`;
+  await testDb`delete from private.appointment_booking_contacts where tenant_id in ${testDb(tenantIds)}`;
+  await testDb`delete from private.customer_notification_activation where tenant_id in ${testDb(tenantIds)}`;
   // booking_account_claims: NO ACTION on both its composite FKs
   // (appointment_id, tenant_id) and (customer_id, tenant_id) — a claim
   // row still pointing at either blocks the deletes just below, same
