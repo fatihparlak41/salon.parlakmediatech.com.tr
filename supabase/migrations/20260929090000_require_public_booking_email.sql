@@ -64,7 +64,7 @@ begin;
 --    email", and adds only what that check does not already cover: a
 --    recipient-list shape (comma/semicolon) and control characters.
 -- =====================================================================
-create function private.is_public_booking_email_valid(p_email text)
+create or replace function private.is_public_booking_email_valid(p_email text)
 returns boolean
 language sql
 immutable

@@ -210,7 +210,8 @@ describe("C15. plain-text alternative", () => {
         "",
         "Ayşe, randevunuz onaylandı ✓",
         "",
-        "Sizi Gökhan İlhan Hair Studio'da ağırlamak için sabırsızlanıyoruz.",
+        "Randevunuz Gökhan İlhan Hair Studio tarafından onaylandı.",
+        "Sizi ağırlamak için sabırsızlanıyoruz.",
         "",
         "Tarih: Çarşamba, 7 Ekim 2026",
         "Saat: 14:30",
@@ -417,6 +418,34 @@ describe("greeting name", () => {
     expect(formatGreetingName("Ay\r\nşe")).toBe("Ay şe");
     expect(Array.from(formatGreetingName("x".repeat(200))!).length).toBeLessThanOrEqual(60);
     expect(formatGreetingName(undefined)).toBeNull();
+  });
+});
+
+// Faz NOTIF.1B fix — the body copy must never attach a Turkish locative
+// suffix ("'da"/"'de"/"'ta"/"'te") to the tenant name: which one is
+// grammatical depends on the name's own vowel harmony and voicing, which
+// this function cannot know for an arbitrary salon name across tenants.
+describe("body copy is tenant-name-safe (no fabricated Turkish suffix)", () => {
+  it("a name that would take '-te', not '-da', is not given the wrong suffix — or any suffix at all", () => {
+    const { html, text } = buildAppointmentConfirmationEmail(baseInput({ salonName: "Doğuş Güzellik" }));
+    expect(text).toContain("Randevunuz Doğuş Güzellik tarafından onaylandı.");
+    expect(text).toContain("Sizi ağırlamak için sabırsızlanıyoruz.");
+    expect(html).toContain("Randevunuz Doğuş Güzellik tarafından onaylandı.");
+    expect(html).toContain("Sizi ağırlamak için sabırsızlanıyoruz.");
+    for (const fabricated of ["Doğuş Güzellik'da", "Doğuş Güzellik'de", "Doğuş Güzellik'te", "Doğuş Güzellik'ta"]) {
+      expect(html).not.toContain(fabricated);
+      expect(text).not.toContain(fabricated);
+    }
+  });
+
+  it("holds for a non-Turkish name too (no suffix is ever attached, to any name)", () => {
+    const { html, text } = buildAppointmentConfirmationEmail(baseInput({ salonName: "Lush Long Beach" }));
+    expect(text).toContain("Randevunuz Lush Long Beach tarafından onaylandı.");
+    expect(text).toContain("Sizi ağırlamak için sabırsızlanıyoruz.");
+    for (const fabricated of ["Lush Long Beach'da", "Lush Long Beach'de", "Lush Long Beach'te", "Lush Long Beach'ta"]) {
+      expect(html).not.toContain(fabricated);
+      expect(text).not.toContain(fabricated);
+    }
   });
 });
 

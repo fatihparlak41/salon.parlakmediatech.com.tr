@@ -161,12 +161,21 @@ export function buildAppointmentConfirmationEmail(
   // greetingName exists, generic otherwise. No separate "Merhaba X," line
   // follows it (that would just repeat the same name twice in a row).
   const headlineLead = greetingName ? `${greetingName}, randevunuz` : "Randevunuz";
-  const intro = `Sizi ${salonName}'da ağırlamak için sabırsızlanıyoruz.`;
+  // Faz NOTIF.1B fix — no Turkish locative suffix ("'da"/"'de"/"'ta"/
+  // "'te") on the tenant name: which one is grammatical depends on the
+  // name's own vowel harmony and voicing, which this function has no way
+  // to know for an arbitrary salon name (compare "Gökhan İlhan Hair
+  // Studio'da" against "Doğuş Güzellik'te" against "Lush Long Beach'te").
+  // Rephrased so the salon name never takes a suffix at all — the second
+  // sentence needs no name and so no suffix, on purpose.
+  const introLine1 = `Randevunuz ${salonName} tarafından onaylandı.`;
+  const introLine2 = "Sizi ağırlamak için sabırsızlanıyoruz.";
   const preheader = `Randevunuz onaylandı · ${dateLine}, ${time}`;
 
   const salonHtml = escapeHtml(salonName);
   const headlineLeadHtml = escapeHtml(headlineLead);
-  const introHtml = escapeHtml(intro);
+  const introLine1Html = escapeHtml(introLine1);
+  const introLine2Html = escapeHtml(introLine2);
   const dateLineHtml = escapeHtml(dateLine);
   const timeHtml = escapeHtml(time);
   const preheaderHtml = escapeHtml(preheader);
@@ -227,7 +236,7 @@ export function buildAppointmentConfirmationEmail(
                     <td style="font-family:${FONT_STACK};font-size:24px;font-weight:700;line-height:30px;color:${INK};padding-bottom:20px;">${headlineLeadHtml} <span style="white-space:nowrap;">onaylandı <span style="color:${SUCCESS};">&#10003;</span></span></td>
                   </tr>
                   <tr>
-                    <td style="font-family:${FONT_STACK};font-size:16px;line-height:24px;color:${MUTED};padding-bottom:24px;">${introHtml}</td>
+                    <td style="font-family:${FONT_STACK};font-size:16px;line-height:24px;color:${MUTED};padding-bottom:24px;">${introLine1Html}<br>${introLine2Html}</td>
                   </tr>
                   <tr>
                     <td>
@@ -266,7 +275,8 @@ export function buildAppointmentConfirmationEmail(
     "",
     `${headlineLead} onaylandı ✓`,
     "",
-    intro,
+    introLine1,
+    introLine2,
     "",
     `Tarih: ${dateLine}`,
     `Saat: ${time}`,
