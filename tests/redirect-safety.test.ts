@@ -620,4 +620,25 @@ describe("real sink: the customer magic link (page -> requestAccountMagicLinkAct
     const emailRedirectTo = await request(hiddenNext(html));
     expect(emailRedirectTo).toBe(`${SITE}/auth/confirm?next=${encodeURIComponent(claim)}`);
   });
+
+  // Faz ACC.1A — the public booking page's "Hesabımla devam et" link
+  // points at exactly this URL shape (/account/login?next=/book/<slug>);
+  // this pins that the whole existing chain (page -> hidden field ->
+  // action -> emailed link -> /auth/confirm -> post-login redirect)
+  // still lands the customer back on their own salon's booking page,
+  // for a slug shaped like a real tenant slug and not just the fixed
+  // claim-complete example above.
+  it("a /book/[tenantSlug] destination survives the whole magic-link chain", async () => {
+    const bookingReturn = "/book/gokhanilhan";
+    const html = renderToStaticMarkup(await AccountLoginPage(pageProps(bookingReturn)));
+    expect(hiddenNext(html)).toBe(bookingReturn);
+    const emailRedirectTo = await request(hiddenNext(html));
+    expect(emailRedirectTo).toBe(`${SITE}/auth/confirm?next=${encodeURIComponent(bookingReturn)}`);
+
+    const url = new URL(emailRedirectTo);
+    h.jar.clear();
+    h.client = { auth: { verifyOtp: vi.fn(async () => ({ data: { user: { user_metadata: {} }, session: {} }, error: null })) } };
+    await authConfirmGet(new Request(`${SITE}/auth/confirm?token_hash=hash-for-tests&type=magiclink&next=${encodeURIComponent(url.searchParams.get("next")!)}`));
+    expect(await run(() => confirmEmailAction())).toEqual({ kind: "redirected", url: bookingReturn });
+  });
 });

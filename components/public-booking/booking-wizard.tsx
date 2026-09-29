@@ -115,6 +115,7 @@ export function BookingWizard({
   branches,
   turnstileSiteKey,
   isAuthenticated,
+  prefill,
   labels,
 }: {
   tenantSlug: string;
@@ -131,6 +132,16 @@ export function BookingWizard({
   // authenticated, do not show this flow" without needing this prop to
   // be trustworthy.
   isAuthenticated: boolean;
+  // Faz ACC.1A — initial contact-field values ONLY, for an already
+  // authenticated customer. Server-derived from getMyAccountProfile
+  // (page.tsx), which itself derives identity from auth.uid() alone —
+  // never a client-supplied id, so this can never show another
+  // customer's data. A one-time seed for useState's initializer, not a
+  // synced/controlled value: editing these fields never writes back to
+  // the account profile (that stays an explicit /account/profile
+  // action) and a null/empty phone is left empty, same as the
+  // unauthenticated default, exactly as the spec requires.
+  prefill: { fullName: string | null; email: string; phone: string | null } | null;
   labels: Labels;
 }) {
   const singleBranch = branches.length === 1 ? branches[0]! : null;
@@ -145,9 +156,9 @@ export function BookingWizard({
   const [staffChoice, setStaffChoice] = useState<string | "any" | null>(null);
   const [dateStr, setDateStr] = useState<string | null>(null);
   const [timeStr, setTimeStr] = useState<string | null>(null);
-  const [customerFullName, setCustomerFullName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
-  const [customerEmail, setCustomerEmail] = useState("");
+  const [customerFullName, setCustomerFullName] = useState(() => prefill?.fullName ?? "");
+  const [customerPhone, setCustomerPhone] = useState(() => prefill?.phone ?? "");
+  const [customerEmail, setCustomerEmail] = useState(() => prefill?.email ?? "");
   const [wantAccountClaim, setWantAccountClaim] = useState(false);
 
   const [staffOptions, setStaffOptions] = useState<PublicBookingStaffOption[]>([]);
@@ -307,9 +318,9 @@ export function BookingWizard({
     setStaffChoice(null);
     setDateStr(null);
     setTimeStr(null);
-    setCustomerFullName("");
-    setCustomerPhone("");
-    setCustomerEmail("");
+    setCustomerFullName(prefill?.fullName ?? "");
+    setCustomerPhone(prefill?.phone ?? "");
+    setCustomerEmail(prefill?.email ?? "");
     setWantAccountClaim(false);
     setConfirmation(null);
     setSubmitError(null);

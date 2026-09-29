@@ -4,7 +4,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getPublicBookingContext } from "@/lib/modules/public-booking/queries";
 import { BookingWizard } from "@/components/public-booking/booking-wizard";
+import { AccountEntry } from "@/components/public-booking/account-entry";
 import { getCurrentUser } from "@/lib/auth/session";
+import { getMyAccountProfile } from "@/lib/modules/customer-account/queries";
 
 /**
  * Public booking entry point — no auth, no tenant membership, no
@@ -26,6 +28,12 @@ export default async function BookingPage({
   // on the isAuthenticated prop for why this is safe to derive here and
   // pass through without being a trust boundary itself.
   const user = await getCurrentUser();
+  // Faz ACC.1A — server-authorized prefill only: getMyAccountProfile
+  // derives identity exclusively from auth.uid() inside get_my_account_
+  // profile (never a client-supplied id), so there is no way for a
+  // visitor to see or prefill another customer's data. null when
+  // unauthenticated; also null if the RPC has nothing (never thrown).
+  const accountProfile = user ? await getMyAccountProfile() : null;
 
   // Fail closed, not open: Turnstile is the mandatory mutation control
   // (Phase 2F.2), not an optional enhancement — if the site key isn't
@@ -48,22 +56,28 @@ export default async function BookingPage({
 
   return (
     <div className="bg-background min-h-screen">
-      {/* Faz 2G.3.2 — always-visible entry point into salon-assisted
-          account linking, independent of wizard step/state. Points at
-          the customer's OWN authenticated /account area; an
-          unauthenticated visitor is sent through the normal login flow
-          and returned here afterward (see that route's own header). */}
-      <div className="mx-auto w-full max-w-md px-4 pt-4 sm:max-w-lg">
-        <Button
-          render={<Link href={`/account/link-salon/${tenantSlug}`} />}
-          nativeButton={false}
-          variant="link"
-          size="sm"
-          className="h-auto p-0 text-xs"
-        >
-          {t("linkExistingRecord")}
-        </Button>
-      </div>
+      {/* Faz ACC.1A — account/guest choice for a visitor, or a compact
+          identity state for an already-authenticated customer. Folds in
+          the salon-assisted linking entry point too (Faz 2G.3.2),
+          relabeled and de-emphasized rather than removed. */}
+      <AccountEntry
+        tenantSlug={tenantSlug}
+        tenantName={context.salon.name}
+        isAuthenticated={!!user}
+        profileName={accountProfile?.fullName ?? null}
+        labels={{
+          accountChoiceTitle: t("accountChoiceTitle"),
+          accountOptionTitle: t("accountOptionTitle"),
+          accountOptionBody: t("accountOptionBody"),
+          guestOptionTitle: t("guestOptionTitle"),
+          guestOptionBody: t("guestOptionBody"),
+          accountChoiceNote: t("accountChoiceNote"),
+          authenticatedGreeting: t("authenticatedGreeting"),
+          authenticatedBookingFor: t("authenticatedBookingFor"),
+          myAccountLink: t("myAccountLink"),
+          linkExistingRecord: t("linkExistingRecord"),
+        }}
+      />
       <BookingWizard
         tenantSlug={tenantSlug}
         tenantName={context.salon.name}
@@ -71,6 +85,11 @@ export default async function BookingPage({
         branches={context.branches}
         turnstileSiteKey={turnstileSiteKey}
         isAuthenticated={!!user}
+        prefill={
+          accountProfile
+            ? { fullName: accountProfile.fullName, email: accountProfile.email, phone: accountProfile.phone }
+            : null
+        }
         labels={{
           unavailableTitle: t("unavailableTitle"),
           unavailableBody: t("unavailableBody"),
