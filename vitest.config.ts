@@ -38,7 +38,12 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["tests/**/*.test.ts"],
+    // Faz FIN.1A remote review — .test.tsx admits the one jsdom UI
+    // regression file (finance-checkout-ui.test.tsx), which opts itself
+    // into jsdom per-file via a `// @vitest-environment jsdom` directive
+    // at its own top. This global environment stays "node": every other
+    // (DB-integration) test file is unaffected.
+    include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
     testTimeout: 20000,
     hookTimeout: 30000,
     env: testEnv,

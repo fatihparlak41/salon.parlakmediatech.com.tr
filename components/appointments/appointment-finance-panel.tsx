@@ -79,13 +79,12 @@ export function AppointmentFinancePanel({
 }: {
   appointmentId: string;
   canManage: boolean;
-  // Faz FIN.1A Owner review — the completed-only checkout gate. Opening
-  // this tab must NEVER itself be a financial write: the lazy
-  // get_or_create_appointment_sale call below only ever fires once BOTH
-  // canManage AND isCompleted hold, mirroring the DB's own FN010 gate
+  // Faz FIN.1A Owner review — the completed-only checkout gate.
+  // isCompleted gates every mutating control below (Tahsilatı Başlat /
+  // Ödeme Al / Fiyat-İndirim Düzenle), mirroring the DB's own FN010 gate
   // (private.get_or_create_appointment_sale refuses a non-completed
-  // appointment) — this is a UX convenience that avoids a round trip
-  // the server would reject anyway, not the real enforcement boundary.
+  // appointment) — a UX convenience that avoids a round trip the server
+  // would reject anyway, not the real enforcement boundary.
   isCompleted: boolean;
 }) {
   const [summary, setSummary] = useState<AppointmentFinanceSummary | null>(null);
@@ -104,17 +103,17 @@ export function AppointmentFinancePanel({
     // a different appointment is a full remount) — `loading`'s own
     // useState(true) initializer already covers it, avoiding a
     // synchronous setState-in-effect call.
+    //
+    // Faz FIN.1A remote review (Blocker 1) — READ MUST NOT CREATE
+    // FINANCIAL RECORDS. This effect is a pure read, full stop: it used
+    // to also call getOrCreateAppointmentSaleAction here, which meant
+    // merely opening this tab on a completed appointment created a sale
+    // row — including by accident, just from browsing old completed
+    // appointments. Sale creation now happens ONLY from the explicit
+    // "Tahsilatı Başlat" button below (StartCheckoutButton), a distinct
+    // user action with its own audit boundary.
     let active = true;
     (async () => {
-      // Lazy creation: opening this tab as a finance.manage holder on an
-      // ALREADY-COMPLETED appointment IS the "first real use" the spec
-      // means by lazy creation. A finance.view-only visitor (canManage
-      // false) or a non-completed appointment never triggers it — both
-      // fall through to the plain read below, which is null-safe for
-      // "no sale yet" (see fetchAppointmentFinanceSummary's own doc).
-      if (canManage && isCompleted) {
-        await getOrCreateAppointmentSaleAction(null, { appointmentId });
-      }
       const result = await fetchAppointmentFinanceSummary(appointmentId);
       if (active) {
         setSummary(result);
@@ -124,7 +123,7 @@ export function AppointmentFinancePanel({
     return () => {
       active = false;
     };
-  }, [appointmentId, canManage, isCompleted]);
+  }, [appointmentId]);
 
   if (loading) {
     return (
@@ -136,11 +135,19 @@ export function AppointmentFinancePanel({
   }
 
   if (!summary) {
-    return (
-      <p className="text-muted-foreground text-sm">
-        {isCompleted ? "Henüz bir tahsilat işlemi başlatılmadı." : "Randevu tamamlandıktan sonra tahsilat başlatılabilir."}
-      </p>
-    );
+    // Three distinct empty states, in order: a non-completed appointment
+    // can never have a sale (DB gate, FN010) so there is nothing to
+    // start yet; a completed appointment with finance.view but not
+    // finance.manage can only ever be a passive observer, never the one
+    // who starts checkout; only a finance.manage holder on a completed
+    // appointment gets the explicit mutating action.
+    if (!isCompleted) {
+      return <p className="text-muted-foreground text-sm">Randevu tamamlandıktan sonra tahsilat başlatılabilir.</p>;
+    }
+    if (!canManage) {
+      return <p className="text-muted-foreground text-sm">Henüz bir tahsilat işlemi başlatılmadı.</p>;
+    }
+    return <StartCheckoutButton appointmentId={appointmentId} onStarted={reload} />;
   }
 
   const isVoided = summary.status === "voided";
@@ -192,18 +199,69 @@ export function AppointmentFinancePanel({
         </div>
       )}
 
-      {canAct && (
+      {/* Faz FIN.1A remote review (Blocker 2) — PaymentDialog is only
+          ever mounted while a payment attempt is actually open, not
+          kept alive with open={false}: its idempotencyKey/paidAt are
+          stable useState initializers, so they must live and die with
+          ONE attempt. Closing (cancel or a successful submit) unmounts
+          it entirely; the next "Ödeme Al" click is a fresh mount with a
+          fresh key and a fresh timestamp — see that component's own
+          comment for why an always-mounted dialog would let a second,
+          unrelated payment silently reuse the first one's key. */}
+      {canAct && showPaymentDialog && (
         <PaymentDialog
-          open={showPaymentDialog}
-          onOpenChange={setShowPaymentDialog}
           saleId={summary.id}
           currency={summary.currency}
           outstanding={summary.outstanding}
+          onClose={() => setShowPaymentDialog(false)}
           onRecorded={async () => {
             setShowPaymentDialog(false);
             await reload();
           }}
         />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Faz FIN.1A remote review (Blocker 1) — the ONLY control in this whole
+ * panel that may call getOrCreateAppointmentSaleAction. Rendered
+ * exclusively for a finance.manage holder on an already-completed
+ * appointment with no sale yet (see AppointmentFinancePanel's own empty
+ * state above) — a plain read (opening this tab, or any other read)
+ * never reaches this component. Deliberately does NOT auto-open the
+ * payment dialog afterward: the spec's own preferred V1 is start ->
+ * render summary -> the user explicitly chooses Ödeme Al or
+ * Fiyat/İndirim Düzenle next, giving every financial write its own
+ * distinct, auditable click.
+ */
+function StartCheckoutButton({ appointmentId, onStarted }: { appointmentId: string; onStarted: () => Promise<void> }) {
+  const [state, action, isPending] = useActionState(
+    async (prevState: ActionResult<{ id: string }> | null, input: { appointmentId: string }) => {
+      const result = await getOrCreateAppointmentSaleAction(prevState, input);
+      if (result.success) await onStarted();
+      return result;
+    },
+    null,
+  );
+
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-muted-foreground text-sm">Henüz bir tahsilat işlemi başlatılmadı.</p>
+      <Button
+        type="button"
+        size="sm"
+        className="w-fit"
+        disabled={isPending}
+        onClick={() => startTransition(() => action({ appointmentId }))}
+      >
+        {isPending ? "Başlatılıyor…" : "Tahsilatı Başlat"}
+      </Button>
+      {state && !state.success && (
+        <p className="text-destructive text-sm" role="alert">
+          {state.error.message}
+        </p>
       )}
     </div>
   );
@@ -293,28 +351,37 @@ function PaymentRow({
 }
 
 function PaymentDialog({
-  open,
-  onOpenChange,
   saleId,
   currency,
   outstanding,
+  onClose,
   onRecorded,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   saleId: string;
   currency: string;
   outstanding: number;
+  onClose: () => void;
   onRecorded: () => void;
 }) {
   const [amount, setAmount] = useState(() => outstanding.toFixed(2));
   const [method, setMethod] = useState<"cash" | "card" | "bank_transfer" | "other">("cash");
   const [note, setNote] = useState("");
-  // Stable for the lifetime of this open dialog instance — a failed
-  // submit retried by the same click-through reuses it (safe retry);
-  // closing and reopening the dialog remounts it with a fresh key,
-  // exactly matching booking-wizard.tsx's own idempotencyKey reasoning.
+  // Faz FIN.1A remote review (Blocker 2) — idempotencyKey AND paidAt are
+  // both fixed for the lifetime of THIS mounted attempt: a failed
+  // submit retried by the same click-through must send the exact same
+  // (key, paidAt, amount, method, note) payload, or the DB's own
+  // same-key-different-payload rule (FN007) rejects a legitimate retry
+  // instead of returning the original payment. paidAt used to be
+  // recomputed with `new Date()` inside handleSubmit on every call —
+  // fixed here, once, at mount. This component is only ever mounted
+  // while one payment attempt is open (see the parent's conditional
+  // {showPaymentDialog && <PaymentDialog .../>}, not an always-mounted
+  // instance toggled via an open prop) — closing and a later "Ödeme Al"
+  // click is a fresh mount, fresh key, fresh paidAt, exactly matching
+  // booking-wizard.tsx's own idempotencyKey reasoning for "one attempt,
+  // one key".
   const [idempotencyKey] = useState(() => (typeof crypto !== "undefined" ? crypto.randomUUID() : ""));
+  const [paidAt] = useState(() => new Date().toISOString());
 
   const [state, action, isPending] = useActionState(
     async (prevState: ActionResult<{ id: string }> | null, input: RecordAppointmentPaymentInput) => {
@@ -332,7 +399,7 @@ function PaymentDialog({
         saleId,
         amount: Number(amount),
         method,
-        paidAt: new Date().toISOString(),
+        paidAt,
         note: note.trim() || undefined,
         idempotencyKey,
       }),
@@ -342,7 +409,7 @@ function PaymentDialog({
   const amountValid = Number(amount) > 0 && Number.isFinite(Number(amount));
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="sm:max-w-sm">
         <form onSubmit={handleSubmit} className="contents">
           <DialogHeader>
