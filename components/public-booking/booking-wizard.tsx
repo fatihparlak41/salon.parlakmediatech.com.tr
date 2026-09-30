@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TurnstileWidget } from "@/components/public-booking/turnstile-widget";
 import { SalonContactHeader } from "@/components/public-booking/salon-contact-header";
+import { AccountEntry } from "@/components/public-booking/account-entry";
 import {
   fetchPublicEligibleStaff,
   fetchPublicAvailabilitySlots,
@@ -69,6 +70,18 @@ type Labels = {
   newBooking: string;
   requiredField: string;
   todayLabel: string;
+  // Faz ACC.1A — AccountEntry's own labels, rendered just below
+  // SalonContactHeader (salon identity stays visually first).
+  accountChoiceTitle: string;
+  accountOptionTitle: string;
+  accountOptionBody: string;
+  guestOptionTitle: string;
+  guestOptionBody: string;
+  accountChoiceNote: string;
+  authenticatedGreeting: string;
+  authenticatedBookingFor: string;
+  myAccountLink: string;
+  linkExistingRecord: string;
 };
 
 function addDaysToDateStr(dateStr: string, days: number): string {
@@ -336,6 +349,28 @@ export function BookingWizard({
           whatsapp: labels.contactWhatsapp,
           instagram: labels.contactInstagram,
           directions: labels.contactDirections,
+        }}
+      />
+
+      {/* Faz ACC.1A — right after salon identity, before the step
+          progress: salon branding stays visually first, account/guest
+          choice (or the compact identity state) comes right after it. */}
+      <AccountEntry
+        tenantSlug={tenantSlug}
+        tenantName={tenantName}
+        isAuthenticated={isAuthenticated}
+        profileName={prefill?.fullName ?? null}
+        labels={{
+          accountChoiceTitle: labels.accountChoiceTitle,
+          accountOptionTitle: labels.accountOptionTitle,
+          accountOptionBody: labels.accountOptionBody,
+          guestOptionTitle: labels.guestOptionTitle,
+          guestOptionBody: labels.guestOptionBody,
+          accountChoiceNote: labels.accountChoiceNote,
+          authenticatedGreeting: labels.authenticatedGreeting,
+          authenticatedBookingFor: labels.authenticatedBookingFor,
+          myAccountLink: labels.myAccountLink,
+          linkExistingRecord: labels.linkExistingRecord,
         }}
       />
 

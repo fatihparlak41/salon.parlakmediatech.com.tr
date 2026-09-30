@@ -61,10 +61,14 @@ export function AccountEntry({
   const accountHref = `/account/login?next=${encodeURIComponent(`/book/${tenantSlug}`)}`;
 
   if (isAuthenticated) {
+    // First token only, same convention the confirmation email greeting
+    // already uses (lib/email/templates/appointment-confirmation.ts) —
+    // prefill.fullName itself is left whole for the contact-step field.
+    const firstName = profileName?.trim().split(/\s+/)[0] || null;
     return (
       <div className="mx-auto flex w-full max-w-md flex-col gap-1 px-4 pt-4 sm:max-w-lg">
         <p className="text-sm font-medium">
-          {profileName ? labels.authenticatedGreeting.replace("{name}", profileName) : labels.myAccountLink}
+          {firstName ? labels.authenticatedGreeting.replace("{name}", firstName) : labels.myAccountLink}
         </p>
         <div className="flex items-center justify-between gap-2">
           <p className="text-muted-foreground text-sm">
@@ -84,14 +88,18 @@ export function AccountEntry({
         <Card size="sm">
           <CardContent className="flex flex-col gap-3">
             <h2 className="text-sm font-semibold">{labels.accountChoiceTitle}</h2>
+            {/* Faz ACC.1A review fix — both options carry the SAME
+                visual weight (secondary, not one primary + one outline):
+                account creation is optional, and neither path should
+                read as the "recommended" one over the other. */}
             <div className="flex flex-col gap-2 sm:flex-row">
-              <Button render={<Link href={accountHref} />} nativeButton={false} variant="default" className="h-auto flex-1 flex-col items-start gap-0.5 py-2 text-left whitespace-normal">
+              <Button render={<Link href={accountHref} />} nativeButton={false} variant="secondary" className="h-auto flex-1 flex-col items-start gap-0.5 py-2 text-left whitespace-normal">
                 <span className="text-sm font-medium">{labels.accountOptionTitle}</span>
-                <span className="text-xs font-normal opacity-80">{labels.accountOptionBody}</span>
+                <span className="text-muted-foreground text-xs font-normal">{labels.accountOptionBody}</span>
               </Button>
               <Button
                 type="button"
-                variant="outline"
+                variant="secondary"
                 className="h-auto flex-1 flex-col items-start gap-0.5 py-2 text-left whitespace-normal"
                 onClick={() => setDismissed(true)}
               >

@@ -4,7 +4,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getPublicBookingContext } from "@/lib/modules/public-booking/queries";
 import { BookingWizard } from "@/components/public-booking/booking-wizard";
-import { AccountEntry } from "@/components/public-booking/account-entry";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getMyAccountProfile } from "@/lib/modules/customer-account/queries";
 
@@ -56,28 +55,6 @@ export default async function BookingPage({
 
   return (
     <div className="bg-background min-h-screen">
-      {/* Faz ACC.1A — account/guest choice for a visitor, or a compact
-          identity state for an already-authenticated customer. Folds in
-          the salon-assisted linking entry point too (Faz 2G.3.2),
-          relabeled and de-emphasized rather than removed. */}
-      <AccountEntry
-        tenantSlug={tenantSlug}
-        tenantName={context.salon.name}
-        isAuthenticated={!!user}
-        profileName={accountProfile?.fullName ?? null}
-        labels={{
-          accountChoiceTitle: t("accountChoiceTitle"),
-          accountOptionTitle: t("accountOptionTitle"),
-          accountOptionBody: t("accountOptionBody"),
-          guestOptionTitle: t("guestOptionTitle"),
-          guestOptionBody: t("guestOptionBody"),
-          accountChoiceNote: t("accountChoiceNote"),
-          authenticatedGreeting: t("authenticatedGreeting"),
-          authenticatedBookingFor: t("authenticatedBookingFor"),
-          myAccountLink: t("myAccountLink"),
-          linkExistingRecord: t("linkExistingRecord"),
-        }}
-      />
       <BookingWizard
         tenantSlug={tenantSlug}
         tenantName={context.salon.name}
@@ -91,6 +68,21 @@ export default async function BookingPage({
             : null
         }
         labels={{
+          accountChoiceTitle: t("accountChoiceTitle"),
+          accountOptionTitle: t("accountOptionTitle"),
+          accountOptionBody: t("accountOptionBody"),
+          guestOptionTitle: t("guestOptionTitle"),
+          guestOptionBody: t("guestOptionBody"),
+          accountChoiceNote: t("accountChoiceNote"),
+          // t.raw (not t): these two carry a {placeholder} that
+          // AccountEntry fills in client-side once it knows which of
+          // profileName/tenantName actually applies — t() itself would
+          // throw FORMATTING_ERROR for a missing interpolation value at
+          // this call site, since neither is being substituted yet.
+          authenticatedGreeting: t.raw("authenticatedGreeting"),
+          authenticatedBookingFor: t.raw("authenticatedBookingFor"),
+          myAccountLink: t("myAccountLink"),
+          linkExistingRecord: t("linkExistingRecord"),
           unavailableTitle: t("unavailableTitle"),
           unavailableBody: t("unavailableBody"),
           backHome: t("backHome"),
