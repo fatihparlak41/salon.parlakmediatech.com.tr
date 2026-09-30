@@ -14,6 +14,7 @@ export const FINANCE_ERROR_MESSAGES: Record<string, string> = {
   FN007: "Bu işlem az önce farklı bilgilerle zaten kaydedildi.",
   FN008: "Bu işlem iptal edilmiş, değiştirilemez.",
   FN009: "Ödeme bulunamadı.",
+  FN010: "Randevu tamamlanmadan tahsilat oluşturulamaz.",
 };
 
 const DEFAULT_MESSAGE = "İşlem gerçekleştirilemedi, lütfen tekrar deneyin.";

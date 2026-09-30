@@ -378,7 +378,11 @@ function AppointmentDetailBody({
 
           {canViewFinance && (
             <TabsContent value="finance" className="pt-4">
-              <AppointmentFinancePanel appointmentId={appointmentId} canManage={canManageFinance} />
+              <AppointmentFinancePanel
+                appointmentId={appointmentId}
+                canManage={canManageFinance}
+                isCompleted={detail.status === "completed"}
+              />
             </TabsContent>
           )}
         </Tabs>

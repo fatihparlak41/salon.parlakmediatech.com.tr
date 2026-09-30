@@ -75,9 +75,18 @@ function formatMoney(amount: number, currency: string): string {
 export function AppointmentFinancePanel({
   appointmentId,
   canManage,
+  isCompleted,
 }: {
   appointmentId: string;
   canManage: boolean;
+  // Faz FIN.1A Owner review — the completed-only checkout gate. Opening
+  // this tab must NEVER itself be a financial write: the lazy
+  // get_or_create_appointment_sale call below only ever fires once BOTH
+  // canManage AND isCompleted hold, mirroring the DB's own FN010 gate
+  // (private.get_or_create_appointment_sale refuses a non-completed
+  // appointment) — this is a UX convenience that avoids a round trip
+  // the server would reject anyway, not the real enforcement boundary.
+  isCompleted: boolean;
 }) {
   const [summary, setSummary] = useState<AppointmentFinanceSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -97,12 +106,13 @@ export function AppointmentFinancePanel({
     // synchronous setState-in-effect call.
     let active = true;
     (async () => {
-      // Lazy creation: opening this tab as a finance.manage holder IS
-      // the "first real use" the spec means by lazy creation — a
-      // finance.view-only visitor (canManage false) never triggers it,
-      // and falls through to the plain read, which is null-safe for
+      // Lazy creation: opening this tab as a finance.manage holder on an
+      // ALREADY-COMPLETED appointment IS the "first real use" the spec
+      // means by lazy creation. A finance.view-only visitor (canManage
+      // false) or a non-completed appointment never triggers it — both
+      // fall through to the plain read below, which is null-safe for
       // "no sale yet" (see fetchAppointmentFinanceSummary's own doc).
-      if (canManage) {
+      if (canManage && isCompleted) {
         await getOrCreateAppointmentSaleAction(null, { appointmentId });
       }
       const result = await fetchAppointmentFinanceSummary(appointmentId);
@@ -114,7 +124,7 @@ export function AppointmentFinancePanel({
     return () => {
       active = false;
     };
-  }, [appointmentId, canManage]);
+  }, [appointmentId, canManage, isCompleted]);
 
   if (loading) {
     return (
@@ -126,10 +136,15 @@ export function AppointmentFinancePanel({
   }
 
   if (!summary) {
-    return <p className="text-muted-foreground text-sm">Henüz bir tahsilat işlemi başlatılmadı.</p>;
+    return (
+      <p className="text-muted-foreground text-sm">
+        {isCompleted ? "Henüz bir tahsilat işlemi başlatılmadı." : "Randevu tamamlandıktan sonra tahsilat başlatılabilir."}
+      </p>
+    );
   }
 
   const isVoided = summary.status === "voided";
+  const canAct = canManage && isCompleted;
 
   return (
     <div className="flex flex-col gap-4">
@@ -146,7 +161,7 @@ export function AppointmentFinancePanel({
         <Row label="Kalan" value={formatMoney(summary.outstanding, summary.currency)} strong />
       </div>
 
-      {canManage && !isVoided && (
+      {canAct && !isVoided && (
         <div className="flex flex-wrap gap-2">
           <Button type="button" size="sm" disabled={summary.outstanding <= 0} onClick={() => setShowPaymentDialog(true)}>
             Ödeme Al
@@ -157,7 +172,7 @@ export function AppointmentFinancePanel({
         </div>
       )}
 
-      {showAdjustPanel && canManage && (
+      {showAdjustPanel && canAct && (
         <AdjustPanel
           summary={summary}
           onClose={() => setShowAdjustPanel(false)}
@@ -172,12 +187,12 @@ export function AppointmentFinancePanel({
         <div className="flex flex-col gap-2">
           <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Ödemeler</p>
           {summary.payments.map((p) => (
-            <PaymentRow key={p.id} payment={p} currency={summary.currency} canManage={canManage} onVoided={reload} />
+            <PaymentRow key={p.id} payment={p} currency={summary.currency} canManage={canAct} onVoided={reload} />
           ))}
         </div>
       )}
 
-      {canManage && (
+      {canAct && (
         <PaymentDialog
           open={showPaymentDialog}
           onOpenChange={setShowPaymentDialog}

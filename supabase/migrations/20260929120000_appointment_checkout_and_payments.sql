@@ -24,6 +24,25 @@
 -- used for that specific appointment (get_or_create_appointment_sale).
 --
 -- =====================================================================
+-- COMPLETED-ONLY GATE (V1, Owner review — added after the first draft)
+-- =====================================================================
+-- get_or_create_appointment_sale refuses to create a sale unless
+-- appointments.status = 'completed' (FN010 otherwise; this alone also
+-- covers 'cancelled', which can never become 'completed'). This is the
+-- other direction of "completion != payment" above: completion still
+-- never requires or implies payment, but checkout may now never START
+-- before completion. Reason: appointment_sale_items snapshots the
+-- FINAL service/price/performer at checkout-creation time — creating a
+-- sale while still scheduled/confirmed/in_progress would risk
+-- snapshotting a value a later reschedule or a completion-time
+-- performer correction (private.complete_appointment's own
+-- p_performer_overrides) could make stale, which would be especially
+-- dangerous for a future commission/payroll report built on this same
+-- snapshot. Deposits/prepayments are explicitly out of scope for
+-- FIN.1A; if ever added, they need their own deliberate model, not a
+-- relaxation of this gate.
+--
+-- =====================================================================
 -- DISCOUNT MODEL (V1, authoritative — see FIN.1A spec "PRICE / DISCOUNT
 -- EDITING"): ONE discount mechanism, not two competing ones.
 -- =====================================================================
@@ -283,8 +302,22 @@ begin
     raise exception 'finance.manage required' using errcode = 'FN002';
   end if;
 
-  if v_appt_status = 'cancelled' then
-    raise exception 'appointment is cancelled' using errcode = 'FN003';
+  -- V1 rule (Owner review): checkout may only start once the appointment
+  -- is actually completed — not merely "not cancelled". A sale created
+  -- while still scheduled/confirmed/in_progress would snapshot a price/
+  -- performer that a later reschedule or performer correction (at
+  -- completion time) could make stale, which would be especially
+  -- dangerous for a future commission/payroll report built on this same
+  -- snapshot. This single check also covers 'cancelled' (trivially never
+  -- 'completed'), so no separate cancelled-check is needed. Checked
+  -- AFTER the permission check above on purpose: an unauthorized or
+  -- cross-tenant caller must get FN002, never a hint (via FN010) that a
+  -- non-completed appointment even exists. complete_appointment (Faz
+  -- 5A.1) makes 'completed' a true terminal state — it can never
+  -- transition away — so this can never reject a sale that already
+  -- legitimately exists.
+  if v_appt_status != 'completed' then
+    raise exception 'appointment is not completed' using errcode = 'FN010';
   end if;
 
   -- Idempotent fast path: already exists, return the SAME sale.
@@ -342,7 +375,7 @@ end;
 $$;
 
 comment on function private.get_or_create_appointment_sale(uuid) is
-  'Faz FIN.1A. The only way a sale is ever created. Idempotent (repeat calls return the same row) and concurrency-safe (appointment row lock + unique appointment_id constraint). Snapshots every appointment_item into appointment_sale_items exactly once: unit_price = appointment_items.price, actual_staff_member_id = coalesce(actual_staff_member_id, staff_member_id), service name = current catalog name at that moment. Requires finance.manage. Refuses a cancelled appointment.';
+  'Faz FIN.1A. The only way a sale is ever created. Requires the appointment to be status=completed (FN010 otherwise — this alone also covers cancelled, which can never be completed) so the snapshot below reflects the FINAL performer/price, not a value a later reschedule or completion-time correction could make stale. Idempotent (repeat calls return the same row) and concurrency-safe (appointment row lock + unique appointment_id constraint). Snapshots every appointment_item into appointment_sale_items exactly once: unit_price = appointment_items.price, actual_staff_member_id = coalesce(actual_staff_member_id, staff_member_id), service name = current catalog name at that moment. Requires finance.manage.';
 
 revoke execute on function private.get_or_create_appointment_sale(uuid) from public;
 
