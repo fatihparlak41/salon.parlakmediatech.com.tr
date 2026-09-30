@@ -69,6 +69,8 @@ export default async function TenantAppPage({
     canViewStaffReports,
     canManageSettings,
     canViewStaffList,
+    canViewFinance,
+    canManageFinance,
   ] = await Promise.all([
     hasPermission(tenantId, "appointments.view"),
     hasPermission(tenantId, "appointments.create"),
@@ -81,6 +83,8 @@ export default async function TenantAppPage({
     hasPermission(tenantId, "reports.staff"),
     hasPermission(tenantId, "settings.manage"),
     hasPermission(tenantId, "staff.view"),
+    hasPermission(tenantId, "finance.view"),
+    hasPermission(tenantId, "finance.manage"),
   ]);
 
   const tenantTimezone = await getTenantTimezone(tenantId);
@@ -163,6 +167,8 @@ export default async function TenantAppPage({
           tenantTimezone={tenantTimezone}
           canUpdate={canUpdateAppointments}
           canCancel={canCancelAppointments}
+          canViewFinance={canViewFinance}
+          canManageFinance={canManageFinance}
           labels={{
             greetingWord,
             greetingFallback: t("greetingFallback"),
@@ -317,6 +323,8 @@ export default async function TenantAppPage({
         tenantTimezone={tenantTimezone}
         canUpdate={canUpdateAppointments}
         canCancel={canCancelAppointments}
+        canViewFinance={canViewFinance}
+        canManageFinance={canManageFinance}
       >
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <div className="order-1 flex flex-col gap-4 lg:order-none lg:col-span-2 lg:col-start-1 lg:row-start-1">

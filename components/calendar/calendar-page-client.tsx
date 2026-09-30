@@ -61,6 +61,8 @@ export function CalendarPageClient({
   canCreate,
   canUpdate,
   canCancel,
+  canViewFinance,
+  canManageFinance,
   labels,
 }: {
   tenantId: string;
@@ -74,6 +76,8 @@ export function CalendarPageClient({
   canCreate: boolean;
   canUpdate: boolean;
   canCancel: boolean;
+  canViewFinance: boolean;
+  canManageFinance: boolean;
   labels: Labels;
 }) {
   const [viewMode, setViewMode] = useState<ViewMode>("day");
@@ -330,6 +334,8 @@ export function CalendarPageClient({
         tenantTimezone={tenantTimezone}
         canUpdate={canUpdate}
         canCancel={canCancel}
+        canViewFinance={canViewFinance}
+        canManageFinance={canManageFinance}
         onSaved={refreshCurrentRange}
       />
     </div>

@@ -12,11 +12,13 @@ export default async function AppointmentsPage({
   const access = await getTenantAccess(tenantSlug);
   if (access.reason !== "ok") return null;
 
-  const [canView, canCreate, canUpdate, canCancel] = await Promise.all([
+  const [canView, canCreate, canUpdate, canCancel, canViewFinance, canManageFinance] = await Promise.all([
     hasPermission(access.tenant.id, "appointments.view"),
     hasPermission(access.tenant.id, "appointments.create"),
     hasPermission(access.tenant.id, "appointments.update"),
     hasPermission(access.tenant.id, "appointments.cancel"),
+    hasPermission(access.tenant.id, "finance.view"),
+    hasPermission(access.tenant.id, "finance.manage"),
   ]);
 
   if (!canView) {
@@ -40,6 +42,8 @@ export default async function AppointmentsPage({
       canCreate={canCreate}
       canUpdate={canUpdate}
       canCancel={canCancel}
+      canViewFinance={canViewFinance}
+      canManageFinance={canManageFinance}
       initialAppointments={initialAppointments}
       labels={{
         title: t("title"),

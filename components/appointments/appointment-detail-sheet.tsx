@@ -56,6 +56,7 @@ import {
   tenantLocalToUtcIso,
 } from "@/lib/modules/appointments/timezone";
 import { AppointmentItemsEditor, type ItemDraft } from "@/components/appointments/appointment-items-editor";
+import { AppointmentFinancePanel } from "@/components/appointments/appointment-finance-panel";
 
 const STATUS_BADGE_VARIANT: Record<AppointmentStatus, "default" | "secondary" | "destructive" | "outline"> = {
   scheduled: "outline",
@@ -160,6 +161,8 @@ export function AppointmentDetailSheet({
   tenantTimezone,
   canUpdate,
   canCancel,
+  canViewFinance,
+  canManageFinance,
   onSaved,
 }: {
   appointmentId: string | null;
@@ -169,6 +172,8 @@ export function AppointmentDetailSheet({
   tenantTimezone: string;
   canUpdate: boolean;
   canCancel: boolean;
+  canViewFinance: boolean;
+  canManageFinance: boolean;
   onSaved: () => void;
 }) {
   return (
@@ -185,6 +190,8 @@ export function AppointmentDetailSheet({
             tenantTimezone={tenantTimezone}
             canUpdate={canUpdate}
             canCancel={canCancel}
+            canViewFinance={canViewFinance}
+            canManageFinance={canManageFinance}
             onSaved={onSaved}
             onClose={() => onOpenChange(false)}
           />
@@ -201,6 +208,8 @@ function AppointmentDetailBody({
   tenantTimezone,
   canUpdate,
   canCancel,
+  canViewFinance,
+  canManageFinance,
   onSaved,
   onClose,
 }: {
@@ -210,6 +219,8 @@ function AppointmentDetailBody({
   tenantTimezone: string;
   canUpdate: boolean;
   canCancel: boolean;
+  canViewFinance: boolean;
+  canManageFinance: boolean;
   onSaved: () => void;
   onClose: () => void;
 }) {
@@ -248,6 +259,8 @@ function AppointmentDetailBody({
   const terminal = isTerminalStatus(detail.status);
   const otherTransitions = getAvailableStatusTransitions(detail.status).filter((s) => s !== "cancelled");
   const canCancelNow = canCancel && !terminal && detail.status !== "cancelled";
+  const showRescheduleTab = canUpdate && !terminal;
+  const tabCount = 1 + (showRescheduleTab ? 1 : 0) + (canViewFinance ? 1 : 0);
 
   return (
     <>
@@ -263,9 +276,12 @@ function AppointmentDetailBody({
 
       <div className="flex-1 overflow-y-auto px-4 pb-6">
         <Tabs defaultValue="details">
-          <TabsList className={`grid w-full ${canUpdate && !terminal ? "grid-cols-2" : "grid-cols-1"}`}>
+          {/* Tailwind's scanner needs literal class strings — a template-
+              literal grid-cols-${tabCount} would never be generated. */}
+          <TabsList className={`grid w-full ${tabCount === 3 ? "grid-cols-3" : tabCount === 2 ? "grid-cols-2" : "grid-cols-1"}`}>
             <TabsTrigger value="details">Detaylar</TabsTrigger>
-            {canUpdate && !terminal && <TabsTrigger value="reschedule">Yeniden planla</TabsTrigger>}
+            {showRescheduleTab && <TabsTrigger value="reschedule">Yeniden planla</TabsTrigger>}
+            {canViewFinance && <TabsTrigger value="finance">Tahsilat</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="details" className="flex flex-col gap-5 pt-4">
@@ -345,7 +361,7 @@ function AppointmentDetailBody({
             </p>
           </TabsContent>
 
-          {canUpdate && !terminal && (
+          {showRescheduleTab && (
             <TabsContent value="reschedule" className="pt-4">
               <RescheduleForm
                 tenantId={tenantId}
@@ -357,6 +373,12 @@ function AppointmentDetailBody({
                   onClose();
                 }}
               />
+            </TabsContent>
+          )}
+
+          {canViewFinance && (
+            <TabsContent value="finance" className="pt-4">
+              <AppointmentFinancePanel appointmentId={appointmentId} canManage={canManageFinance} />
             </TabsContent>
           )}
         </Tabs>

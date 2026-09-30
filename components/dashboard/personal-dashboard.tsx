@@ -39,6 +39,8 @@ export function PersonalDashboard({
   tenantTimezone,
   canUpdate,
   canCancel,
+  canViewFinance,
+  canManageFinance,
   labels,
 }: {
   firstName: string | null;
@@ -52,6 +54,8 @@ export function PersonalDashboard({
   tenantTimezone: string;
   canUpdate: boolean;
   canCancel: boolean;
+  canViewFinance: boolean;
+  canManageFinance: boolean;
   labels: PersonalDashboardLabels;
 }) {
   const heading = firstName
@@ -94,6 +98,8 @@ export function PersonalDashboard({
         tenantTimezone={tenantTimezone}
         canUpdate={canUpdate}
         canCancel={canCancel}
+        canViewFinance={canViewFinance}
+        canManageFinance={canManageFinance}
         viewAllHref={`/app/${tenantSlug}/calendar`}
         labels={labels.schedule}
       />

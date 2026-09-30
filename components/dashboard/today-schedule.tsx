@@ -94,6 +94,8 @@ export function TodayScheduleProvider({
   tenantTimezone,
   canUpdate,
   canCancel,
+  canViewFinance,
+  canManageFinance,
   children,
 }: {
   tenantId: string;
@@ -101,6 +103,8 @@ export function TodayScheduleProvider({
   tenantTimezone: string;
   canUpdate: boolean;
   canCancel: boolean;
+  canViewFinance: boolean;
+  canManageFinance: boolean;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -117,6 +121,8 @@ export function TodayScheduleProvider({
         tenantTimezone={tenantTimezone}
         canUpdate={canUpdate}
         canCancel={canCancel}
+        canViewFinance={canViewFinance}
+        canManageFinance={canManageFinance}
         onSaved={() => router.refresh()}
       />
     </SelectAppointmentContext.Provider>
@@ -316,6 +322,8 @@ export function TodaySchedule({
   tenantTimezone,
   canUpdate,
   canCancel,
+  canViewFinance,
+  canManageFinance,
   viewAllHref,
   labels,
   maxVisible = 8,
@@ -328,6 +336,8 @@ export function TodaySchedule({
   tenantTimezone: string;
   canUpdate: boolean;
   canCancel: boolean;
+  canViewFinance: boolean;
+  canManageFinance: boolean;
   viewAllHref: string;
   labels: TodayScheduleLabels;
   maxVisible?: number;
@@ -339,6 +349,8 @@ export function TodaySchedule({
       tenantTimezone={tenantTimezone}
       canUpdate={canUpdate}
       canCancel={canCancel}
+      canViewFinance={canViewFinance}
+      canManageFinance={canManageFinance}
     >
       <NextAppointmentHighlight
         inProgress={inProgress}

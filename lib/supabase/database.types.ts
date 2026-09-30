@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.18"
   }
   graphql_public: {
     Tables: {
@@ -126,6 +126,161 @@ export type Database = {
           },
           {
             foreignKeyName: "appointment_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      appointment_sale_items: {
+        Row: {
+          actual_staff_member_id: string | null
+          appointment_item_id: string
+          created_at: string
+          id: string
+          sale_id: string
+          service_id: string
+          service_name_snapshot: string
+          tenant_id: string
+          unit_price: number
+          updated_at: string
+        }
+        Insert: {
+          actual_staff_member_id?: string | null
+          appointment_item_id: string
+          created_at?: string
+          id?: string
+          sale_id: string
+          service_id: string
+          service_name_snapshot: string
+          tenant_id: string
+          unit_price: number
+          updated_at?: string
+        }
+        Update: {
+          actual_staff_member_id?: string | null
+          appointment_item_id?: string
+          created_at?: string
+          id?: string
+          sale_id?: string
+          service_id?: string
+          service_name_snapshot?: string
+          tenant_id?: string
+          unit_price?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointment_sale_items_actual_staff_member_id_fkey"
+            columns: ["actual_staff_member_id"]
+            isOneToOne: false
+            referencedRelation: "staff_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointment_sale_items_appointment_item_id_fkey"
+            columns: ["appointment_item_id"]
+            isOneToOne: false
+            referencedRelation: "appointment_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointment_sale_items_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "appointment_sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointment_sale_items_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointment_sale_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      appointment_sales: {
+        Row: {
+          appointment_id: string
+          branch_id: string
+          created_at: string
+          created_by: string | null
+          currency: string
+          customer_id: string
+          discount_amount: number
+          finalized_at: string | null
+          id: string
+          status: string
+          subtotal: number
+          tenant_id: string
+          total_amount: number | null
+          updated_at: string
+        }
+        Insert: {
+          appointment_id: string
+          branch_id: string
+          created_at?: string
+          created_by?: string | null
+          currency: string
+          customer_id: string
+          discount_amount?: number
+          finalized_at?: string | null
+          id?: string
+          status?: string
+          subtotal?: number
+          tenant_id: string
+          total_amount?: number | null
+          updated_at?: string
+        }
+        Update: {
+          appointment_id?: string
+          branch_id?: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          customer_id?: string
+          discount_amount?: number
+          finalized_at?: string | null
+          id?: string
+          status?: string
+          subtotal?: number
+          tenant_id?: string
+          total_amount?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointment_sales_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: true
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointment_sales_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointment_sales_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointment_sales_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -937,6 +1092,82 @@ export type Database = {
             columns: ["tenant_membership_id"]
             isOneToOne: true
             referencedRelation: "tenant_memberships"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payments: {
+        Row: {
+          amount: number
+          appointment_sale_id: string
+          branch_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          idempotency_key: string
+          method: string
+          note: string | null
+          paid_at: string
+          status: string
+          tenant_id: string
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+        }
+        Insert: {
+          amount: number
+          appointment_sale_id: string
+          branch_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          idempotency_key: string
+          method: string
+          note?: string | null
+          paid_at?: string
+          status?: string
+          tenant_id: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Update: {
+          amount?: number
+          appointment_sale_id?: string
+          branch_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          idempotency_key?: string
+          method?: string
+          note?: string | null
+          paid_at?: string
+          status?: string
+          tenant_id?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_appointment_sale_id_fkey"
+            columns: ["appointment_sale_id"]
+            isOneToOne: false
+            referencedRelation: "appointment_sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -1965,6 +2196,56 @@ export type Database = {
           tenant_id: string
         }[]
       }
+      adjust_appointment_sale_discount: {
+        Args: {
+          p_discount_amount: number
+          p_reason?: string
+          p_sale_id: string
+        }
+        Returns: {
+          appointment_id: string
+          branch_id: string
+          created_at: string
+          created_by: string | null
+          currency: string
+          customer_id: string
+          discount_amount: number
+          finalized_at: string | null
+          id: string
+          status: string
+          subtotal: number
+          tenant_id: string
+          total_amount: number | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "appointment_sales"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      adjust_appointment_sale_item_price: {
+        Args: { p_sale_item_id: string; p_unit_price: number }
+        Returns: {
+          actual_staff_member_id: string | null
+          appointment_item_id: string
+          created_at: string
+          id: string
+          sale_id: string
+          service_id: string
+          service_name_snapshot: string
+          tenant_id: string
+          unit_price: number
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "appointment_sale_items"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       begin_customer_notification_send: {
         Args: { p_job_id: string; p_lock_token: string }
         Returns: boolean
@@ -2078,6 +2359,10 @@ export type Database = {
         Args: { p_appointment_id: string; p_tenant_id: string }
         Returns: Json
       }
+      get_appointment_sale_for_appointment: {
+        Args: { p_appointment_id: string }
+        Returns: Json
+      }
       get_customer_account_link_status: {
         Args: { p_customer_id: string }
         Returns: Json
@@ -2104,6 +2389,31 @@ export type Database = {
         }[]
       }
       get_notification_delivery_activation: { Args: never; Returns: string }
+      get_or_create_appointment_sale: {
+        Args: { p_appointment_id: string }
+        Returns: {
+          appointment_id: string
+          branch_id: string
+          created_at: string
+          created_by: string | null
+          currency: string
+          customer_id: string
+          discount_amount: number
+          finalized_at: string | null
+          id: string
+          status: string
+          subtotal: number
+          tenant_id: string
+          total_amount: number | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "appointment_sales"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       get_public_availability_slots: {
         Args: {
           p_branch_id: string
@@ -2248,6 +2558,39 @@ export type Database = {
       reactivate_membership: {
         Args: { p_membership_id: string; p_tenant_id: string }
         Returns: undefined
+      }
+      record_appointment_payment: {
+        Args: {
+          p_amount: number
+          p_idempotency_key?: string
+          p_method: string
+          p_note?: string
+          p_paid_at: string
+          p_sale_id: string
+        }
+        Returns: {
+          amount: number
+          appointment_sale_id: string
+          branch_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          idempotency_key: string
+          method: string
+          note: string | null
+          paid_at: string
+          status: string
+          tenant_id: string
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "payments"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       record_customer_notification_result: {
         Args: {
@@ -2452,6 +2795,32 @@ export type Database = {
       update_role_permissions: {
         Args: { p_permission_keys: string[]; p_role_id: string }
         Returns: undefined
+      }
+      void_appointment_payment: {
+        Args: { p_payment_id: string; p_reason: string }
+        Returns: {
+          amount: number
+          appointment_sale_id: string
+          branch_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          idempotency_key: string
+          method: string
+          note: string | null
+          paid_at: string
+          status: string
+          tenant_id: string
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "payments"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
     }
     Enums: {

@@ -119,6 +119,8 @@ export function AppointmentsPageClient({
   canCreate,
   canUpdate,
   canCancel,
+  canViewFinance,
+  canManageFinance,
   initialAppointments,
   labels,
 }: {
@@ -129,6 +131,8 @@ export function AppointmentsPageClient({
   canCreate: boolean;
   canUpdate: boolean;
   canCancel: boolean;
+  canViewFinance: boolean;
+  canManageFinance: boolean;
   initialAppointments: AppointmentListRow[];
   labels: Labels;
 }) {
@@ -293,6 +297,8 @@ export function AppointmentsPageClient({
         tenantTimezone={tenantTimezone}
         canUpdate={canUpdate}
         canCancel={canCancel}
+        canViewFinance={canViewFinance}
+        canManageFinance={canManageFinance}
         onSaved={refreshList}
       />
     </div>
