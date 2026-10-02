@@ -2196,56 +2196,6 @@ export type Database = {
           tenant_id: string
         }[]
       }
-      adjust_appointment_sale_discount: {
-        Args: {
-          p_discount_amount: number
-          p_reason?: string
-          p_sale_id: string
-        }
-        Returns: {
-          appointment_id: string
-          branch_id: string
-          created_at: string
-          created_by: string | null
-          currency: string
-          customer_id: string
-          discount_amount: number
-          finalized_at: string | null
-          id: string
-          status: string
-          subtotal: number
-          tenant_id: string
-          total_amount: number | null
-          updated_at: string
-        }
-        SetofOptions: {
-          from: "*"
-          to: "appointment_sales"
-          isOneToOne: true
-          isSetofReturn: false
-        }
-      }
-      adjust_appointment_sale_item_price: {
-        Args: { p_sale_item_id: string; p_unit_price: number }
-        Returns: {
-          actual_staff_member_id: string | null
-          appointment_item_id: string
-          created_at: string
-          id: string
-          sale_id: string
-          service_id: string
-          service_name_snapshot: string
-          tenant_id: string
-          unit_price: number
-          updated_at: string
-        }
-        SetofOptions: {
-          from: "*"
-          to: "appointment_sale_items"
-          isOneToOne: true
-          isSetofReturn: false
-        }
-      }
       begin_customer_notification_send: {
         Args: { p_job_id: string; p_lock_token: string }
         Returns: boolean
@@ -2769,6 +2719,36 @@ export type Database = {
       unlink_staff_membership: {
         Args: { p_staff_member_id: string; p_tenant_id: string }
         Returns: undefined
+      }
+      update_appointment_sale_pricing: {
+        Args: {
+          p_discount_amount: number
+          p_discount_reason?: string
+          p_items: Json
+          p_sale_id: string
+        }
+        Returns: {
+          appointment_id: string
+          branch_id: string
+          created_at: string
+          created_by: string | null
+          currency: string
+          customer_id: string
+          discount_amount: number
+          finalized_at: string | null
+          id: string
+          status: string
+          subtotal: number
+          tenant_id: string
+          total_amount: number | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "appointment_sales"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       update_appointment_status: {
         Args: { p_appointment_id: string; p_new_status: string }

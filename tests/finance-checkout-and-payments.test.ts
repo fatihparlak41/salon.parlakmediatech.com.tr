@@ -15,6 +15,7 @@ import {
   safeMorningStart,
   attemptAs,
   asAuthenticatedUser,
+  auditRows,
   type TestUser,
 } from "./helpers";
 
@@ -34,7 +35,7 @@ import {
  * status explicitly.
  *
  * NOTE for whoever runs this file next: it requires the
- * appointment_sales/appointment_sale_items/payments tables and their six
+ * appointment_sales/appointment_sale_items/payments tables and their five
  * RPCs, which exist ONLY once migration 20260929120000 has actually been
  * applied to whatever TEST_DATABASE_URL points at. As of this file's own
  * commit, that migration has been validated end-to-end on an isolated
@@ -298,7 +299,7 @@ describe("appointment sale — creation (idempotency, tenant/permission boundari
   });
 });
 
-describe("price / discount editing", () => {
+describe("pricing — ONE atomic update_appointment_sale_pricing", () => {
   async function makeSale(price = 500) {
     const { appointmentId } = await makeCompletedAppointment(price);
     const [sale] = await asAuthenticatedUser(owner.id, (sql) =>
@@ -308,53 +309,475 @@ describe("price / discount editing", () => {
     return { appointmentId, saleId: sale!.id, saleItemId: item!.id };
   }
 
-  it("a valid price adjustment recomputes the subtotal", async () => {
-    const { saleId, saleItemId } = await makeSale(500);
-    await asAuthenticatedUser(owner.id, (sql) => sql`select public.adjust_appointment_sale_item_price(${saleItemId}, 450.00)`);
-    const [sale] = await testDb<{ subtotal: string }[]>`select subtotal from appointment_sales where id = ${saleId}`;
-    expect(sale?.subtotal).toBe("450.00");
-  });
-
-  it("a negative price is rejected (FN004)", async () => {
-    const { saleItemId } = await makeSale();
-    const outcome = await attemptAs(owner.id, (sql) => sql`select public.adjust_appointment_sale_item_price(${saleItemId}, -10)`);
-    expect(outcome.ok).toBe(false);
-    if (!outcome.ok) expect(outcome.code).toBe("FN004");
-  });
-
-  it("a valid discount reduces the total, status stays open", async () => {
-    const { saleId } = await makeSale(500);
+  /** A completed appointment with TWO items (two staff, two services,
+   * sequential non-overlapping slots) — the shape every multi-item
+   * atomicity / exact-set-match scenario below needs. Items come back
+   * ordered by unit_price desc, so items[0] is always the pricier one. */
+  async function makeSaleWithTwoItems(price1 = 300, price2 = 200) {
+    const a = await makeStaffAndService(30, price1);
+    const b = await makeStaffAndService(30, price2);
+    const [customer] = await testDb<{ id: string }[]>`
+      insert into customers (tenant_id, full_name) values (${tenant.id}, 'FIN Customer') returning id
+    `;
+    const start = safeMorningStart(3);
+    const client = await signInAs(owner);
+    const { data: appointmentId, error } = await client.rpc("create_appointment", {
+      p_tenant_id: tenant.id,
+      p_branch_id: branchId,
+      p_customer_id: customer!.id,
+      p_items: [
+        { service_id: a.service.id, staff_member_id: a.staff.id, scheduled_start_at: start.toISOString(), sequence: 1 },
+        {
+          service_id: b.service.id,
+          staff_member_id: b.staff.id,
+          scheduled_start_at: new Date(start.getTime() + 35 * 60_000).toISOString(),
+          sequence: 2,
+        },
+      ],
+    });
+    if (error || !appointmentId) throw new Error(`fixture two-item appointment creation failed: ${error?.message}`);
+    await completeAppointment(appointmentId as string);
     const [sale] = await asAuthenticatedUser(owner.id, (sql) =>
-      sql<{ total_amount: string; status: string }[]>`select * from public.adjust_appointment_sale_discount(${saleId}, 100, 'promo')`,
+      sql<{ id: string }[]>`select * from public.get_or_create_appointment_sale(${appointmentId as string})`,
     );
-    expect(sale?.total_amount).toBe("400.00");
+    const items = await testDb<{ id: string; unit_price: string }[]>`
+      select id, unit_price from appointment_sale_items where sale_id = ${sale!.id} order by unit_price desc
+    `;
+    return { appointmentId: appointmentId as string, saleId: sale!.id, items };
+  }
+
+  /** Everything a pricing save could possibly touch, at full text
+   * precision (updated_at::text, not a JS Date — postgres.js drops
+   * microseconds from timestamptz) — so "ZERO changes" below is an
+   * exact before/after deep-equality, not a spot check of a few fields. */
+  async function snapshot(saleId: string) {
+    const [sale] = await testDb<{ subtotal: string; discount_amount: string; status: string; updated_at: string }[]>`
+      select subtotal::text, discount_amount::text, status, updated_at::text from appointment_sales where id = ${saleId}
+    `;
+    const items = await testDb<{ id: string; unit_price: string; updated_at: string }[]>`
+      select id, unit_price::text, updated_at::text from appointment_sale_items where sale_id = ${saleId} order by id
+    `;
+    return { sale, items };
+  }
+
+  /** A completed appointment + sale in the OTHER tenant (created as that
+   * tenant's own owner), so a pricing request for this tenant's sale can
+   * be fed an item id that really belongs to somebody else's checkout. */
+  async function makeOtherTenantSale(price = 700) {
+    const otherBranchId = await createBranch(otherTenant.id, "FIN Other Branch");
+    const staff = await createStaffMember(otherTenant.id, `FIN Other Staff ${crypto.randomUUID().slice(0, 8)}`);
+    const service = await createService(otherTenant.id, `FIN Other Service ${crypto.randomUUID().slice(0, 8)}`, 30, price);
+    const [customer] = await testDb<{ id: string }[]>`
+      insert into customers (tenant_id, full_name) values (${otherTenant.id}, 'FIN Other Customer') returning id
+    `;
+    const start = safeMorningStart(3);
+    const end = new Date(start.getTime() + 30 * 60_000);
+    const [appointment] = await testDb<{ id: string }[]>`
+      insert into appointments (tenant_id, branch_id, customer_id, status, scheduled_start_at, scheduled_end_at)
+      values (${otherTenant.id}, ${otherBranchId}, ${customer!.id}, 'completed', ${start.toISOString()}, ${end.toISOString()})
+      returning id
+    `;
+    await testDb`
+      insert into appointment_items (
+        tenant_id, appointment_id, service_id, staff_member_id, actual_staff_member_id,
+        sequence, scheduled_start_at, scheduled_end_at, duration_minutes, price
+      )
+      values (
+        ${otherTenant.id}, ${appointment!.id}, ${service.id}, ${staff.id}, ${staff.id},
+        1, ${start.toISOString()}, ${end.toISOString()}, 30, ${price}
+      )
+    `;
+    const [sale] = await asAuthenticatedUser(otherTenantOwner.id, (sql) =>
+      sql<{ id: string }[]>`select * from public.get_or_create_appointment_sale(${appointment!.id})`,
+    );
+    const [item] = await testDb<{ id: string }[]>`select id from appointment_sale_items where sale_id = ${sale!.id}`;
+    return { saleId: sale!.id, saleItemId: item!.id };
+  }
+
+  it("1. a valid multi-item price change + discount commits together", async () => {
+    const { saleId, items } = await makeSaleWithTwoItems(300, 200);
+    const [sale] = await asAuthenticatedUser(owner.id, (sql) =>
+      sql<{ subtotal: string; discount_amount: string; total_amount: string; status: string }[]>`
+        select * from public.update_appointment_sale_pricing(
+          ${saleId},
+          ${sql.json([
+            { sale_item_id: items[0]!.id, unit_price: 350 },
+            { sale_item_id: items[1]!.id, unit_price: 150 },
+          ])},
+          50,
+          'toplu düzenleme'
+        )
+      `,
+    );
+    expect(sale?.subtotal).toBe("500.00");
+    expect(sale?.discount_amount).toBe("50.00");
+    expect(sale?.total_amount).toBe("450.00");
     expect(sale?.status).toBe("open");
+    const prices = await testDb<{ id: string; unit_price: string }[]>`select id, unit_price from appointment_sale_items where sale_id = ${saleId}`;
+    expect(prices.find((r) => r.id === items[0]!.id)?.unit_price).toBe("350.00");
+    expect(prices.find((r) => r.id === items[1]!.id)?.unit_price).toBe("150.00");
   });
 
-  it("a discount exceeding the subtotal is rejected (FN004)", async () => {
-    const { saleId } = await makeSale(500);
-    const outcome = await attemptAs(owner.id, (sql) => sql`select public.adjust_appointment_sale_discount(${saleId}, 9999, null)`);
+  it("1b. the unchanged item set with only a new discount commits (the UI always sends the complete set)", async () => {
+    const { saleId, items } = await makeSaleWithTwoItems(300, 200);
+    const [sale] = await asAuthenticatedUser(owner.id, (sql) =>
+      sql<{ subtotal: string; discount_amount: string; total_amount: string }[]>`
+        select * from public.update_appointment_sale_pricing(
+          ${saleId},
+          ${sql.json([
+            { sale_item_id: items[0]!.id, unit_price: 300 },
+            { sale_item_id: items[1]!.id, unit_price: 200 },
+          ])},
+          100,
+          null
+        )
+      `,
+    );
+    expect(sale?.subtotal).toBe("500.00");
+    expect(sale?.discount_amount).toBe("100.00");
+    expect(sale?.total_amount).toBe("400.00");
+  });
+
+  it("2. one invalid item in a multi-item request rolls back EVERY item price (and writes no audit event)", async () => {
+    const { saleId, items } = await makeSaleWithTwoItems(300, 200);
+    const before = await snapshot(saleId);
+    const outcome = await attemptAs(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(
+        ${saleId},
+        ${sql.json([
+          { sale_item_id: items[0]!.id, unit_price: 999 },
+          { sale_item_id: items[1]!.id, unit_price: -5 },
+        ])},
+        0,
+        null
+      )`,
+    );
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) expect(outcome.code).toBe("FN004");
+    expect(await snapshot(saleId)).toEqual(before);
+    expect((await auditRows(tenant.id, "finance.sale_updated", saleId)).length).toBe(0);
   });
 
-  it("appointment_items.price is never mutated by any sale edit", async () => {
-    const { appointmentId, saleItemId } = await makeSale(500);
-    await asAuthenticatedUser(owner.id, (sql) => sql`select public.adjust_appointment_sale_item_price(${saleItemId}, 111.00)`);
+  it("3. a discount exceeding the proposed subtotal rolls back EVERY item price", async () => {
+    const { saleId, saleItemId } = await makeSale(500);
+    const before = await snapshot(saleId);
+    const outcome = await attemptAs(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(
+        ${saleId}, ${sql.json([{ sale_item_id: saleItemId, unit_price: 450 }])}, 9999, null
+      )`,
+    );
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.code).toBe("FN004");
+    expect(await snapshot(saleId)).toEqual(before);
+  });
+
+  it("4. a proposed total below the already-collected payments rolls back everything", async () => {
+    const { saleId, saleItemId } = await makeSale(500);
+    await asAuthenticatedUser(owner.id, (sql) =>
+      sql`select public.record_appointment_payment(${saleId}, 300, 'cash', now(), null, ${crypto.randomUUID()})`,
+    );
+    const before = await snapshot(saleId);
+    // 500 - 250 = 250 < 300 already collected.
+    const outcome = await attemptAs(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(
+        ${saleId}, ${sql.json([{ sale_item_id: saleItemId, unit_price: 500 }])}, 250, null
+      )`,
+    );
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.code).toBe("FN004");
+    expect(await snapshot(saleId)).toEqual(before);
+  });
+
+  it("5. a foreign sale item (another sale's) in the request rejects the whole operation, zero changes anywhere", async () => {
+    const { saleId, saleItemId } = await makeSale(500);
+    const other = await makeSale(300);
+    const before = await snapshot(saleId);
+    const otherBefore = await snapshot(other.saleId);
+    const outcome = await attemptAs(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(
+        ${saleId},
+        ${sql.json([
+          { sale_item_id: saleItemId, unit_price: 400 },
+          { sale_item_id: other.saleItemId, unit_price: 100 },
+        ])},
+        0,
+        null
+      )`,
+    );
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.code).toBe("FN004");
+    expect(await snapshot(saleId)).toEqual(before);
+    expect(await snapshot(other.saleId)).toEqual(otherBefore);
+  });
+
+  it("5b. an item belonging to ANOTHER TENANT's sale (alone, or mixed with a valid own item) is rejected, zero changes anywhere", async () => {
+    const { saleId, saleItemId } = await makeSale(500);
+    const foreign = await makeOtherTenantSale(700);
+    const before = await snapshot(saleId);
+    const foreignBefore = await snapshot(foreign.saleId);
+    const mixed = await attemptAs(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(
+        ${saleId},
+        ${sql.json([
+          { sale_item_id: saleItemId, unit_price: 400 },
+          { sale_item_id: foreign.saleItemId, unit_price: 100 },
+        ])},
+        0,
+        null
+      )`,
+    );
+    const alone = await attemptAs(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(
+        ${saleId}, ${sql.json([{ sale_item_id: foreign.saleItemId, unit_price: 400 }])}, 0, null
+      )`,
+    );
+    for (const outcome of [mixed, alone]) {
+      expect(outcome.ok).toBe(false);
+      if (!outcome.ok) expect(outcome.code).toBe("FN004");
+    }
+    expect(await snapshot(saleId)).toEqual(before);
+    expect(await snapshot(foreign.saleId)).toEqual(foreignBefore);
+  });
+
+  it("6. a request missing one of the sale's current items is rejected, zero changes", async () => {
+    const { saleId, items } = await makeSaleWithTwoItems(300, 200);
+    const before = await snapshot(saleId);
+    const outcome = await attemptAs(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(
+        ${saleId}, ${sql.json([{ sale_item_id: items[0]!.id, unit_price: 999 }])}, 0, null
+      )`,
+    );
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.code).toBe("FN004");
+    expect(await snapshot(saleId)).toEqual(before);
+  });
+
+  it("7. a duplicate sale_item_id in the request is rejected, zero changes", async () => {
+    const { saleId, saleItemId } = await makeSale(500);
+    const before = await snapshot(saleId);
+    const outcome = await attemptAs(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(
+        ${saleId},
+        ${sql.json([
+          { sale_item_id: saleItemId, unit_price: 400 },
+          { sale_item_id: saleItemId, unit_price: 450 },
+        ])},
+        0,
+        null
+      )`,
+    );
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.code).toBe("FN004");
+    expect(await snapshot(saleId)).toEqual(before);
+  });
+
+  it("7b. a duplicate hidden behind an UPPERCASE / {braced} / hyphen-less spelling of the same id is rejected, zero changes", async () => {
+    // Duplicate detection must run on the PARSED uuid: all of these cast to
+    // the very same uuid, so a text-distinct check would let the request
+    // through and make the subtotal (summed from the request) disagree with
+    // what is stored on the sale's items.
+    const { saleId, items } = await makeSaleWithTwoItems(300, 200);
+    const before = await snapshot(saleId);
+    const id = items[0]!.id;
+    for (const spelling of [id.toUpperCase(), `{${id}}`, id.replace(/-/g, "")]) {
+      const outcome = await attemptAs(owner.id, (sql) =>
+        sql`select public.update_appointment_sale_pricing(
+          ${saleId},
+          ${sql.json([
+            { sale_item_id: id, unit_price: 100 },
+            { sale_item_id: spelling, unit_price: 100 },
+          ])},
+          0,
+          null
+        )`,
+      );
+      expect(outcome.ok).toBe(false);
+      if (!outcome.ok) expect(outcome.code).toBe("FN004");
+    }
+    expect(await snapshot(saleId)).toEqual(before);
+  });
+
+  it("7c. a single sale item id spelled in UPPERCASE is accepted and applied (validation and write use the same parsed uuid)", async () => {
+    const { saleId, saleItemId } = await makeSale(500);
+    const [sale] = await asAuthenticatedUser(owner.id, (sql) =>
+      sql<{ subtotal: string }[]>`select * from public.update_appointment_sale_pricing(
+        ${saleId}, ${sql.json([{ sale_item_id: saleItemId.toUpperCase(), unit_price: 420 }])}, 0, null
+      )`,
+    );
+    expect(sale?.subtotal).toBe("420.00");
+    const [item] = await testDb<{ unit_price: string }[]>`select unit_price from appointment_sale_items where id = ${saleItemId}`;
+    expect(item?.unit_price).toBe("420.00");
+  });
+
+  it("8. a voided sale is rejected (FN008), zero changes", async () => {
+    const { saleId, saleItemId } = await makeSale(500);
+    // Nothing in FIN.1A ever sets a SALE to 'voided' yet (reserved for a
+    // future, separately-authorized sale-void path) — set it directly,
+    // exactly like the legacy-null-performer fixture elsewhere in this file.
+    await testDb`update appointment_sales set status = 'voided' where id = ${saleId}`;
+    const before = await snapshot(saleId);
+    const outcome = await attemptAs(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(
+        ${saleId}, ${sql.json([{ sale_item_id: saleItemId, unit_price: 400 }])}, 0, null
+      )`,
+    );
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.code).toBe("FN008");
+    expect(await snapshot(saleId)).toEqual(before);
+  });
+
+  it("9. finance.view without finance.manage (appointments.view only) is rejected (FN002), zero changes", async () => {
+    const { saleId, saleItemId } = await makeSale(500);
+    const before = await snapshot(saleId);
+    const outcome = await attemptAs(staffUser.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(
+        ${saleId}, ${sql.json([{ sale_item_id: saleItemId, unit_price: 400 }])}, 0, null
+      )`,
+    );
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.code).toBe("FN002");
+    expect(await snapshot(saleId)).toEqual(before);
+  });
+
+  it("9b. a cross-tenant owner is rejected (FN002), zero changes", async () => {
+    const { saleId, saleItemId } = await makeSale(500);
+    const before = await snapshot(saleId);
+    const outcome = await attemptAs(otherTenantOwner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(
+        ${saleId}, ${sql.json([{ sale_item_id: saleItemId, unit_price: 400 }])}, 0, null
+      )`,
+    );
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.code).toBe("FN002");
+    expect(await snapshot(saleId)).toEqual(before);
+  });
+
+  it("10. appointment_items.price snapshots remain untouched by an atomic pricing save", async () => {
+    const { appointmentId, saleId, saleItemId } = await makeSale(500);
+    await asAuthenticatedUser(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(
+        ${saleId}, ${sql.json([{ sale_item_id: saleItemId, unit_price: 111 }])}, 0, null
+      )`,
+    );
     const [item] = await testDb<{ price: string }[]>`select price from appointment_items where appointment_id = ${appointmentId}`;
     expect(item?.price).toBe("500.00");
   });
 
-  it("an edit that would drop the total below already-collected payments is rejected (FN004)", async () => {
-    const { saleId } = await makeSale(500);
+  it("11. a successful update recalculates the sale's status from the new total and the posted payments", async () => {
+    const { saleId, saleItemId } = await makeSale(500);
     await asAuthenticatedUser(owner.id, (sql) =>
       sql`select public.record_appointment_payment(${saleId}, 300, 'cash', now(), null, ${crypto.randomUUID()})`,
     );
-    const outcome = await attemptAs(owner.id, (sql) => sql`select public.adjust_appointment_sale_discount(${saleId}, 250, null)`);
-    expect(outcome.ok).toBe(false);
-    if (!outcome.ok) expect(outcome.code).toBe("FN004");
-    const [sale] = await testDb<{ discount_amount: string }[]>`select discount_amount from appointment_sales where id = ${saleId}`;
-    expect(sale?.discount_amount).toBe("0.00");
+    // 500 - 200 = 300 = exactly what is already collected -> paid.
+    const [paid] = await asAuthenticatedUser(owner.id, (sql) =>
+      sql<{ status: string }[]>`select * from public.update_appointment_sale_pricing(
+        ${saleId}, ${sql.json([{ sale_item_id: saleItemId, unit_price: 500 }])}, 200, null
+      )`,
+    );
+    expect(paid?.status).toBe("paid");
+    // A higher total again -> back to partially_paid.
+    const [partial] = await asAuthenticatedUser(owner.id, (sql) =>
+      sql<{ status: string }[]>`select * from public.update_appointment_sale_pricing(
+        ${saleId}, ${sql.json([{ sale_item_id: saleItemId, unit_price: 500 }])}, 0, null
+      )`,
+    );
+    expect(partial?.status).toBe("partially_paid");
+  });
+
+  it("12. exactly ONE finance.sale_updated audit event is written for the whole atomic save, with safe before/after money fields", async () => {
+    const { saleId, items } = await makeSaleWithTwoItems(300, 200);
+    await asAuthenticatedUser(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(
+        ${saleId},
+        ${sql.json([
+          { sale_item_id: items[0]!.id, unit_price: 320 },
+          { sale_item_id: items[1]!.id, unit_price: 180 },
+        ])},
+        20,
+        'denetim testi'
+      )`,
+    );
+    const rows = await auditRows(tenant.id, "finance.sale_updated", saleId);
+    expect(rows.length).toBe(1);
+    const before = rows[0]!.before as { subtotal: number; discountAmount: number; items: unknown[] };
+    const after = rows[0]!.after as { subtotal: number; discountAmount: number; items: unknown[]; discountReason: string };
+    expect(before.subtotal).toBe(500);
+    expect(before.discountAmount).toBe(0);
+    expect(before.items.length).toBe(2);
+    expect(after.subtotal).toBe(500);
+    expect(after.discountAmount).toBe(20);
+    expect(after.items.length).toBe(2);
+    expect(after.discountReason).toBe("denetim testi");
+    expect(JSON.stringify(rows[0])).not.toMatch(/email|phone|customer/i);
+  });
+
+  it("malformed input is rejected with a stable FN004, never a raw Postgres error (empty / non-array / scalar-element items, bad uuid, non-numeric / sub-cent / negative / out-of-range price, sub-cent / NaN / Infinity discount)", async () => {
+    const { saleId, saleItemId } = await makeSale(500);
+    const before = await snapshot(saleId);
+    const empty = await attemptAs(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(${saleId}, ${sql.json([])}, 0, null)`,
+    );
+    const badUuid = await attemptAs(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(${saleId}, ${sql.json([{ sale_item_id: "not-a-uuid", unit_price: 400 }])}, 0, null)`,
+    );
+    const stringPrice = await attemptAs(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(${saleId}, ${sql.json([{ sale_item_id: saleItemId, unit_price: "abc" }])}, 0, null)`,
+    );
+    // Precision/range: a sub-cent price or discount would otherwise be
+    // silently rounded at write time (leaving subtotal != the sum of the
+    // stored item prices), and an out-of-range price would raise a raw 22003.
+    const subCentPrice = await attemptAs(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(${saleId}, ${sql.json([{ sale_item_id: saleItemId, unit_price: 100.005 }])}, 0, null)`,
+    );
+    const hugePrice = await attemptAs(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(${saleId}, ${sql.json([{ sale_item_id: saleItemId, unit_price: 100000000 }])}, 0, null)`,
+    );
+    const subCentDiscount = await attemptAs(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(${saleId}, ${sql.json([{ sale_item_id: saleItemId, unit_price: 500 }])}, 0.005, null)`,
+    );
+    const negativeSubCentPrice = await attemptAs(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(${saleId}, ${sql.json([{ sale_item_id: saleItemId, unit_price: -0.01 }])}, 0, null)`,
+    );
+    // jsonb arguments that are not an array of objects at all.
+    const objectItems = await attemptAs(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(${saleId}, ${sql.json({})}, 0, null)`,
+    );
+    const scalarItems = await attemptAs(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(${saleId}, ${sql.json("abc")}, 0, null)`,
+    );
+    const nullItems = await attemptAs(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(${saleId}, null, 0, null)`,
+    );
+    const scalarElements = await attemptAs(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(${saleId}, ${sql.json([1, 2])}, 0, null)`,
+    );
+    // numeric NaN / Infinity are valid Postgres numerics a direct RPC caller
+    // could send as the discount; both must die as FN004, not slip through.
+    const nanDiscount = await attemptAs(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(${saleId}, ${sql.json([{ sale_item_id: saleItemId, unit_price: 500 }])}, 'NaN', null)`,
+    );
+    const infiniteDiscount = await attemptAs(owner.id, (sql) =>
+      sql`select public.update_appointment_sale_pricing(${saleId}, ${sql.json([{ sale_item_id: saleItemId, unit_price: 500 }])}, 'Infinity', null)`,
+    );
+    for (const outcome of [
+      empty,
+      badUuid,
+      stringPrice,
+      subCentPrice,
+      hugePrice,
+      subCentDiscount,
+      negativeSubCentPrice,
+      objectItems,
+      scalarItems,
+      nullItems,
+      scalarElements,
+      nanDiscount,
+      infiniteDiscount,
+    ]) {
+      expect(outcome.ok).toBe(false);
+      if (!outcome.ok) expect(outcome.code).toBe("FN004");
+    }
+    expect(await snapshot(saleId)).toEqual(before);
   });
 });
 
@@ -505,11 +928,14 @@ describe("privacy / read model", () => {
 
   it("the read model shape has no customer/staff PII or raw user ids", async () => {
     const { appointmentId } = await makeCompletedAppointment(500);
-    await asAuthenticatedUser(owner.id, (sql) => sql`select public.get_or_create_appointment_sale(${appointmentId})`);
+    // The sale id comes from the RPC's own return value: the signed-in role
+    // has NO table privilege on appointment_sales (full lockdown by design),
+    // so a direct subselect on it from inside this role would be denied.
+    const [sale] = await asAuthenticatedUser(owner.id, (sql) =>
+      sql<{ id: string }[]>`select * from public.get_or_create_appointment_sale(${appointmentId})`,
+    );
     await asAuthenticatedUser(owner.id, (sql) =>
-      sql`select public.record_appointment_payment(
-        (select id from appointment_sales where appointment_id = ${appointmentId}),
-        100, 'cash', now(), 'a note', ${crypto.randomUUID()})`,
+      sql`select public.record_appointment_payment(${sale!.id}, 100, 'cash', now(), 'a note', ${crypto.randomUUID()})`,
     );
     const [row] = await asAuthenticatedUser(owner.id, (sql) =>
       sql<{ get_appointment_sale_for_appointment: Record<string, unknown> }[]>`

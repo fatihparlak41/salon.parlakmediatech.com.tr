@@ -325,6 +325,19 @@ async function cleanupTenantsInner(tenantIds: string[]): Promise<void> {
   // its composite FK (consumed_by_customer_id, tenant_id) blocks a plain
   // customers delete once a code has been redeemed.
   await testDb`delete from customer_account_pairing_codes where tenant_id in ${testDb(tenantIds)}`;
+  // Faz FIN.1A: payments -> appointment_sale_items -> appointment_sales
+  // hold NO ACTION FKs into appointment_items / appointments / customers /
+  // branches, so they must go before every one of those. Each has its own
+  // tenant_id column. Guarded on purpose: migration 20260929120000 is not
+  // applied to every database this helper runs against (e.g. DEV until the
+  // release), and an unconditional delete would fail EVERY test file's
+  // teardown there with "relation does not exist".
+  const [finance] = await testDb<{ present: boolean }[]>`select to_regclass('public.appointment_sales') is not null as present`;
+  if (finance?.present) {
+    await testDb`delete from payments where tenant_id in ${testDb(tenantIds)}`;
+    await testDb`delete from appointment_sale_items where tenant_id in ${testDb(tenantIds)}`;
+    await testDb`delete from appointment_sales where tenant_id in ${testDb(tenantIds)}`;
+  }
   await testDb`delete from appointment_items where tenant_id in ${testDb(tenantIds)}`;
   await testDb`delete from appointments where tenant_id in ${testDb(tenantIds)}`;
   await testDb`delete from staff_schedule_exceptions where tenant_id in ${testDb(tenantIds)}`;

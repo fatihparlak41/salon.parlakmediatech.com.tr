@@ -31,9 +31,9 @@ import {
   getOrCreateAppointmentSaleAction,
   recordAppointmentPaymentAction,
   voidAppointmentPaymentAction,
-  adjustAppointmentSaleItemPriceAction,
-  adjustAppointmentSaleDiscountAction,
+  updateAppointmentSalePricingAction,
   type RecordAppointmentPaymentInput,
+  type UpdateAppointmentSalePricingInput,
 } from "@/lib/modules/finance/actions";
 
 const STATUS_LABELS_TR: Record<AppointmentFinanceSummary["status"], string> = {
@@ -475,46 +475,37 @@ function AdjustPanel({
   );
   const [discount, setDiscount] = useState(summary.discountAmount.toFixed(2));
   const [reason, setReason] = useState("");
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  // Sequential, not parallel: each RPC re-locks and re-reads the sale
-  // row, so firing them together would just serialize at the DB anyway
-  // — doing it here keeps the first real error visible instead of a
-  // racy mix of partial results.
-  async function handleSave() {
-    setPending(true);
-    setError(null);
+  // Faz FIN.1A Owner review — ONE atomic Server Action call for the
+  // whole "Kaydet" click, sending the COMPLETE desired item set (every
+  // item, not just the ones the user actually touched — a diff/patch
+  // shape would let the DB RPC's own "must supply exactly the sale's
+  // current items" check reject a save that only touched one field).
+  // This replaces an earlier sequential per-item-price-then-discount
+  // call chain, which could leave a sale partially edited if a later
+  // call in the sequence failed after an earlier one had already
+  // succeeded — unacceptable for one visible "Kaydet" action.
+  const [state, action, isPending] = useActionState(
+    async (prevState: ActionResult<null> | null, input: UpdateAppointmentSalePricingInput) => {
+      const result = await updateAppointmentSalePricingAction(prevState, input);
+      if (result.success) onSaved();
+      return result;
+    },
+    null,
+  );
 
-    for (const item of summary.items) {
-      const newPrice = prices[item.id];
-      if (newPrice === undefined || Number(newPrice) === item.unitPrice) continue;
-      const result = await adjustAppointmentSaleItemPriceAction(null, {
-        saleItemId: item.id,
-        unitPrice: Number(newPrice),
-      });
-      if (!result.success) {
-        setError(result.error.message);
-        setPending(false);
-        return;
-      }
-    }
-
-    if (Number(discount) !== summary.discountAmount) {
-      const result = await adjustAppointmentSaleDiscountAction(null, {
+  function handleSave() {
+    startTransition(() =>
+      action({
         saleId: summary.id,
+        items: summary.items.map((item) => ({
+          saleItemId: item.id,
+          unitPrice: Number(prices[item.id] ?? item.unitPrice),
+        })),
         discountAmount: Number(discount),
-        reason: reason.trim() || undefined,
-      });
-      if (!result.success) {
-        setError(result.error.message);
-        setPending(false);
-        return;
-      }
-    }
-
-    setPending(false);
-    onSaved();
+        discountReason: reason.trim() || undefined,
+      }),
+    );
   }
 
   return (
@@ -533,6 +524,7 @@ function AdjustPanel({
               className="h-8 w-28 text-right"
               value={prices[item.id] ?? ""}
               onChange={(e) => setPrices((prev) => ({ ...prev, [item.id]: e.target.value }))}
+              disabled={isPending}
             />
           </div>
         ))}
@@ -542,27 +534,41 @@ function AdjustPanel({
         <Label htmlFor="sale-discount" className="text-xs">
           İndirim ({summary.currency})
         </Label>
-        <Input id="sale-discount" inputMode="decimal" className="h-8" value={discount} onChange={(e) => setDiscount(e.target.value)} />
+        <Input
+          id="sale-discount"
+          inputMode="decimal"
+          className="h-8"
+          value={discount}
+          onChange={(e) => setDiscount(e.target.value)}
+          disabled={isPending}
+        />
       </div>
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="discount-reason" className="text-xs">
           İndirim nedeni (opsiyonel)
         </Label>
-        <Input id="discount-reason" className="h-8" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} />
+        <Input
+          id="discount-reason"
+          className="h-8"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          maxLength={500}
+          disabled={isPending}
+        />
       </div>
 
-      {error && (
+      {state && !state.success && (
         <p className="text-destructive text-sm" role="alert">
-          {error}
+          {state.error.message}
         </p>
       )}
 
       <div className="flex gap-2">
-        <Button type="button" size="sm" disabled={pending} onClick={handleSave}>
-          {pending ? "Kaydediliyor…" : "Kaydet"}
+        <Button type="button" size="sm" disabled={isPending} onClick={handleSave}>
+          {isPending ? "Kaydediliyor…" : "Kaydet"}
         </Button>
-        <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={onClose}>
+        <Button type="button" size="sm" variant="ghost" disabled={isPending} onClick={onClose}>
           Vazgeç
         </Button>
       </div>

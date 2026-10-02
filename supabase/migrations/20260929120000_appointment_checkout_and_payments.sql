@@ -143,7 +143,7 @@ create table public.appointment_sale_items (
 );
 
 comment on table public.appointment_sale_items is
-  'Faz FIN.1A. What was actually charged per appointment_item, snapshotted once at checkout creation (service name, actual performer, unit price) — independent of later edits to the service catalog or staff assignment. unit_price is editable by finance.manage before settlement (private.adjust_appointment_sale_item_price); there is no per-line discount, by design — see the migration header.';
+  'Faz FIN.1A. What was actually charged per appointment_item, snapshotted once at checkout creation (service name, actual performer, unit price) — independent of later edits to the service catalog or staff assignment. unit_price is editable by finance.manage before settlement, atomically alongside every other item and the sale-level discount (private.update_appointment_sale_pricing); there is no per-line discount, by design — see the migration header.';
 
 create table public.payments (
   id uuid primary key default gen_random_uuid(),
@@ -380,103 +380,22 @@ comment on function private.get_or_create_appointment_sale(uuid) is
 revoke execute on function private.get_or_create_appointment_sale(uuid) from public;
 
 -- =====================================================================
--- 5. PRICE / DISCOUNT EDITING
+-- 5. PRICE / DISCOUNT EDITING — ONE atomic RPC (Owner review: the UI's
+--    single "Kaydet" action must mean every requested item price AND
+--    the discount commit together, or nothing commits — a sequence of
+--    independent per-item RPC calls followed by a separate discount
+--    call could leave a sale partially edited if a later call in the
+--    sequence failed after an earlier one already succeeded). This
+--    replaces an earlier two-RPC draft (adjust_appointment_sale_item_
+--    price + adjust_appointment_sale_discount) outright — FIN.1A was
+--    never released, so there is no reason to keep three competing
+--    write paths for the same V1 operation.
 -- =====================================================================
-create function private.adjust_appointment_sale_item_price(p_sale_item_id uuid, p_unit_price numeric)
-returns public.appointment_sale_items
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_tenant_id uuid;
-  v_sale_id uuid;
-  v_sale_status text;
-  v_discount numeric(12, 2);
-  v_subtotal numeric(12, 2);
-  v_posted numeric(12, 2);
-  v_item public.appointment_sale_items;
-begin
-  if auth.uid() is null then
-    raise exception 'authentication required' using errcode = 'FN001';
-  end if;
-
-  select asi.tenant_id, asi.sale_id into v_tenant_id, v_sale_id
-  from public.appointment_sale_items asi
-  where asi.id = p_sale_item_id;
-
-  if v_tenant_id is null then
-    raise exception 'sale item not found' using errcode = 'FN003';
-  end if;
-
-  if not private.has_permission(v_tenant_id, 'finance.manage') then
-    raise exception 'finance.manage required' using errcode = 'FN002';
-  end if;
-
-  select status, discount_amount into v_sale_status, v_discount
-  from public.appointment_sales
-  where id = v_sale_id
-  for update;
-
-  if v_sale_status = 'voided' then
-    raise exception 'sale is voided' using errcode = 'FN008';
-  end if;
-
-  if p_unit_price is null or p_unit_price < 0 then
-    raise exception 'invalid price' using errcode = 'FN004';
-  end if;
-
-  update public.appointment_sale_items
-  set unit_price = p_unit_price, updated_at = now()
-  where id = p_sale_item_id
-  returning * into v_item;
-
-  select coalesce(sum(unit_price), 0) into v_subtotal
-  from public.appointment_sale_items
-  where sale_id = v_sale_id;
-
-  if v_discount > v_subtotal then
-    raise exception 'discount would exceed the new subtotal' using errcode = 'FN004';
-  end if;
-
-  select coalesce(sum(amount), 0) into v_posted
-  from public.payments
-  where appointment_sale_id = v_sale_id and status = 'posted';
-
-  -- V1 safe-editing rule: a price drop may never leave the sale owing
-  -- LESS than what is already collected (e.g. collected=2500, this edit
-  -- would make total=2000 -> rejected). The sale is already locked FOR
-  -- UPDATE above, so this read of v_posted cannot race a concurrent
-  -- record_appointment_payment call.
-  if v_subtotal - v_discount < v_posted then
-    raise exception 'new total would be less than the amount already collected' using errcode = 'FN004';
-  end if;
-
-  update public.appointment_sales
-  set subtotal = v_subtotal,
-      status = private.compute_appointment_sale_status(v_subtotal - v_discount, v_posted),
-      updated_at = now()
-  where id = v_sale_id;
-
-  perform private.log_audit_event(
-    v_tenant_id, 'finance.sale_updated', 'appointment_sale_item', p_sale_item_id,
-    null,
-    jsonb_build_object('sale_id', v_sale_id, 'unit_price', p_unit_price)
-  );
-
-  return v_item;
-end;
-$$;
-
-comment on function private.adjust_appointment_sale_item_price(uuid, numeric) is
-  'Faz FIN.1A. Changes what was actually charged for one sale item (never appointment_items.price, the immutable booking snapshot). Requires finance.manage. Refused once the sale is voided (FN008). Recomputes subtotal/status on the parent sale in the same statement; rejects a price drop that would leave the existing sale-level discount exceeding the new subtotal, and rejects any edit whose resulting total would fall below the amount already collected (FN004).';
-
-revoke execute on function private.adjust_appointment_sale_item_price(uuid, numeric) from public;
-
-create function private.adjust_appointment_sale_discount(
+create function private.update_appointment_sale_pricing(
   p_sale_id uuid,
+  p_items jsonb,
   p_discount_amount numeric,
-  p_reason text default null
+  p_discount_reason text default null
 )
 returns public.appointment_sales
 language plpgsql
@@ -485,16 +404,36 @@ set search_path = ''
 as $$
 declare
   v_tenant_id uuid;
-  v_subtotal numeric(12, 2);
-  v_status text;
+  v_sale_status text;
   v_posted numeric(12, 2);
+  -- Deliberately UNBOUNDED numeric (not numeric(12,2)/(10,2)) for every
+  -- value being validated below: assigning to a bounded variable would
+  -- silently round (or raise a raw 22003 overflow) BEFORE the explicit
+  -- checks that turn a bad value into a stable FN004 could run.
+  v_proposed_subtotal numeric;
+  v_proposed_total numeric;
+  v_item jsonb;
+  v_item_id uuid;
+  v_item_price numeric;
+  -- Parsed (canonical) ids seen so far — duplicate detection MUST run on
+  -- the parsed uuid, never on the raw text: '...ABC...', '...abc...',
+  -- '{...abc...}' and the hyphen-less form all cast to the same uuid.
+  v_seen uuid[] := '{}';
+  v_supplied_count int;
+  v_existing_count int;
+  v_before jsonb;
+  v_after jsonb;
   v_sale public.appointment_sales;
 begin
   if auth.uid() is null then
     raise exception 'authentication required' using errcode = 'FN001';
   end if;
 
-  select tenant_id, subtotal, status into v_tenant_id, v_subtotal, v_status
+  -- Locks the sale for the whole function: every read below (posted
+  -- total, existing item set) is consistent with what gets written at
+  -- the end, and a concurrent record_appointment_payment/void/another
+  -- pricing edit on the same sale serializes here.
+  select tenant_id, status into v_tenant_id, v_sale_status
   from public.appointment_sales
   where id = p_sale_id
   for update;
@@ -507,19 +446,95 @@ begin
     raise exception 'finance.manage required' using errcode = 'FN002';
   end if;
 
-  if v_status = 'voided' then
+  if v_sale_status = 'voided' then
     raise exception 'sale is voided' using errcode = 'FN008';
   end if;
 
-  if p_discount_amount is null or p_discount_amount < 0 then
+  -- Two separate ifs on purpose: SQL does not guarantee OR-operand
+  -- evaluation order, and jsonb_array_length on a non-array would raise
+  -- a raw 22023 instead of this stable FN004.
+  if p_items is null or jsonb_typeof(p_items) != 'array' then
+    raise exception 'items must be a non-empty array' using errcode = 'FN004';
+  end if;
+  if jsonb_array_length(p_items) = 0 then
+    raise exception 'items must be a non-empty array' using errcode = 'FN004';
+  end if;
+
+  v_supplied_count := jsonb_array_length(p_items);
+
+  -- Validate EVERY supplied item before writing anything: a well-formed
+  -- uuid (each seen at most once, compared as parsed uuids), a numeric
+  -- unit_price >= 0, and it must belong to THIS sale (and therefore this
+  -- tenant — appointment_sale_items.tenant_id is set from the same
+  -- tenant at creation, checked again here as defense in depth, never
+  -- trusted from the client).
+  for v_item in select * from jsonb_array_elements(p_items)
+  loop
+    begin
+      v_item_id := (v_item ->> 'sale_item_id')::uuid;
+    exception when others then
+      raise exception 'invalid sale item id' using errcode = 'FN004';
+    end;
+
+    if v_item_id is null then
+      raise exception 'invalid sale item id' using errcode = 'FN004';
+    end if;
+
+    if v_item_id = any (v_seen) then
+      raise exception 'duplicate sale item id supplied' using errcode = 'FN004';
+    end if;
+    v_seen := array_append(v_seen, v_item_id);
+
+    if v_item -> 'unit_price' is null or jsonb_typeof(v_item -> 'unit_price') != 'number' then
+      raise exception 'invalid unit price' using errcode = 'FN004';
+    end if;
+    -- >= 0, within appointment_sale_items.unit_price's numeric(10,2)
+    -- range, and at most 2 decimals: a value like 10.005 would otherwise
+    -- be silently rounded per ITEM at write time while the subtotal is
+    -- summed from the UNROUNDED values, leaving appointment_sales.subtotal
+    -- different from the sum of the stored item prices.
+    v_item_price := (v_item ->> 'unit_price')::numeric;
+    if v_item_price < 0 or v_item_price > 99999999.99 or v_item_price != round(v_item_price, 2) then
+      raise exception 'invalid unit price' using errcode = 'FN004';
+    end if;
+
+    if not exists (
+      select 1 from public.appointment_sale_items
+      where id = v_item_id and sale_id = p_sale_id and tenant_id = v_tenant_id
+    ) then
+      raise exception 'sale item does not belong to this sale' using errcode = 'FN004';
+    end if;
+  end loop;
+
+  -- Exact-set-match: every supplied item is already confirmed distinct
+  -- and confirmed to belong to this sale (a subset of its real items);
+  -- equal cardinality with the sale's real item count therefore proves
+  -- the supplied set IS the sale's real item set — no missing item can
+  -- silently survive with its old price, no stale/partial client state
+  -- can rewrite only part of the checkout.
+  select count(*) into v_existing_count
+  from public.appointment_sale_items
+  where sale_id = p_sale_id;
+
+  if v_supplied_count != v_existing_count then
+    raise exception 'must supply exactly the sale''s current items' using errcode = 'FN004';
+  end if;
+
+  select coalesce(sum((elem ->> 'unit_price')::numeric), 0) into v_proposed_subtotal
+  from jsonb_array_elements(p_items) elem;
+
+  -- Same 2-decimal rule as the item prices (a sub-cent discount would be
+  -- silently rounded at write time while the checks below used the
+  -- unrounded value).
+  if p_discount_amount is null or p_discount_amount < 0 or p_discount_amount != round(p_discount_amount, 2) then
     raise exception 'invalid discount' using errcode = 'FN004';
   end if;
 
-  if p_discount_amount > v_subtotal then
+  if p_discount_amount > v_proposed_subtotal then
     raise exception 'discount exceeds subtotal' using errcode = 'FN004';
   end if;
 
-  if p_reason is not null and char_length(p_reason) > 500 then
+  if p_discount_reason is not null and char_length(p_discount_reason) > 500 then
     raise exception 'reason too long' using errcode = 'FN004';
   end if;
 
@@ -527,34 +542,67 @@ begin
   from public.payments
   where appointment_sale_id = p_sale_id and status = 'posted';
 
-  -- Same V1 safe-editing rule as adjust_appointment_sale_item_price: a
-  -- bigger discount may never leave the sale owing LESS than what is
-  -- already collected. Sale is already locked FOR UPDATE above.
-  if v_subtotal - p_discount_amount < v_posted then
+  v_proposed_total := v_proposed_subtotal - p_discount_amount;
+
+  -- V1 safe-editing rule: this edit may never leave the sale owing LESS
+  -- than what is already collected (e.g. collected=2500, this edit
+  -- would make total=2000 -> rejected).
+  if v_proposed_total < v_posted then
     raise exception 'new total would be less than the amount already collected' using errcode = 'FN004';
   end if;
 
+  -- Every validation has passed. From here on this is pure write —
+  -- BEFORE snapshot for the audit event, captured just ahead of it.
+  select jsonb_build_object(
+    'subtotal', s.subtotal,
+    'discountAmount', s.discount_amount,
+    'items', (
+      select coalesce(jsonb_agg(jsonb_build_object('id', id, 'unitPrice', unit_price) order by id), '[]'::jsonb)
+      from public.appointment_sale_items where sale_id = p_sale_id
+    )
+  ) into v_before
+  from public.appointment_sales s
+  where s.id = p_sale_id;
+
+  update public.appointment_sale_items asi
+  set unit_price = (elem ->> 'unit_price')::numeric,
+      updated_at = now()
+  from jsonb_array_elements(p_items) elem
+  where asi.id = (elem ->> 'sale_item_id')::uuid
+    and asi.sale_id = p_sale_id;
+
   update public.appointment_sales
-  set discount_amount = p_discount_amount,
-      status = private.compute_appointment_sale_status(v_subtotal - p_discount_amount, v_posted),
+  set subtotal = v_proposed_subtotal,
+      discount_amount = p_discount_amount,
+      status = private.compute_appointment_sale_status(v_proposed_total, v_posted),
       updated_at = now()
   where id = p_sale_id
   returning * into v_sale;
 
+  select jsonb_build_object(
+    'subtotal', v_sale.subtotal,
+    'discountAmount', v_sale.discount_amount,
+    'items', (
+      select coalesce(jsonb_agg(jsonb_build_object('id', id, 'unitPrice', unit_price) order by id), '[]'::jsonb)
+      from public.appointment_sale_items where sale_id = p_sale_id
+    ),
+    'discountReason', p_discount_reason
+  ) into v_after;
+
+  -- ONE audit event for the whole atomic save, not one per line item.
   perform private.log_audit_event(
     v_tenant_id, 'finance.sale_updated', 'appointment_sale', p_sale_id,
-    null,
-    jsonb_build_object('discount_amount', p_discount_amount, 'reason', p_reason)
+    v_before, v_after
   );
 
   return v_sale;
 end;
 $$;
 
-comment on function private.adjust_appointment_sale_discount(uuid, numeric, text) is
-  'Faz FIN.1A. Sets the ONE sale-level discount (V1 authoritative model — see migration header). Requires finance.manage. 0 <= discount <= subtotal, enforced here in addition to the table CHECK (so the error is a stable FN004, not a raw constraint violation). Refused once the sale is voided (FN008), and refused if the resulting total would fall below the amount already collected (FN004). Recomputes status in the same statement.';
+comment on function private.update_appointment_sale_pricing(uuid, jsonb, numeric, text) is
+  'Faz FIN.1A. The ONE atomic pricing-save RPC — replaces an earlier draft''s separate per-item-price and discount RPCs. p_items must be the COMPLETE desired set of the sale''s item prices (every current sale_item_id exactly once, each with a numeric unit_price >= 0, at most 2 decimals, within numeric(10,2) range; the discount likewise at most 2 decimals) — validated entirely (shape, precision, tenancy, no duplicates, no missing/foreign items) before any row is written, so a rejected call changes zero rows: one Postgres function call is one implicit transaction, so any raise exception anywhere above rolls back every write this call would have made. Never touches appointment_items.price (the immutable booking snapshot). Requires finance.manage. Refused once the sale is voided (FN008), and refused if the resulting total would fall below the amount already collected (FN004). Writes exactly one finance.sale_updated audit event for the whole save.';
 
-revoke execute on function private.adjust_appointment_sale_discount(uuid, numeric, text) from public;
+revoke execute on function private.update_appointment_sale_pricing(uuid, jsonb, numeric, text) from public;
 
 -- =====================================================================
 -- 6. PAYMENTS
@@ -843,26 +891,18 @@ as $$
   select private.get_or_create_appointment_sale(p_appointment_id);
 $$;
 
-create function public.adjust_appointment_sale_item_price(p_sale_item_id uuid, p_unit_price numeric)
-returns public.appointment_sale_items
-language sql
-security definer
-set search_path = ''
-as $$
-  select private.adjust_appointment_sale_item_price(p_sale_item_id, p_unit_price);
-$$;
-
-create function public.adjust_appointment_sale_discount(
+create function public.update_appointment_sale_pricing(
   p_sale_id uuid,
+  p_items jsonb,
   p_discount_amount numeric,
-  p_reason text default null
+  p_discount_reason text default null
 )
 returns public.appointment_sales
 language sql
 security definer
 set search_path = ''
 as $$
-  select private.adjust_appointment_sale_discount(p_sale_id, p_discount_amount, p_reason);
+  select private.update_appointment_sale_pricing(p_sale_id, p_items, p_discount_amount, p_discount_reason);
 $$;
 
 create function public.record_appointment_payment(
@@ -901,15 +941,13 @@ as $$
 $$;
 
 revoke execute on function public.get_or_create_appointment_sale(uuid) from public, anon;
-revoke execute on function public.adjust_appointment_sale_item_price(uuid, numeric) from public, anon;
-revoke execute on function public.adjust_appointment_sale_discount(uuid, numeric, text) from public, anon;
+revoke execute on function public.update_appointment_sale_pricing(uuid, jsonb, numeric, text) from public, anon;
 revoke execute on function public.record_appointment_payment(uuid, numeric, text, timestamptz, text, uuid) from public, anon;
 revoke execute on function public.void_appointment_payment(uuid, text) from public, anon;
 revoke execute on function public.get_appointment_sale_for_appointment(uuid) from public, anon;
 
 grant execute on function public.get_or_create_appointment_sale(uuid) to authenticated;
-grant execute on function public.adjust_appointment_sale_item_price(uuid, numeric) to authenticated;
-grant execute on function public.adjust_appointment_sale_discount(uuid, numeric, text) to authenticated;
+grant execute on function public.update_appointment_sale_pricing(uuid, jsonb, numeric, text) to authenticated;
 grant execute on function public.record_appointment_payment(uuid, numeric, text, timestamptz, text, uuid) to authenticated;
 grant execute on function public.void_appointment_payment(uuid, text) to authenticated;
 grant execute on function public.get_appointment_sale_for_appointment(uuid) to authenticated;
