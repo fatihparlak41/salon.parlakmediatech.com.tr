@@ -338,6 +338,15 @@ async function cleanupTenantsInner(tenantIds: string[]): Promise<void> {
     await testDb`delete from appointment_sale_items where tenant_id in ${testDb(tenantIds)}`;
     await testDb`delete from appointment_sales where tenant_id in ${testDb(tenantIds)}`;
   }
+  // Faz FIN.1B.1: expense_payments -> expenses hold NO ACTION FKs into tenants, branches and each other (no delete
+  // trigger exists, so a plain delete is safe here), and must go before branches and tenants. Guarded for the same
+  // reason as the FIN.1A block above: migration 20261003090000 is not applied to every database this helper runs
+  // against, and an unconditional delete would fail every test file's teardown there.
+  const [expenseTables] = await testDb<{ present: boolean }[]>`select to_regclass('public.expenses') is not null as present`;
+  if (expenseTables?.present) {
+    await testDb`delete from expense_payments where tenant_id in ${testDb(tenantIds)}`;
+    await testDb`delete from expenses where tenant_id in ${testDb(tenantIds)}`;
+  }
   await testDb`delete from appointment_items where tenant_id in ${testDb(tenantIds)}`;
   await testDb`delete from appointments where tenant_id in ${testDb(tenantIds)}`;
   await testDb`delete from staff_schedule_exceptions where tenant_id in ${testDb(tenantIds)}`;
