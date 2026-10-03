@@ -305,6 +305,51 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   "public.get_staff_link_for_membership",
 ];
 
+// Faz FIN.1B.1 test fix — the finance modules are schema ERAS, not part of the
+// base surface: DEV historically has neither, PROD has FIN.1A (20260929120000),
+// and a database carrying FIN.1B.1 (20261003090000) has both. The expected
+// authenticated function set below is therefore BASE plus the finance wrappers
+// OF THE ERAS THAT EXIST (read from the catalog), so the same file passes on a
+// pre-finance, a FIN.1A and a FIN.1A+FIN.1B.1 schema. This is deliberately NOT a
+// way to hide a missing finance object: once an era's sentinel table exists,
+// EVERY wrapper of that era must be present and granted (the existing
+// expect(actual.has(fn)).toBe(true) loop), and a wrapper whose era is absent is
+// an unexpected grant. The finance-specific suites (e.g.
+// expense-schema-and-security.test.ts) additionally assert the existence and
+// grants of their own objects unconditionally. Test-only: no finance behaviour
+// changes.
+const FIN_1A_AUTHENTICATED_FUNCTIONS = [
+  "public.get_or_create_appointment_sale",
+  "public.update_appointment_sale_pricing",
+  "public.record_appointment_payment",
+  "public.void_appointment_payment",
+  "public.get_appointment_sale_for_appointment",
+];
+
+const FIN_1B1_AUTHENTICATED_FUNCTIONS = [
+  "public.list_expense_categories",
+  "public.get_expense_overview",
+  "public.list_expenses",
+  "public.get_expense",
+  "public.create_expense",
+  "public.update_expense",
+  "public.cancel_expense",
+  "public.record_expense_payment",
+  "public.void_expense_payment",
+];
+
+// The fully locked-down finance ledgers: RLS on, zero policies, no privilege at
+// all for any API role. Checked only for the eras that exist.
+const FIN_1A_LOCKED_DOWN_TABLES = ["appointment_sales", "appointment_sale_items", "payments"];
+const FIN_1B1_LOCKED_DOWN_TABLES = ["expense_categories", "expenses", "expense_payments"];
+
+async function readFinanceEra(): Promise<{ fin1a: boolean; fin1b1: boolean }> {
+  const [row] = await testDb<{ fin1a: boolean; fin1b1: boolean }[]>`
+    select to_regclass('public.appointment_sales') is not null as fin1a,
+           to_regclass('public.expenses') is not null as fin1b1`;
+  return row!;
+}
+
 // Phase 2F's public read surface — the only functions anon has ever
 // been granted execute on in this project. Deliberately identical to
 // the read-only entries in AUTHENTICATED_FUNCTION_WHITELIST above — see
@@ -630,19 +675,51 @@ describe("security grants regression", () => {
     expect(Array.from(byTable.keys()), "unexpected tables with authenticated grants").toEqual([]);
   });
 
-  it("authenticated's function execute grants exactly match the whitelist", async () => {
+  it("authenticated's function execute grants exactly match the whitelist (finance wrappers pinned for the schema eras that exist)", async () => {
     const data = await testDb<FunctionGrantRow[]>`select * from security_audit_function_grants()`;
+    const era = await readFinanceEra();
+
+    // FIN.1B.1 is built on FIN.1A: a schema with expenses but without appointment_sales is not a real era.
+    expect(era.fin1b1 && !era.fin1a, "FIN.1B.1 objects without FIN.1A").toBe(false);
+
+    const expectedFunctions = [
+      ...AUTHENTICATED_FUNCTION_WHITELIST,
+      ...(era.fin1a ? FIN_1A_AUTHENTICATED_FUNCTIONS : []),
+      ...(era.fin1b1 ? FIN_1B1_AUTHENTICATED_FUNCTIONS : []),
+    ];
 
     const actual = new Set(
       data.filter((g) => g.grantee === "authenticated").map((g) => `${g.schema_name}.${g.function_name}`),
     );
 
-    for (const fn of AUTHENTICATED_FUNCTION_WHITELIST) {
+    for (const fn of expectedFunctions) {
       expect(actual.has(fn), `expected authenticated to have execute on ${fn}`).toBe(true);
       actual.delete(fn);
     }
 
     expect(Array.from(actual), "unexpected authenticated execute grants").toEqual([]);
+  });
+
+  it("the finance ledger tables that exist on this schema are fully locked down (RLS on, zero policies, no API-role privilege)", async () => {
+    const era = await readFinanceEra();
+    const tables = [...(era.fin1a ? FIN_1A_LOCKED_DOWN_TABLES : []), ...(era.fin1b1 ? FIN_1B1_LOCKED_DOWN_TABLES : [])];
+
+    const rls = await testDb<RlsStatusRow[]>`select * from security_audit_rls_status()`;
+    const grants = await testDb<TableGrantRow[]>`select * from security_audit_table_grants()`;
+
+    for (const table of tables) {
+      const row = rls.find((r) => r.table_name === table);
+      expect(row, `${table} must exist on this schema era`).toBeDefined();
+      expect(row!.rls_enabled, `${table} must have RLS enabled`).toBe(true);
+      // security_audit_rls_status() returns the policy count as bigint, which postgres.js hands back as a STRING.
+      // The older "at least one policy" test above compares it with === 0 and therefore can never fire; compare
+      // numerically here so the zero-policy lockdown posture is asserted for real.
+      expect(Number(row!.policy_count), `${table} must have zero policies (access is RPC-only)`).toBe(0);
+      const apiGrants = grants.filter(
+        (g) => g.table_name === table && ["anon", "authenticated", "service_role", "PUBLIC", "public"].includes(g.grantee),
+      );
+      expect(apiGrants, `${table} must grant nothing to any API role`).toEqual([]);
+    }
   });
 
   describe("booking_gateway (Phase 2F.2)", () => {
