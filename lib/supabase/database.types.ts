@@ -686,6 +686,193 @@ export type Database = {
           },
         ]
       }
+      expense_categories: {
+        Row: {
+          created_at: string
+          display_order: number
+          is_active: boolean
+          key: string
+          kind: string
+        }
+        Insert: {
+          created_at?: string
+          display_order: number
+          is_active?: boolean
+          key: string
+          kind: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          is_active?: boolean
+          key?: string
+          kind?: string
+        }
+        Relationships: []
+      }
+      expense_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          expense_id: string
+          id: string
+          idempotency_key: string
+          method: string
+          note: string | null
+          paid_at: string
+          status: string
+          tenant_id: string
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by?: string | null
+          expense_id: string
+          id?: string
+          idempotency_key: string
+          method: string
+          note?: string | null
+          paid_at?: string
+          status?: string
+          tenant_id: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          expense_id?: string
+          id?: string
+          idempotency_key?: string
+          method?: string
+          note?: string | null
+          paid_at?: string
+          status?: string
+          tenant_id?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_payments_expense_fk"
+            columns: ["expense_id", "tenant_id"]
+            isOneToOne: false
+            referencedRelation: "expenses"
+            referencedColumns: ["id", "tenant_id"]
+          },
+          {
+            foreignKeyName: "expense_payments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expenses: {
+        Row: {
+          amount: number
+          branch_id: string | null
+          cancel_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          category_key: string
+          created_at: string
+          created_by: string | null
+          currency: string
+          description: string
+          due_date: string | null
+          expense_date: string
+          id: string
+          idempotency_fingerprint: string | null
+          idempotency_key: string | null
+          note: string | null
+          settlement_events: number
+          status: string
+          tenant_id: string
+          updated_at: string
+          vendor_name: string | null
+          version: number
+        }
+        Insert: {
+          amount: number
+          branch_id?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          category_key: string
+          created_at?: string
+          created_by?: string | null
+          currency: string
+          description: string
+          due_date?: string | null
+          expense_date: string
+          id?: string
+          idempotency_fingerprint?: string | null
+          idempotency_key?: string | null
+          note?: string | null
+          settlement_events?: number
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          vendor_name?: string | null
+          version?: number
+        }
+        Update: {
+          amount?: number
+          branch_id?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          category_key?: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          description?: string
+          due_date?: string | null
+          expense_date?: string
+          id?: string
+          idempotency_fingerprint?: string | null
+          idempotency_key?: string | null
+          note?: string | null
+          settlement_events?: number
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          vendor_name?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expenses_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_category_key_fkey"
+            columns: ["category_key"]
+            isOneToOne: false
+            referencedRelation: "expense_categories"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "expenses_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       features: {
         Row: {
           category: string | null
@@ -2200,6 +2387,10 @@ export type Database = {
         Args: { p_job_id: string; p_lock_token: string }
         Returns: boolean
       }
+      cancel_expense: {
+        Args: { p_expense_id: string; p_reason: string }
+        Returns: Json
+      }
       cancel_my_appointment: {
         Args: { p_appointment_id: string }
         Returns: Json
@@ -2245,6 +2436,22 @@ export type Database = {
           p_tenant_id: string
         }
         Returns: string
+      }
+      create_expense: {
+        Args: {
+          p_amount: number
+          p_branch_id?: string
+          p_category_key: string
+          p_description: string
+          p_due_date?: string
+          p_expense_date: string
+          p_idempotency_key?: string
+          p_initial_payment?: Json
+          p_note?: string
+          p_tenant_id: string
+          p_vendor_name?: string
+        }
+        Returns: Json
       }
       create_guest_booking: {
         Args: {
@@ -2315,6 +2522,20 @@ export type Database = {
       }
       get_customer_account_link_status: {
         Args: { p_customer_id: string }
+        Returns: Json
+      }
+      get_expense: {
+        Args: { p_expense_id: string; p_reference_date?: string }
+        Returns: Json
+      }
+      get_expense_overview: {
+        Args: {
+          p_branch_id?: string
+          p_general_only?: boolean
+          p_month?: string
+          p_reference_date?: string
+          p_tenant_id: string
+        }
         Returns: Json
       }
       get_my_account_profile: { Args: never; Returns: Json }
@@ -2455,6 +2676,26 @@ export type Database = {
         }
         Returns: undefined
       }
+      list_expense_categories: { Args: { p_tenant_id: string }; Returns: Json }
+      list_expenses: {
+        Args: {
+          p_branch_id?: string
+          p_category_key?: string
+          p_cursor_date?: string
+          p_cursor_id?: string
+          p_from_date?: string
+          p_general_only?: boolean
+          p_include_cancelled?: boolean
+          p_limit?: number
+          p_overdue_only?: boolean
+          p_reference_date?: string
+          p_search?: string
+          p_status?: string
+          p_tenant_id: string
+          p_to_date?: string
+        }
+        Returns: Json
+      }
       list_my_devices: { Args: { p_tenant_id: string }; Returns: Json }
       list_team_invitations: {
         Args: { p_tenant_id: string }
@@ -2550,6 +2791,17 @@ export type Database = {
           p_lock_token: string
           p_provider_message_id?: string
           p_skip_reason?: string
+        }
+        Returns: Json
+      }
+      record_expense_payment: {
+        Args: {
+          p_amount: number
+          p_expense_id: string
+          p_idempotency_key?: string
+          p_method: string
+          p_note?: string
+          p_paid_at: string
         }
         Returns: Json
       }
@@ -2754,6 +3006,21 @@ export type Database = {
         Args: { p_appointment_id: string; p_new_status: string }
         Returns: undefined
       }
+      update_expense: {
+        Args: {
+          p_amount: number
+          p_branch_id?: string
+          p_category_key: string
+          p_description: string
+          p_due_date?: string
+          p_expected_version?: number
+          p_expense_date: string
+          p_expense_id: string
+          p_note?: string
+          p_vendor_name?: string
+        }
+        Returns: Json
+      }
       update_membership_role: {
         Args: { p_membership_id: string; p_new_role_id: string }
         Returns: undefined
@@ -2801,6 +3068,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      void_expense_payment: {
+        Args: { p_payment_id: string; p_reason: string }
+        Returns: Json
       }
     }
     Enums: {

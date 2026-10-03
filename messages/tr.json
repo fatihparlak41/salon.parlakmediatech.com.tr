@@ -105,6 +105,7 @@
       "staff": "Personel",
       "team": "Ekip",
       "services": "Hizmetler",
+      "expenses": "Giderler",
       "reports": "Raporlar",
       "settings": "Ayarlar"
     },
@@ -456,6 +457,196 @@
         "description": "Rapor verileri şu anda getirilemedi. Lütfen tekrar deneyin."
       },
       "minutesFormat": "{hours}s {minutes}dk"
+    }
+  },
+  "Expenses": {
+    "title": "Giderler",
+    "description": "Kira, fatura ve malzeme gibi giderlerinizi, ödemelerini ve vadelerini takip edin.",
+    "newExpense": "Yeni gider",
+    "branchGeneral": "Genel (şubesiz)",
+    "cards": {
+      "incurred": "Bu ay gider",
+      "paid": "Bu ay ödenen",
+      "outstanding": "Toplam ödenmemiş gider bakiyesi",
+      "outstandingHint": "Seçili aydan bağımsız, güncel toplam",
+      "upcoming": "Yaklaşan vadeler",
+      "upcomingHint": "Önümüzdeki {days} gün",
+      "overdueLine": "Vadesi geçmiş: {count} gider, {amount}",
+      "overdueAction": "Göster",
+      "countLine": "{count} gider",
+      "otherCurrencies": "Diğer para birimleri",
+      "otherCurrencyLine": "{currency}: bu ay gider {incurred} · ödenen {paid} · ödenmemiş {outstanding}"
+    },
+    "status": {
+      "open": "Ödenmedi",
+      "partially_paid": "Kısmen ödendi",
+      "paid": "Ödendi",
+      "cancelled": "İptal edildi",
+      "overdue": "Vadesi geçti"
+    },
+    "kind": {
+      "fixed": "Sabit gider",
+      "variable": "Değişken gider"
+    },
+    "methods": {
+      "cash": "Nakit",
+      "card": "Kart",
+      "bank_transfer": "Havale/EFT",
+      "other": "Diğer"
+    },
+    "categories": {
+      "rent": "Kira",
+      "electricity": "Elektrik",
+      "water": "Su",
+      "internet": "İnternet",
+      "phone": "Telefon",
+      "accountant": "Muhasebe",
+      "software": "Yazılım ve abonelikler",
+      "pos_fees": "POS komisyonları",
+      "supplies": "Sarf malzeme",
+      "beauty_products": "Güzellik ürünleri",
+      "cleaning": "Temizlik",
+      "advertising": "Reklam",
+      "food": "Yiyecek ve içecek",
+      "transport": "Ulaşım",
+      "repairs": "Bakım ve onarım",
+      "other": "Diğer"
+    },
+    "filters": {
+      "previousMonth": "Önceki ay",
+      "nextMonth": "Sonraki ay",
+      "allMonths": "Tüm aylar",
+      "branch": "Şube",
+      "allBranches": "Tüm şubeler",
+      "category": "Kategori",
+      "allCategories": "Tüm kategoriler",
+      "status": "Durum",
+      "allStatuses": "Tüm durumlar",
+      "showCancelled": "İptal edilenleri göster",
+      "overdueOnly": "Vadesi geçenler",
+      "overdueOnlyHint": "Tüm aylardaki vadesi geçmiş giderler gösterilir",
+      "searchPlaceholder": "Açıklama veya tedarikçi ara",
+      "clear": "Filtreleri temizle",
+      "updating": "Güncelleniyor…"
+    },
+    "list": {
+      "dueOn": "Vade: {date}",
+      "daysOverdue": "{days} gün gecikmiş",
+      "vendor": "Tedarikçi: {name}",
+      "loadMore": "Daha fazla",
+      "loadingMore": "Yükleniyor…",
+      "loadMoreError": "Daha fazla gider yüklenemedi.",
+      "retry": "Tekrar dene",
+      "emptyTitle": "Henüz gider yok",
+      "emptyDescription": "Kira, fatura ve malzeme gibi ilk giderinizi ekleyerek başlayın.",
+      "emptyCta": "İlk gideri ekle",
+      "noResults": "Bu filtrelerle eşleşen gider bulunamadı."
+    },
+    "error": {
+      "title": "Giderler yüklenemedi",
+      "description": "Bir sorun oluştu. Lütfen tekrar deneyin.",
+      "retry": "Tekrar dene"
+    },
+    "detail": {
+      "description": "Gider bilgilerini, ödemelerini ve işlemlerini görüntüleyin.",
+      "loadError": "Gider yüklenemedi.",
+      "retry": "Tekrar dene",
+      "fields": {
+        "category": "Kategori",
+        "branch": "Şube",
+        "expenseDate": "Gider tarihi",
+        "dueDate": "Vade tarihi",
+        "vendor": "Tedarikçi",
+        "note": "Not",
+        "amount": "Tutar",
+        "paid": "Ödenen",
+        "remaining": "Kalan",
+        "cancelledAt": "İptal tarihi",
+        "cancelReason": "İptal nedeni"
+      },
+      "payments": {
+        "title": "Ödemeler",
+        "empty": "Henüz ödeme yok.",
+        "voidedReason": "İptal nedeni: {reason}"
+      },
+      "actions": {
+        "pay": "Ödeme Yap",
+        "edit": "Düzenle",
+        "cancel": "Gideri iptal et",
+        "voidPayment": "Ödemeyi iptal et"
+      },
+      "cancelBlockedHint": "Ödemesi bulunan gider iptal edilemez. Önce ödemeleri iptal edin."
+    },
+    "create": {
+      "title": "Yeni gider",
+      "description": "Gideri kaydedin; isterseniz ödemesini de hemen girin.",
+      "fields": {
+        "category": "Kategori",
+        "categoryPlaceholder": "Kategori seçin",
+        "description": "Açıklama",
+        "descriptionPlaceholder": "Örn. Ekim ayı kirası",
+        "expenseDate": "Gider tarihi",
+        "amount": "Tutar",
+        "dueDate": "Vade tarihi (opsiyonel)",
+        "branch": "Şube",
+        "vendor": "Tedarikçi (opsiyonel)",
+        "note": "Not (opsiyonel)"
+      },
+      "payNowToggle": "Hemen ödendi olarak kaydet",
+      "initialPayment": {
+        "amount": "Ödeme tutarı",
+        "method": "Ödeme yöntemi",
+        "note": "Ödeme notu (opsiyonel)"
+      },
+      "submit": "Gideri Kaydet",
+      "submitting": "Kaydediliyor…",
+      "cancel": "Vazgeç",
+      "refresh": "Yenile",
+      "validation": {
+        "categoryRequired": "Kategori seçin.",
+        "descriptionRequired": "Açıklama girin.",
+        "dateRequired": "Gider tarihi girin.",
+        "dueBeforeExpense": "Vade tarihi gider tarihinden önce olamaz."
+      }
+    },
+    "edit": {
+      "title": "Gideri düzenle",
+      "description": "Değişiklikler tüm kullanıcılar için geçerli olur.",
+      "lockedHint": "Ödeme yapıldığı için kilitli",
+      "amountFloorHint": "En az {amount} (ödenen toplam)",
+      "submit": "Değişiklikleri Kaydet",
+      "submitting": "Kaydediliyor…",
+      "cancel": "Vazgeç",
+      "refresh": "Yenile"
+    },
+    "payment": {
+      "title": "Ödeme Yap",
+      "remaining": "Kalan: {amount}",
+      "amount": "Tutar",
+      "method": "Ödeme yöntemi",
+      "note": "Not (opsiyonel)",
+      "submit": "Ödemeyi Kaydet",
+      "submitting": "Kaydediliyor…",
+      "cancel": "Vazgeç",
+      "refresh": "Yenile"
+    },
+    "void": {
+      "title": "Ödemeyi iptal et",
+      "description": "{amount} tutarındaki ödeme iptal edilecek. Kayıt silinmez, iptal edildi olarak saklanır.",
+      "reason": "İptal nedeni",
+      "submit": "Ödemeyi İptal Et",
+      "submitting": "İptal ediliyor…",
+      "cancel": "Vazgeç",
+      "refresh": "Yenile"
+    },
+    "cancel": {
+      "title": "Gideri iptal et",
+      "description": "Bu gider iptal edilecek ve artık değiştirilemeyecek.",
+      "reason": "İptal nedeni",
+      "submit": "Gideri İptal Et",
+      "submitting": "İptal ediliyor…",
+      "cancel": "Vazgeç",
+      "refresh": "Yenile"
     }
   },
   "PublicBooking": {

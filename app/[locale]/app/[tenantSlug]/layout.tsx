@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { LayoutDashboard, Users, UsersRound, Scissors, Contact, CalendarClock, CalendarDays, ChartColumn, Settings as SettingsIcon } from "lucide-react";
+import { LayoutDashboard, Users, UsersRound, Scissors, Contact, CalendarClock, CalendarDays, ChartColumn, Receipt, Settings as SettingsIcon } from "lucide-react";
 import { getTenantAccess, hasPermission } from "@/lib/auth/session";
 import { deviceOwnerTag } from "@/lib/pwa/device-owner-tag";
 import { TenantAppShell, type TenantNavItem } from "@/components/tenant-app/app-shell";
@@ -37,6 +37,7 @@ export default async function TenantAppLayout({
     canManageSettings,
     canViewReports,
     canManageTeam,
+    canViewFinance,
   ] = await Promise.all([
     hasPermission(access.tenant.id, "staff.view"),
     hasPermission(access.tenant.id, "services.view"),
@@ -55,6 +56,9 @@ export default async function TenantAppLayout({
     // revoke_team_invitation already require internally. No separate
     // "team.view" permission exists or is needed.
     hasPermission(access.tenant.id, "staff.manage"),
+    // Faz FIN.1B.1 — Giderler is gated by finance.view alone (the RPCs behind it require the same key; finance.manage only
+    // decides whether the page offers the mutating controls). Hidden without finance.view, like every other nav entry.
+    hasPermission(access.tenant.id, "finance.view"),
   ]);
 
   const navItems: TenantNavItem[] = [
@@ -80,6 +84,9 @@ export default async function TenantAppLayout({
       : []),
     ...(canViewServices
       ? [{ href: "/services", label: t("services"), icon: <Scissors className="size-4" /> }]
+      : []),
+    ...(canViewFinance
+      ? [{ href: "/finance/expenses", label: t("expenses"), icon: <Receipt className="size-4" /> }]
       : []),
     ...(canViewReports
       ? [{ href: "/reports/staff", label: t("reports"), icon: <ChartColumn className="size-4" /> }]
