@@ -892,12 +892,11 @@ begin
     raise exception 'idempotency key already used with a different payload' using errcode = 'FN007';
   end if;
 
-  if v_has_initial and exists (
-    select 1 from public.expense_payments p
-    where p.tenant_id = p_tenant_id and p.idempotency_key = p_idempotency_key
-  ) then
-    raise exception 'idempotency key already used for another payment' using errcode = 'FN007';
-  end if;
+  -- There is deliberately NO separate "is the initial-payment key already used by a payment" pre-check here. Such a check
+  -- would run in a later statement than the replay lookup above; an identical concurrent create could commit in between, and
+  -- the check would then fail that identical replay with FN007 instead of returning the noop. Without it the outcomes are
+  -- already right: an identical concurrent create loses the expense insert below and is answered as a replay, and a key that
+  -- really belongs to another payment fails inside post_expense_payment as FN007, rolling the whole create back.
 
   -- ---- stateful validation --------------------------------------------------------------------
   select c.is_active into v_is_active from public.expense_categories c where c.key = p_category_key;
@@ -971,7 +970,7 @@ end;
 $$;
 
 comment on function private.create_expense(uuid, text, text, date, numeric, uuid, uuid, text, date, text, jsonb) is
-  'Faz FIN.1B.1. Requires finance.manage. p_idempotency_key is REQUIRED (null is FN004). Order: authentication, key and tenant presence, permission, stateless validation and normalization (FN004/FN005/FN006), fingerprint of the original payload, replay lookup (same stored fingerprint returns the existing expense with noop=true, a different one is FN007), initial-payment key pre-check, stateful validation (active category, branch in tenant and not deleted, expense_date at most tenant-today + 366), insert on conflict do nothing, audit finance.expense_created, optional initial payment through post_expense_payment in the SAME transaction (a failure rolls the expense back too; second audit event finance.expense_payment_recorded). Returns {expenseId, paymentId, status, version, noop}. A create with an initial payment ends at version 2.';
+  'Faz FIN.1B.1. Requires finance.manage. p_idempotency_key is REQUIRED (null is FN004). Order: authentication, key and tenant presence, permission, stateless validation and normalization (FN004/FN005/FN006), fingerprint of the original payload, replay lookup (same stored fingerprint returns the existing expense with noop=true, a different one is FN007), stateful validation (active category, branch in tenant and not deleted, expense_date at most tenant-today + 366), insert on conflict do nothing (a lost same-key race is answered like a replay), audit finance.expense_created, optional initial payment through post_expense_payment in the SAME transaction (a failure rolls the expense back too, including FN007 when the key already belongs to another payment; second audit event finance.expense_payment_recorded). Returns {expenseId, paymentId, status, version, noop}. A create with an initial payment ends at version 2.';
 
 create function private.update_expense(
   p_expense_id uuid,

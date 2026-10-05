@@ -314,7 +314,7 @@ describe("R read models", () => {
       expect(none.items).toEqual([]);
     });
 
-    it("R3d each status filters exactly and an invalid status is FN004", async () => {
+    it("R3d C8 each status filters exactly, the default list hides cancelled rows, include_cancelled and status=cancelled show them, an invalid status is FN004", async () => {
       const branchId = await freshBranch("durum");
       const open = await makeExpense(world, {
         branchId,

@@ -34,8 +34,10 @@ import {
  * is open, `authenticated`, JWT claims set, and parked BEFORE any of them sends its statement, released in a random order),
  * then asserts the scenario's invariant, that the expense is internally consistent, and the version accounting.
  *
- * K_ITERATIONS (default 20), K_POOL_MAX (default 24: the largest number of simultaneously parked transactions) and K_SEED
- * tune a run. The barrier-harness variant with psql sessions (50+ iterations) lives outside the repository.
+ * K_ITERATIONS (default 20), K_POOL_MAX (default 24: the largest number of simultaneously parked transactions), K_SEED and
+ * K_BARRIER tune a run. K_BARRIER=server adds a SERVER-clock barrier on top of the driver gate: every parked transaction
+ * additionally sleeps until one common instant chosen on the database clock (pg_sleep_until), so the competing statements
+ * start within microseconds of each other regardless of driver or network jitter. The 50+ iteration runs use it.
  *
  * NOTE for whoever runs this file next: it needs migration 20261003090000 applied to whatever TEST_DATABASE_URL points
  * at (a disposable PROD-derived branch or the local rig, never the shared DEV database).
@@ -44,6 +46,12 @@ import {
 const ITERATIONS = Math.max(1, Number(process.env.K_ITERATIONS ?? 20));
 const POOL_MAX = Math.max(4, Number(process.env.K_POOL_MAX ?? 24));
 const SEED = Number(process.env.K_SEED ?? 20261003);
+const SERVER_BARRIER = process.env.K_BARRIER === "server";
+// how far ahead of the database clock the common start instant is set; it must exceed the round trip to a remote database
+const BARRIER_LEAD_MS = Math.max(
+  50,
+  Number(process.env.K_BARRIER_LEAD_MS ?? 250),
+);
 const TEST_TIMEOUT = 600_000;
 
 let world: ExpenseWorld;
@@ -86,7 +94,24 @@ function shuffled<T>(items: T[], rng: () => number = Math.random): T[] {
   return a;
 }
 
-type Call = { userId: string; fn: string; args: RpcArg[] };
+/** An instant `ms` milliseconds ahead on the DATABASE clock (UTC text), the common start of a server-side barrier. */
+async function serverInstantAhead(ms: number): Promise<string> {
+  const [row] = await pool<{ t: string }[]>`
+    select to_char(clock_timestamp() at time zone 'UTC' + (${ms}::int * interval '1 millisecond'), 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as t`;
+  return row!.t;
+}
+
+/**
+ * `holdMs` keeps the call's transaction open for that long after the statement (its locks and unique-index entries stay);
+ * `settings` are transaction-local custom settings (set_config) applied before the call is parked at the barrier.
+ */
+type Call = {
+  userId: string;
+  fn: string;
+  args: RpcArg[];
+  holdMs?: number;
+  settings?: Record<string, string>;
+};
 type Outcomes<L extends Record<string, Call>> = {
   [K in keyof L]: RpcOutcome<ExpenseWriteResult>;
 };
@@ -115,6 +140,7 @@ async function race<L extends Record<string, Call>>(
   const armedPromise = new Promise<void>((resolve) => {
     allArmed = resolve;
   });
+  let serverStart = "";
   const tasks = labels.map(async (label, idx) => {
     const call = calls[label]!;
     const { query, params } = buildCall(call.fn, call.args);
@@ -123,10 +149,16 @@ async function race<L extends Record<string, Call>>(
         await sql`select set_config('request.jwt.claims', ${JSON.stringify({ sub: call.userId, role: "authenticated" })}, true),
                          set_config('request.jwt.claim.sub', ${call.userId}, true)`;
         await sql`set local role authenticated`;
+        for (const [name, value] of Object.entries(call.settings ?? {}))
+          await sql`select set_config(${name}, ${value}, true)`;
         armed += 1;
         if (armed === labels.length) allArmed();
         await gates[idx]!.promise;
-        return sql.unsafe(query, params as never[]);
+        if (SERVER_BARRIER)
+          await sql`select pg_sleep_until(${serverStart}::text::timestamptz)`;
+        const result = await sql.unsafe(query, params as never[]);
+        if (call.holdMs) await sql`select pg_sleep(${call.holdMs / 1000})`;
+        return result;
       });
       return [
         label,
@@ -148,6 +180,7 @@ async function race<L extends Record<string, Call>>(
     timedOut,
   ]);
   clearTimeout(timer);
+  if (SERVER_BARRIER) serverStart = await serverInstantAhead(BARRIER_LEAD_MS);
   for (const gate of shuffled(gates)) gate.release();
   const settled = await Promise.all(tasks);
   if (first === "timeout")
@@ -256,7 +289,8 @@ async function assertVersionAccounting(expenseId: string) {
 }
 
 /** Final status equals the status derived from the posted payments; posted never exceeds the amount; cancelled has no posted. */
-async function assertConsistent(expenseId: string) {
+/** Row-level consistency only (no audit accounting): what hand-written SQL writers can be held to. */
+async function assertStateConsistent(expenseId: string) {
   const row = await expenseRow(expenseId);
   const posted = await postedTotal(expenseId);
   const amount = Number(row.amount);
@@ -271,7 +305,46 @@ async function assertConsistent(expenseId: string) {
       posted >= amount ? "paid" : posted > 0 ? "partially_paid" : "open",
     );
   }
+}
+
+/** Full check for RPC-driven iterations: state plus the audit-based version accounting (K11). */
+async function assertConsistent(expenseId: string) {
+  await assertStateConsistent(expenseId);
   await assertVersionAccounting(expenseId);
+}
+
+const CREATE_EXPENSE_SIGNATURE =
+  "private.create_expense(uuid,text,text,date,numeric,uuid,uuid,text,date,text,jsonb)";
+
+/**
+ * Fault injection for K1b: runs `body` while a copy of private.create_expense is installed that sleeps for the
+ * transaction-local setting app.k1b_delay seconds (a no-op when the setting is absent) right after the replay block, then puts the
+ * ORIGINAL definition back (also when the body throws). CREATE OR REPLACE keeps the owner and the grants.
+ */
+async function withDelayedCreate<T>(body: () => Promise<T>): Promise<T> {
+  const [row] = await testDb<
+    { def: string }[]
+  >`select pg_get_functiondef(${CREATE_EXPENSE_SIGNATURE}::regprocedure) as def`;
+  const original = row!.def;
+  // the end of the replay block: the first "different payload" raise and the `end if;` that closes `if found then`
+  const anchor =
+    "    raise exception 'idempotency key already used with a different payload' using errcode = 'FN007';\n  end if;\n";
+  const at = original.indexOf(anchor);
+  if (at < 0)
+    throw new Error(
+      "the replay block anchor is missing from the live create_expense",
+    );
+  const end = at + anchor.length;
+  const injected =
+    original.slice(0, end) +
+    "  perform pg_sleep(nullif(current_setting('app.k1b_delay', true), '')::numeric);\n" +
+    original.slice(end);
+  await testDb.unsafe(injected);
+  try {
+    return await body();
+  } finally {
+    await testDb.unsafe(original);
+  }
 }
 
 async function repeat(name: string, body: (i: number) => Promise<void>) {
@@ -322,6 +395,50 @@ describe("K concurrency (real parallel connections, driver barrier)", () => {
         ).filter((r) => r.after?.expense_id === a.expenseId);
         expect(recorded).toHaveLength(withInitial ? 1 : 0);
         await assertConsistent(a.expenseId);
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "K1b an identical create still gets the noop when the winner commits between ITS replay lookup and ITS insert (fault-injected delay)",
+    async () => {
+      // The window between create_expense's replay lookup and its insert is a few microseconds, so a timing-only test finds
+      // a regression rarely. Here a copy of the live function sleeps right after the replay block when the transaction-local
+      // setting app.k1b_delay is present, which makes the slow call's lookup MISS, lets the fast call commit completely, and
+      // only then lets the slow call continue. The original definition is restored afterwards (and the copy is identical
+      // unless the setting exists).
+      await withDelayedCreate(async () => {
+        await repeat("K1b", async (i) => {
+          const input = validCreate(world, {
+            amount: 500,
+            initialPayment: i % 2 === 0 ? ip(200) : undefined,
+          });
+          const call = (delayed: boolean): Call => ({
+            userId: OWNER(),
+            fn: "create_expense",
+            args: createArgs(input),
+            settings: delayed ? { "app.k1b_delay": "0.4" } : undefined,
+          });
+          const out = await race({ fast: call(false), slow: call(true) });
+          expectOnlyCodes(out, []);
+          const fast = okOf(out.fast)!;
+          const slow = okOf(out.slow)!;
+          expect(fast.noop, "the call that was not delayed created it").toBe(
+            false,
+          );
+          expect(
+            slow.noop,
+            "the delayed identical call is answered as a replay",
+          ).toBe(true);
+          expect(slow.expenseId).toBe(fast.expenseId);
+          expect(slow.paymentId).toBe(fast.paymentId);
+          expect(slow.version).toBe(fast.version);
+          expect(
+            await expenseAudit(T(), "finance.expense_created", fast.expenseId),
+          ).toHaveLength(1);
+          await assertConsistent(fast.expenseId);
+        });
       });
     },
     TEST_TIMEOUT,
@@ -430,6 +547,53 @@ describe("K concurrency (real parallel connections, driver barrier)", () => {
         ).toHaveLength(1);
         expect((await expenseRow(e.expenseId)).version).toBe(2);
         await assertConsistent(e.expenseId);
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "K14 two payments with the SAME key on two DIFFERENT expenses of one tenant: one succeeds, the other is FN007, never 23505",
+    async () => {
+      await repeat("K14", async () => {
+        const first = await makeExpense(world, { amount: 1000 });
+        const second = await makeExpense(world, { amount: 1000 });
+        const key = newKey();
+        // Each call locks only ITS OWN expense, so nothing serializes them but the unique (tenant, key) index. Holding both
+        // transactions open after the insert guarantees the loser's replay lookup cannot see the winner yet, so the loser
+        // always reaches the insert, blocks on the index, and must surface FN007 (the mapped unique violation).
+        const call = (expenseId: string): Call => ({
+          userId: OWNER(),
+          fn: "record_expense_payment",
+          args: recordArgs({
+            expenseId,
+            amount: 100,
+            method: "cash",
+            paidAt: "2026-10-02T10:00:00.123456Z",
+            idempotencyKey: key,
+          }),
+          holdMs: 60,
+        });
+        const out = await race({
+          a: call(first.expenseId),
+          b: call(second.expenseId),
+        });
+        expectOnlyCodes(out, ["FN007"]);
+        expect([out.a, out.b].filter((r) => r.ok)).toHaveLength(1);
+        expect(
+          [out.a, out.b].filter((r) => !r.ok && r.code === "FN007"),
+        ).toHaveLength(1);
+        expect(okOf(out.a)?.noop ?? okOf(out.b)?.noop).toBe(false);
+        const rows = await testDb<{ expense_id: string }[]>`
+          select expense_id from expense_payments where tenant_id = ${T()} and idempotency_key = ${key}`;
+        expect(rows).toHaveLength(1);
+        const winner = rows[0]!.expense_id;
+        const loser = winner === first.expenseId ? second : first;
+        expect(await paymentRows(loser.expenseId)).toHaveLength(0);
+        expect((await expenseRow(loser.expenseId)).version).toBe(1);
+        expect((await expenseRow(winner)).version).toBe(2);
+        await assertConsistent(first.expenseId);
+        await assertConsistent(second.expenseId);
       });
     },
     TEST_TIMEOUT,
@@ -690,9 +854,11 @@ describe("K concurrency (real parallel connections, driver barrier)", () => {
   );
 
   it(
-    "K10 mixed payments and voids on one expense (8 voids + up to 12 payments): final status derived, no overpayment, no deadlock",
+    "K10 mixed payments and voids on one expense (up to 8 voids + up to 12 payments): final status derived, no overpayment, no deadlock",
     async () => {
-      const voids = 8;
+      // 20 concurrent operations with the default pool; a smaller K_POOL_MAX (a session pooler with few server connections)
+      // shrinks both halves so that every parked transaction still fits.
+      const voids = Math.min(8, Math.floor(POOL_MAX / 2));
       const payments = Math.min(12, POOL_MAX - voids);
       const rng = mulberry32(SEED);
       await repeat("K10", async () => {
@@ -758,7 +924,8 @@ describe("K concurrency (real parallel connections, driver barrier)", () => {
           amount?: number;
           paidAt?: string;
         }[] = [];
-        const size = 4 + Math.floor(rng() * 5);
+        // up to 8 operations (the last burst adds a cancel), never more parked transactions than the pool allows
+        const size = Math.min(4 + Math.floor(rng() * 5), POOL_MAX - 1);
         const addPayment = (label: string, amount: number) => {
           const key = newKey();
           const paidAt = instantAgo(5);
@@ -828,6 +995,124 @@ describe("K concurrency (real parallel connections, driver barrier)", () => {
       expect(rows.length).toBe(known.length);
       if (cancelled) expect(await postedTotal(e.expenseId)).toBe(0);
       await assertVersionAccounting(e.expenseId);
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+type DirectTask = (sql: postgres.TransactionSql) => Promise<unknown>;
+type DirectOutcome = { ok: true } | { ok: false; code: string | undefined };
+
+/**
+ * Races hand-written SQL statements (no RPC, no role switch: the privileged connection a migration, a data fix or the future
+ * FIN.1B.2 materializer would use) behind the same barrier. Each transaction does its statement and then HOLDS for `holdMs` before
+ * committing, so a missing lock in a trigger cannot be hidden by timing luck: the second writer can only see the first one's
+ * rows after its commit, which is exactly what the parent-row lock makes it wait for.
+ */
+async function raceDirect(
+  tasks: Record<string, DirectTask>,
+  holdMs = 40,
+): Promise<Record<string, DirectOutcome>> {
+  const labels = Object.keys(tasks);
+  const gates = labels.map(() => {
+    let release!: () => void;
+    const promise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return { promise, release };
+  });
+  let armed = 0;
+  let allArmed!: () => void;
+  const armedPromise = new Promise<void>((resolve) => {
+    allArmed = resolve;
+  });
+  let serverStart = "";
+  const running = labels.map(async (label, idx) => {
+    try {
+      await pool.begin(async (sql) => {
+        await sql`select 1`;
+        armed += 1;
+        if (armed === labels.length) allArmed();
+        await gates[idx]!.promise;
+        if (SERVER_BARRIER)
+          await sql`select pg_sleep_until(${serverStart}::text::timestamptz)`;
+        await tasks[label]!(sql);
+        await sql`select pg_sleep(${holdMs / 1000})`;
+      });
+      return [label, { ok: true } as DirectOutcome] as const;
+    } catch (error) {
+      return [
+        label,
+        { ok: false, code: (error as { code?: string }).code } as DirectOutcome,
+      ] as const;
+    }
+  });
+  await armedPromise;
+  if (SERVER_BARRIER) serverStart = await serverInstantAhead(BARRIER_LEAD_MS);
+  for (const gate of shuffled(gates)) gate.release();
+  return Object.fromEntries(await Promise.all(running));
+}
+
+describe("K12-K13 direct SQL writers (the triggers alone must hold the invariants)", () => {
+  const insertPayment = (expenseId: string, amount: number): DirectTask => {
+    return (sql) =>
+      sql`insert into expense_payments (tenant_id, expense_id, amount, method, paid_at, idempotency_key)
+          values (${T()}, ${expenseId}, ${amount}, 'cash', now(), ${newKey()})`;
+  };
+
+  it(
+    "K12 two direct payment inserts of 700 on a 1000 expense: exactly one commits, the other is FN005",
+    async () => {
+      await repeat("K12", async () => {
+        const e = await makeExpense(world, { amount: 1000 });
+        const out = await raceDirect({
+          a: insertPayment(e.expenseId, 700),
+          b: insertPayment(e.expenseId, 700),
+        });
+        expect(
+          [out.a, out.b].filter((o) => o.ok),
+          "exactly one insert commits",
+        ).toHaveLength(1);
+        const failed = [out.a, out.b].find((o) => !o.ok) as {
+          ok: false;
+          code: string | undefined;
+        };
+        expect(failed.code).toBe("FN005");
+        expect(await postedTotal(e.expenseId)).toBe(700);
+        const row = await expenseRow(e.expenseId);
+        expect(row.status).toBe("partially_paid");
+        expect(row.version).toBe(2);
+        expect(row.settlement_events).toBe(1);
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "K13 a direct payment insert against a direct cancel: exactly one wins, never cancelled with a posted payment",
+    async () => {
+      await repeat("K13", async () => {
+        const e = await makeExpense(world, { amount: 1000 });
+        const out = await raceDirect({
+          payment: insertPayment(e.expenseId, 250),
+          cancel: (sql) =>
+            sql`update expenses set status = 'cancelled', cancelled_at = now(), cancel_reason = 'es zamanli'
+                where id = ${e.expenseId}`,
+        });
+        expect([out.payment, out.cancel].filter((o) => o.ok)).toHaveLength(1);
+        const loser = (out.payment!.ok ? out.cancel : out.payment) as {
+          ok: false;
+          code: string | undefined;
+        };
+        // payment after the cancel is FN008, cancel after the payment is FN011
+        expect(loser.code).toBe(out.payment!.ok ? "FN011" : "FN008");
+        await assertStateConsistent(e.expenseId);
+        // no edits here, so the version is 1 plus one per settlement event plus one for the cancel
+        const final = await expenseRow(e.expenseId);
+        expect(final.version).toBe(
+          1 + final.settlement_events + (final.status === "cancelled" ? 1 : 0),
+        );
+      });
     },
     TEST_TIMEOUT,
   );
