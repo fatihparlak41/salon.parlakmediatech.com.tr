@@ -33,7 +33,10 @@ import {
   fetchExpenseDetail,
   fetchExpensesPage,
 } from "@/lib/modules/expenses/client-queries";
-import { EXPENSE_ERROR_MESSAGES } from "@/lib/modules/expenses/error-codes";
+import {
+  EXPENSE_DEFAULT_ERROR_MESSAGE,
+  EXPENSE_ERROR_MESSAGES,
+} from "@/lib/modules/expenses/error-codes";
 import {
   DEFAULT_EXPENSES_FILTERS,
   listParamsFor,
@@ -531,6 +534,42 @@ describe("F8 create dialog lifecycle", () => {
     expect(first.initialPayment?.paidAt).toBe("2026-09-30T10:00:00.000Z");
   });
 
+  it("a REJECTED action call (a dropped connection) keeps the dialog mounted and a retry sends the IDENTICAL key, paidAt and payload", async () => {
+    // Found by the browser rehearsal (B5): the Server Action fetch itself throws. Uncaught, useActionState rethrows it into the
+    // page's error boundary, the dialog unmounts and the attempt's key and instant are lost.
+    mockSequentialUuids();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-30T10:00:00.000Z"));
+    renderCreate();
+    const dialog = dialogNamed("Yeni gider");
+    fillRequired(dialog);
+    fireEvent.click(
+      within(dialog).getByRole("switch", {
+        name: "Hemen ödendi olarak kaydet",
+      }),
+    );
+
+    mockedCreate.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    submit(dialog);
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
+    await within(dialog).findByText(EXPENSE_DEFAULT_ERROR_MESSAGE);
+    expect(dialogNamed("Yeni gider")).toBe(dialog); // still the same mounted attempt, the form intact
+    expect(
+      (within(dialog).getByLabelText("Tutar") as HTMLInputElement).value,
+    ).toBe("250,50");
+
+    vi.setSystemTime(new Date("2026-09-30T10:05:00.000Z"));
+    mockedCreate.mockResolvedValueOnce(ok(writeResult({ noop: true })));
+    submit(dialog);
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(2));
+
+    const first = mockedCreate.mock.calls[0]![1];
+    const second = mockedCreate.mock.calls[1]![1];
+    expect(second).toEqual(first);
+    expect(first.idempotencyKey).toBe("key-1");
+    expect(first.initialPayment?.paidAt).toBe("2026-09-30T10:00:00.000Z");
+  });
+
   it("closing and reopening is a NEW attempt: a new key and a new paidAt", async () => {
     mockSequentialUuids();
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -940,6 +979,26 @@ describe("F9 edit dialog", () => {
     expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 
+  it("a REJECTED update (a dropped connection) keeps the dialog mounted and the retry sends the same version", async () => {
+    mockedUpdate.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    renderEdit(makeDetail({ version: 5 }));
+    const dialog = dialogNamed("Gideri düzenle");
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Değişiklikleri Kaydet" }),
+    );
+    await within(dialog).findByText(EXPENSE_DEFAULT_ERROR_MESSAGE);
+    expect(dialogNamed("Gideri düzenle")).toBe(dialog);
+    mockedUpdate.mockResolvedValueOnce(ok(writeResult({ version: 6 })));
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Değişiklikleri Kaydet" }),
+    );
+    await waitFor(() => expect(mockedUpdate).toHaveBeenCalledTimes(2));
+    expect(mockedUpdate.mock.calls[1]![1]).toEqual(
+      mockedUpdate.mock.calls[0]![1],
+    );
+    expect(mockedUpdate.mock.calls[0]![1].expectedVersion).toBe(5);
+  });
+
   it("through the page: a conflict, 'Yenile' refetches and remounts the dialog with the NEW version", async () => {
     mockedDetail.mockResolvedValueOnce({
       ok: true,
@@ -1075,6 +1134,32 @@ describe("F10 payment dialog", () => {
     await waitFor(() => expect(mockedRecord).toHaveBeenCalledTimes(2));
     expect(mockedRecord.mock.calls[1]![1]).toEqual(
       mockedRecord.mock.calls[0]![1],
+    );
+  });
+
+  it("a REJECTED action call (a dropped connection) keeps the dialog mounted and the retry sends the identical payload", async () => {
+    mockSequentialUuids();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-30T10:00:00.000Z"));
+    renderPay();
+    const dialog = dialogNamed("Ödeme Yap");
+    mockedRecord.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    submit(dialog);
+    await waitFor(() => expect(mockedRecord).toHaveBeenCalledTimes(1));
+    await within(dialog).findByText(EXPENSE_DEFAULT_ERROR_MESSAGE);
+    expect(dialogNamed("Ödeme Yap")).toBe(dialog);
+    vi.setSystemTime(new Date("2026-09-30T10:07:00.000Z"));
+    mockedRecord.mockResolvedValueOnce(
+      ok(writeResult({ paymentId: PAYMENT_ID, noop: true })),
+    );
+    submit(dialog);
+    await waitFor(() => expect(mockedRecord).toHaveBeenCalledTimes(2));
+    expect(mockedRecord.mock.calls[1]![1]).toEqual(
+      mockedRecord.mock.calls[0]![1],
+    );
+    expect(mockedRecord.mock.calls[0]![1].idempotencyKey).toBe("key-1");
+    expect(mockedRecord.mock.calls[0]![1].paidAt).toBe(
+      "2026-09-30T10:00:00.000Z",
     );
   });
 
@@ -1275,6 +1360,119 @@ describe("F11 void and cancel dialogs", () => {
     expect(mockedVoid).toHaveBeenCalledTimes(1);
     fireEvent.click(within(dialog).getByRole("button", { name: "Yenile" }));
     expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("void and cancel: a REJECTED action call (a dropped connection) keeps the dialog mounted and a retry works", async () => {
+    const onVoided = vi.fn();
+    const onCancelled = vi.fn();
+    mockedVoid.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    mockedCancel.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    const voidView = render(
+      <VoidExpensePaymentDialog
+        payment={makePayment()}
+        currency="TRY"
+        tenantSlug={SLUG}
+        labels={labels}
+        onClose={() => {}}
+        onVoided={onVoided}
+        onRefresh={() => {}}
+      />,
+    );
+    let dialog = dialogNamed("Ödemeyi iptal et");
+    fireEvent.change(within(dialog).getByLabelText("İptal nedeni"), {
+      target: { value: "yanlış giriş" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Ödemeyi İptal Et" }),
+    );
+    await within(dialog).findByText(EXPENSE_DEFAULT_ERROR_MESSAGE);
+    expect(dialogNamed("Ödemeyi iptal et")).toBe(dialog);
+    expect(onVoided).not.toHaveBeenCalled();
+    mockedVoid.mockResolvedValueOnce(
+      ok(writeResult({ paymentId: PAYMENT_ID })),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Ödemeyi İptal Et" }),
+    );
+    await waitFor(() => expect(onVoided).toHaveBeenCalledTimes(1));
+    expect(mockedVoid.mock.calls[1]![1]).toEqual(mockedVoid.mock.calls[0]![1]);
+    voidView.unmount();
+
+    render(
+      <CancelExpenseDialog
+        expenseId={EXPENSE_ID}
+        tenantSlug={SLUG}
+        labels={labels}
+        onClose={() => {}}
+        onCancelled={onCancelled}
+        onRefresh={() => {}}
+      />,
+    );
+    dialog = dialogNamed("Gideri iptal et");
+    fireEvent.change(within(dialog).getByLabelText("İptal nedeni"), {
+      target: { value: "yanlış girildi" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Gideri İptal Et" }),
+    );
+    await within(dialog).findByText(EXPENSE_DEFAULT_ERROR_MESSAGE);
+    expect(dialogNamed("Gideri iptal et")).toBe(dialog);
+    expect(onCancelled).not.toHaveBeenCalled();
+    mockedCancel.mockResolvedValueOnce(
+      ok(writeResult({ status: "cancelled", version: 2 })),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Gideri İptal Et" }),
+    );
+    await waitFor(() => expect(onCancelled).toHaveBeenCalledTimes(1));
+    expect(mockedCancel.mock.calls[1]![1]).toEqual(
+      mockedCancel.mock.calls[0]![1],
+    );
+  });
+
+  it("an error thrown by onSuccess is NOT swallowed as a network failure", async () => {
+    // the catch covers only the action call: a bug in the parent's callback must stay visible, not turn into a retry prompt
+    const boom = new Error("onCancelled exploded");
+    const errors: unknown[] = [];
+    const onWindowError = (event: ErrorEvent) => {
+      errors.push(event.error);
+      event.preventDefault();
+    };
+    window.addEventListener("error", onWindowError);
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    try {
+      mockedCancel.mockResolvedValue(
+        ok(writeResult({ status: "cancelled", version: 2 })),
+      );
+      render(
+        <CancelExpenseDialog
+          expenseId={EXPENSE_ID}
+          tenantSlug={SLUG}
+          labels={labels}
+          onClose={() => {}}
+          onCancelled={() => {
+            throw boom;
+          }}
+          onRefresh={() => {}}
+        />,
+      );
+      const dialog = dialogNamed("Gideri iptal et");
+      fireEvent.change(within(dialog).getByLabelText("İptal nedeni"), {
+        target: { value: "yanlış girildi" },
+      });
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Gideri İptal Et" }),
+      );
+      await waitFor(() => expect(mockedCancel).toHaveBeenCalledTimes(1));
+      await settle();
+      expect(screen.queryByText(EXPENSE_DEFAULT_ERROR_MESSAGE)).toBeNull();
+    } finally {
+      window.removeEventListener("error", onWindowError);
+      consoleError.mockRestore();
+    }
   });
 
   it("through the page: the void dialog unmounts on success and the sheet refetches (no lingering form)", async () => {
