@@ -94,9 +94,14 @@ function shuffled<T>(items: T[], rng: () => number = Math.random): T[] {
   return a;
 }
 
-/** An instant `ms` milliseconds ahead on the DATABASE clock (UTC text), the common start of a server-side barrier. */
+/**
+ * An instant `ms` milliseconds ahead on the DATABASE clock (UTC text), the common start of a server-side barrier.
+ * It is read through `testDb`, never through the race `pool`: when a race parks as many transactions as the pool has
+ * connections (K10 with a small K_POOL_MAX), a clock query on the pool would wait for a connection that is only freed once
+ * the barrier is released, and the whole file would hang.
+ */
 async function serverInstantAhead(ms: number): Promise<string> {
-  const [row] = await pool<{ t: string }[]>`
+  const [row] = await testDb<{ t: string }[]>`
     select to_char(clock_timestamp() at time zone 'UTC' + (${ms}::int * interval '1 millisecond'), 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as t`;
   return row!.t;
 }
