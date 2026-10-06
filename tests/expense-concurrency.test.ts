@@ -413,38 +413,68 @@ describe("K concurrency (real parallel connections, driver barrier)", () => {
       // setting app.k1b_delay is present, which makes the slow call's lookup MISS, lets the fast call commit completely, and
       // only then lets the slow call continue. The original definition is restored afterwards (and the copy is identical
       // unless the setting exists).
+      //
+      // The window is only exercised when the FAST call reaches the server before the slow one wakes up. On a remote database
+      // the two statements can arrive further apart than the delay (network jitter, a cold prepared statement): then the slow
+      // call simply creates the row and the fast one replays it, which is a correct outcome but proves nothing about the
+      // window. Such an attempt still has every product invariant checked; it is then repeated with a longer delay, and the
+      // iteration only counts once the window was exercised (four misses in a row fail the test).
+      let missedWindows = 0;
       await withDelayedCreate(async () => {
         await repeat("K1b", async (i) => {
-          const input = validCreate(world, {
-            amount: 500,
-            initialPayment: i % 2 === 0 ? ip(200) : undefined,
-          });
-          const call = (delayed: boolean): Call => ({
-            userId: OWNER(),
-            fn: "create_expense",
-            args: createArgs(input),
-            settings: delayed ? { "app.k1b_delay": "0.4" } : undefined,
-          });
-          const out = await race({ fast: call(false), slow: call(true) });
-          expectOnlyCodes(out, []);
-          const fast = okOf(out.fast)!;
-          const slow = okOf(out.slow)!;
-          expect(fast.noop, "the call that was not delayed created it").toBe(
-            false,
-          );
-          expect(
-            slow.noop,
-            "the delayed identical call is answered as a replay",
-          ).toBe(true);
-          expect(slow.expenseId).toBe(fast.expenseId);
-          expect(slow.paymentId).toBe(fast.paymentId);
-          expect(slow.version).toBe(fast.version);
-          expect(
-            await expenseAudit(T(), "finance.expense_created", fast.expenseId),
-          ).toHaveLength(1);
-          await assertConsistent(fast.expenseId);
+          for (let attempt = 1, delay = 0.4; ; attempt++, delay *= 2.5) {
+            const input = validCreate(world, {
+              amount: 500,
+              initialPayment: i % 2 === 0 ? ip(200) : undefined,
+            });
+            const call = (delayed: boolean): Call => ({
+              userId: OWNER(),
+              fn: "create_expense",
+              args: createArgs(input),
+              settings: delayed
+                ? { "app.k1b_delay": String(delay) }
+                : undefined,
+            });
+            const out = await race({ fast: call(false), slow: call(true) });
+            expectOnlyCodes(out, []);
+            const fast = okOf(out.fast)!;
+            const slow = okOf(out.slow)!;
+            // whichever call won: one row, exactly one noop, one set of ids, one audit event, a consistent expense
+            expect(
+              [fast.noop, slow.noop].filter(Boolean),
+              "exactly one of the two identical creates is a noop",
+            ).toHaveLength(1);
+            expect(slow.expenseId).toBe(fast.expenseId);
+            expect(slow.paymentId).toBe(fast.paymentId);
+            expect(slow.version).toBe(fast.version);
+            expect(
+              await expenseAudit(
+                T(),
+                "finance.expense_created",
+                fast.expenseId,
+              ),
+            ).toHaveLength(1);
+            await assertConsistent(fast.expenseId);
+            if (!fast.noop) {
+              // the window was exercised: the delayed call's lookup missed, the fast call committed, the delayed call replays
+              expect(
+                slow.noop,
+                "the delayed identical call is answered as a replay",
+              ).toBe(true);
+              return;
+            }
+            missedWindows += 1;
+            if (attempt === 4)
+              throw new Error(
+                "the delayed call finished first on 4 attempts in a row: the window between the replay lookup and the insert was never exercised",
+              );
+          }
         });
       });
+      if (missedWindows > 0)
+        console.info(
+          `K1b: ${missedWindows} attempt(s) missed the window (the delayed call finished first) and were repeated with a longer delay`,
+        );
     },
     TEST_TIMEOUT,
   );
