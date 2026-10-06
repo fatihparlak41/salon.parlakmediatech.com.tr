@@ -610,10 +610,15 @@ describe("S schema, catalog, grants, RLS", () => {
     // service_role is not granted by this migration (same convention as FIN.1A): on a PROD-like database it has no
     // function default privileges and therefore no execute; where an environment's default privileges grant it (the
     // local rig's Supabase simulation, DEV's bootstrap) it inherits exactly that and nothing more.
+    // Only the default privileges of the role that CREATES the functions count (postgres, asserted in S6), in public or
+    // global. A Supabase project also keeps default function privileges FOR ROLE supabase_admin in public (anon,
+    // authenticated, service_role); they apply to objects supabase_admin creates, never to this migration's functions.
     const [dp] = await testDb<{ svc_default: boolean }[]>`
       select exists (
         select 1 from pg_default_acl d, aclexplode(d.defaclacl) a
-        where d.defaclnamespace = 'public'::regnamespace and d.defaclobjtype = 'f'
+        where d.defaclrole = 'postgres'::regrole
+          and d.defaclnamespace = any (array['public'::regnamespace::oid, 0::oid])
+          and d.defaclobjtype = 'f'
           and a.grantee = 'service_role'::regrole and a.privilege_type = 'EXECUTE'
       ) as svc_default`;
     for (const [schema, name, args] of FUNCTIONS) {
