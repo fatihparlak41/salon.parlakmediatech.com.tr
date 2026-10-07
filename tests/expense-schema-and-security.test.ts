@@ -830,6 +830,40 @@ describe("S schema, catalog, grants, RLS", () => {
 });
 
 // ---------------------------------------------------------------------------------------------------------------
+// LK — lock-order policy
+// ---------------------------------------------------------------------------------------------------------------
+describe("LK lock-order policy", () => {
+  it("LK1 aggregate-first: void_expense_payment locks the expense row before the payment row and takes no payment lock earlier", async () => {
+    // Policy: FIN write paths lock the AGGREGATE (the expense row) first and its dependents (payment rows) second, and privileged
+    // out-of-band SQL must follow the same order. The order is invisible to every application path (results, errors, audit rows
+    // and versions are identical either way, so no behavioral test can tell), but not to privileged raw SQL, which is why it is
+    // pinned here as a contract, read from the LIVE function source. Changing it must be a deliberate decision that edits this test.
+    const [row] = await testDb<{ prosrc: string }[]>`
+      select p.prosrc from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'private' and p.proname = 'void_expense_payment'`;
+    const source = row!.prosrc.replace(/--[^\n]*/g, "").replace(/\s+/g, " ");
+    const lockRe =
+      /\bfrom public\.(expenses|expense_payments)\b[^;]*?\bfor (?:no key )?update\b/gi;
+    const locks = [...source.matchAll(lockRe)].map((m) => m[1]!.toLowerCase());
+    expect(locks, "the row locks of void_expense_payment, in order").toEqual([
+      "expenses",
+      "expense_payments",
+    ]);
+    // an UPDATE or DELETE of a payment row is an implicit row lock too: none may come before the expense lock
+    const expenseLockAt = source.search(
+      /\bfrom public\.expenses\b[^;]*?\bfor (?:no key )?update\b/i,
+    );
+    const paymentWriteAt = source.search(
+      /\b(?:update|delete from) public\.expense_payments\b/i,
+    );
+    expect(
+      paymentWriteAt,
+      "the payment UPDATE comes after the expense lock",
+    ).toBeGreaterThan(expenseLockAt);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
 // CAT — the category catalog
 // ---------------------------------------------------------------------------------------------------------------
 describe("CAT category catalog", () => {
