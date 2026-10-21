@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { Link } from "@/lib/i18n/navigation";
 import {
@@ -6,6 +7,7 @@ import {
   isPlatformAdmin,
 } from "@/lib/auth/session";
 import { getMyAccountProfile } from "@/lib/modules/customer-account/queries";
+import { resolveHomeLanding } from "@/lib/modules/home/landing";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -15,7 +17,7 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 
-export default async function HomePage() {
+export default async function HomePage({ searchParams }: PageProps<"/[locale]">) {
   const user = await getCurrentUser();
 
   if (!user) {
@@ -26,11 +28,27 @@ export default async function HomePage() {
   // the same source the salon dashboard greets from and the one they can edit
   // on their Hesabım page) — not user_metadata.full_name, which is only the
   // value typed once at sign-up and never changes when the profile is edited.
-  const [memberships, platformAdmin, profile] = await Promise.all([
+  const [memberships, platformAdmin, profile, query] = await Promise.all([
     getUserMemberships(),
     isPlatformAdmin(),
     getMyAccountProfile(),
+    searchParams,
   ]);
+
+  // Faz PERF.3 — one salon means nothing to choose: skip the chooser (a full
+  // extra server render + a tap on every launch of the installed app) and go
+  // straight into it. See lib/modules/home/landing.ts for who keeps the
+  // chooser. redirect() throws by design, so it must stay outside any
+  // try/catch; the profile lookup above runs in the same parallel batch, so
+  // it adds no latency even when it turns out to be unneeded.
+  const landing = resolveHomeLanding({
+    memberships,
+    platformAdmin,
+    forceChooser: query.choose !== undefined,
+  });
+  if (landing.kind === "redirect") {
+    redirect(landing.href);
+  }
 
   return (
     <SignedInHome
