@@ -26,6 +26,10 @@ export type TenantAccessResult =
       reason: "ok";
       user: User;
       tenant: { id: string; name: string; slug: string; status: string };
+      /** The caller's own active membership row in this tenant — read here
+       * anyway for the access check, so a page that needs it (the dashboard's
+       * "am I staff-linked" lookup) does not query it a second time. */
+      membershipId: string;
       roleName: string;
     };
 
@@ -121,18 +125,25 @@ export const getUserMemberships = cache(
  */
 export const getTenantAccess = cache(
   async (tenantSlug: string): Promise<TenantAccessResult> => {
-    const user = await getCurrentUser();
-    if (!user) return { reason: "unauthenticated" };
-
     const supabase = await createClient();
 
-    const { data: tenant } = await supabase
-      .from("tenants")
-      .select("id, name, slug, status")
-      .eq("slug", tenantSlug)
-      .is("deleted_at", null)
-      .maybeSingle();
+    // Faz PERF.4 — the tenant lookup does not depend on who is asking (RLS
+    // alone decides what the caller may see), so it runs alongside the user
+    // check instead of after it: one sequential database round trip less on
+    // every owner page. The outcome is exactly the old one — no user means
+    // "unauthenticated" whatever the lookup returned (it is simply ignored),
+    // then no visible tenant means "not_found".
+    const [user, { data: tenant }] = await Promise.all([
+      getCurrentUser(),
+      supabase
+        .from("tenants")
+        .select("id, name, slug, status")
+        .eq("slug", tenantSlug)
+        .is("deleted_at", null)
+        .maybeSingle(),
+    ]);
 
+    if (!user) return { reason: "unauthenticated" };
     if (!tenant) return { reason: "not_found" };
 
     const { data: membership } = await supabase
@@ -146,7 +157,13 @@ export const getTenantAccess = cache(
 
     if (!membership || !membership.roles) return { reason: "not_found" };
 
-    return { reason: "ok", user, tenant, roleName: membership.roles.name };
+    return {
+      reason: "ok",
+      user,
+      tenant,
+      membershipId: membership.id,
+      roleName: membership.roles.name,
+    };
   },
 );
 

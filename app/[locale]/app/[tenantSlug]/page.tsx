@@ -13,13 +13,16 @@ import {
   getTodayAppointments,
   getMonthSummary,
   getActiveStaffRoster,
-  getSetupHealth,
-  getMyMembershipId,
+  getHasActiveService,
+  buildSetupHealth,
   getStaffLinkByMembership,
   getMyFirstName,
   getMyTodayWorkingHours,
   computeTodayKpis,
   selectNextAppointment,
+  type DashboardActiveStaff,
+  type DashboardMonthSummary,
+  type DashboardTodayAppointment,
 } from "@/lib/modules/dashboard/queries";
 import { greetingBandForHour } from "@/lib/modules/dashboard/greeting";
 import {
@@ -57,6 +60,14 @@ export default async function TenantAppPage({
   const t = await getTranslations("TenantApp.dashboard");
   const supabase = await createClient();
 
+  // Faz PERF.4 — this page used to be ten sequential awaits, each one a
+  // network round trip to the database. The reads are now grouped by what
+  // they truly depend on: step 1 needs nothing but the tenant and the
+  // caller (permissions, timezone, greeting name, the caller's own staff
+  // link, the online-booking flag); step 2 needs step 1's answers (which
+  // kind of dashboard this is, the timezone, which sections the caller may
+  // see). Same queries, same conditions, same results — only the waiting
+  // overlaps.
   const [
     canViewAppointments,
     canCreateAppointments,
@@ -71,6 +82,10 @@ export default async function TenantAppPage({
     canViewStaffList,
     canViewFinance,
     canManageFinance,
+    tenantTimezone,
+    firstName,
+    myStaffLink,
+    onlineBookingEnabled,
   ] = await Promise.all([
     hasPermission(tenantId, "appointments.view"),
     hasPermission(tenantId, "appointments.create"),
@@ -85,9 +100,14 @@ export default async function TenantAppPage({
     hasPermission(tenantId, "staff.view"),
     hasPermission(tenantId, "finance.view"),
     hasPermission(tenantId, "finance.manage"),
+    getTenantTimezone(tenantId),
+    getMyFirstName(supabase, access.user.id),
+    // The membership id comes from the access check above (it already read
+    // this very row), so there is no separate "find my membership" query.
+    getStaffLinkByMembership(supabase, tenantId, access.membershipId),
+    getOnlineBookingEnabled(tenantId),
   ]);
 
-  const tenantTimezone = await getTenantTimezone(tenantId);
   const { today } = getTenantTodayRangeUtc(tenantTimezone);
   const nowLocal = getTenantNowLocalParts(tenantTimezone);
   const greetingBand = greetingBandForHour(
@@ -118,14 +138,6 @@ export default async function TenantAppPage({
     empty: t("todaySchedule.empty"),
   };
 
-  const [firstName, membershipId] = await Promise.all([
-    getMyFirstName(supabase, access.user.id),
-    getMyMembershipId(supabase, tenantId, access.user.id),
-  ]);
-  const myStaffLink = membershipId
-    ? await getStaffLinkByMembership(supabase, tenantId, membershipId)
-    : null;
-
   // "Salon-wide management access" = staff.manage — the one permission
   // SALON_OWNER and SALON_MANAGER both hold and every other role
   // template does not (confirmed against the seed in
@@ -137,16 +149,16 @@ export default async function TenantAppPage({
   const isPersonal = myStaffLink !== null && !canManageStaff;
 
   if (isPersonal) {
-    const allToday = canViewAppointments
-      ? await getTodayAppointments(supabase, tenantId, tenantTimezone)
-      : [];
+    // Step 2 (personal dashboard): today's list and the working hours do
+    // not depend on each other.
+    const [allToday, workingHours] = await Promise.all([
+      canViewAppointments
+        ? getTodayAppointments(supabase, tenantId, tenantTimezone)
+        : Promise.resolve<DashboardTodayAppointment[]>([]),
+      getMyTodayWorkingHours(supabase, myStaffLink.id, nowLocal.weekday),
+    ]);
     const myAppointmentsToday = allToday.filter((a) =>
       a.staff.some((s) => s.id === myStaffLink.id),
-    );
-    const workingHours = await getMyTodayWorkingHours(
-      supabase,
-      myStaffLink.id,
-      nowLocal.weekday,
     );
     const { inProgress: myInProgress, next: myNext } = selectNextAppointment(
       myAppointmentsToday,
@@ -184,9 +196,23 @@ export default async function TenantAppPage({
     );
   }
 
-  const todayAppointments = canViewAppointments
-    ? await getTodayAppointments(supabase, tenantId, tenantTimezone)
-    : [];
+  // Step 2 (salon-wide dashboard): every section's own read, each only when
+  // the caller may see that section — all of them independent of each other.
+  const [todayAppointments, activeStaff, monthSummary, hasActiveService] =
+    await Promise.all([
+      canViewAppointments
+        ? getTodayAppointments(supabase, tenantId, tenantTimezone)
+        : Promise.resolve<DashboardTodayAppointment[]>([]),
+      canViewStaffList
+        ? getActiveStaffRoster(supabase, tenantId)
+        : Promise.resolve<DashboardActiveStaff[]>([]),
+      canViewBasicReports
+        ? getMonthSummary(supabase, tenantId, tenantTimezone, today)
+        : Promise.resolve<DashboardMonthSummary | null>(null),
+      canManageStaff
+        ? getHasActiveService(supabase, tenantId)
+        : Promise.resolve<boolean | null>(null),
+    ]);
   const kpis = computeTodayKpis(todayAppointments);
   const { inProgress, next } = selectNextAppointment(
     todayAppointments,
@@ -199,24 +225,13 @@ export default async function TenantAppPage({
       )
     : null;
 
-  const onlineBookingEnabled = await getOnlineBookingEnabled(tenantId);
   const bookingUrl = `${getSiteUrl()}/book/${tenantSlug}`;
   const settingsHref = `/app/${tenantSlug}/settings`;
 
-  const activeStaff = canViewStaffList
-    ? await getActiveStaffRoster(supabase, tenantId)
-    : [];
-  const monthSummary = canViewBasicReports
-    ? await getMonthSummary(supabase, tenantId, tenantTimezone, today)
-    : null;
-  const setupHealth = canManageStaff
-    ? await getSetupHealth(
-        supabase,
-        tenantId,
-        onlineBookingEnabled,
-        activeStaff,
-      )
-    : null;
+  const setupHealth =
+    hasActiveService === null
+      ? null
+      : buildSetupHealth(onlineBookingEnabled, hasActiveService, activeStaff);
 
   const candidateQuickActions: (QuickAction | null)[] = [
     canCreateAppointments

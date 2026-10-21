@@ -274,29 +274,53 @@ export type DashboardSetupHealth = {
   staffMissingSchedule: boolean;
 };
 
-/** Existence-only checks (head:true — no rows transferred) for the
- * Attention section, plus the active-staff roster's own hasSchedule
- * flags (already fetched for "Bugünkü Personel", passed in rather than
- * re-queried). */
+/** Existence-only check (head:true — no rows transferred): does the
+ * tenant have at least one active service. The one query behind the
+ * Attention section's "no active service" warning, split out so the
+ * dashboard can run it alongside its other reads. */
+export async function getHasActiveService(
+  client: DashboardSupabaseClient,
+  tenantId: string,
+): Promise<boolean> {
+  const { count } = await client
+    .from("services")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("status", "active")
+    .is("deleted_at", null);
+  return (count ?? 0) > 0;
+}
+
+/** Pure — the Attention section's input, assembled from answers the page
+ * already holds: the online-booking flag, the active-service check and the
+ * active-staff roster's own hasSchedule flags (already fetched for
+ * "Bugünkü Personel", passed in rather than re-queried). */
+export function buildSetupHealth(
+  onlineBookingEnabled: boolean,
+  hasActiveService: boolean,
+  activeStaff: DashboardActiveStaff[],
+): DashboardSetupHealth {
+  return {
+    onlineBookingEnabled,
+    hasActiveService,
+    hasActiveStaff: activeStaff.length > 0,
+    staffMissingSchedule: activeStaff.some((s) => !s.hasSchedule),
+  };
+}
+
+/** The whole Attention input in one call (existence-only check plus the
+ * pure assembly above). */
 export async function getSetupHealth(
   client: DashboardSupabaseClient,
   tenantId: string,
   onlineBookingEnabled: boolean,
   activeStaff: DashboardActiveStaff[],
 ): Promise<DashboardSetupHealth> {
-  const { count: activeServiceCount } = await client
-    .from("services")
-    .select("id", { count: "exact", head: true })
-    .eq("tenant_id", tenantId)
-    .eq("status", "active")
-    .is("deleted_at", null);
-
-  return {
+  return buildSetupHealth(
     onlineBookingEnabled,
-    hasActiveService: (activeServiceCount ?? 0) > 0,
-    hasActiveStaff: activeStaff.length > 0,
-    staffMissingSchedule: activeStaff.some((s) => !s.hasSchedule),
-  };
+    await getHasActiveService(client, tenantId),
+    activeStaff,
+  );
 }
 
 /** The current user's own ACTIVE membership id in this tenant — distinct
