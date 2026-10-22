@@ -15,6 +15,11 @@ import type { EmailOtpType } from "@supabase/supabase-js";
 
 const COOKIE_NAME = "sb-pending-email-confirmation";
 const TTL_SECONDS = 5 * 60;
+/** Faz LAUNCH.1A — a password-recovery link bridges the GET to a FORM the person
+ * must fill in (a new password, twice), not to a single button press, so it
+ * keeps the parked token for longer. The token itself is single-use and its
+ * life is bounded by the auth service regardless. */
+export const RECOVERY_TTL_SECONDS = 15 * 60;
 
 const KNOWN_EMAIL_OTP_TYPES = new Set<EmailOtpType>([
   "signup",
@@ -51,7 +56,7 @@ export async function setPendingConfirmation(
     httpOnly: true,
     secure: true,
     sameSite: "lax",
-    maxAge: TTL_SECONDS,
+    maxAge: value.type === "recovery" ? RECOVERY_TTL_SECONDS : TTL_SECONDS,
     path: "/",
   });
 }

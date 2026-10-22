@@ -117,8 +117,16 @@ export async function GET(request: Request) {
   const tokenHash = searchParams.get("token_hash");
   const type = parseEmailOtpType(searchParams.get("type"));
 
+  // Faz LAUNCH.1A: a password-recovery link goes to the reset-password form,
+  // never to /confirm-email — and it ignores any `next` entirely: the only
+  // destination after a reset is the staff login, decided by the server
+  // action, so a crafted link cannot steer where the person ends up.
+  // Still prefetch-safe: this handler only PARKS the token, exactly like the
+  // signup / magic-link branch below; the form's POST is what verifies it.
+  const destination = type === "recovery" ? "/reset-password" : "/confirm-email";
+
   if (tokenHash && type) {
-    const next = resolveSafeNext(searchParams.get("next") ?? "/", origin);
+    const next = type === "recovery" ? "/" : resolveSafeNext(searchParams.get("next") ?? "/", origin);
     await setPendingConfirmation({ tokenHash, type, next });
   }
   // No token_hash/type at all: nothing to store. /confirm-email will
@@ -126,5 +134,9 @@ export async function GET(request: Request) {
   // no error branch needed here, since this handler never attempts
   // verification and so has nothing that can fail.
 
-  return NextResponse.redirect(`${origin}/confirm-email`);
+  const response = NextResponse.redirect(`${origin}${destination}`);
+  // A redirect that carries Set-Cookie for a single-use credential must never
+  // be served from a cache to anyone else.
+  response.headers.set("Cache-Control", "no-store");
+  return response;
 }

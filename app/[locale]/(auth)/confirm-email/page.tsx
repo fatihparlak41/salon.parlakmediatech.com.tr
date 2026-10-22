@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { getPendingConfirmation } from "@/lib/auth/pending-confirmation";
 import { ConfirmEmailButton } from "@/components/auth/confirm-email-button";
@@ -16,6 +17,12 @@ export default async function ConfirmEmailPage() {
         <ResendConfirmationForm />
       </div>
     );
+  }
+
+  // Faz LAUNCH.1A: a parked password-recovery token belongs to the reset
+  // form, not to this confirm-or-login button (see confirmEmailAction).
+  if (pending.type === "recovery") {
+    redirect("/reset-password");
   }
 
   // Shared page — "Kayıt işlemini tamamlamak için..." only makes sense

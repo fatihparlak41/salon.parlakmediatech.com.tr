@@ -173,12 +173,20 @@ describe("customer confirmations keep their explicit destination", () => {
     // and was not idempotent): normalizing it once more would produce the off-site "//evil.example".
     const stored = `//${new URL(SITE).host}//evil.example`;
 
-    for (const type of ["magiclink", "signup", "recovery"]) {
+    for (const type of ["magiclink", "signup"]) {
       h.jar.clear();
       pending(type, stored);
       install({});
       expect(await run(() => confirmEmailAction()), type).toEqual({ kind: "redirected", url: "/" });
     }
+
+    // Faz LAUNCH.1A: a parked recovery token no longer reaches the destination logic at all — this action sends it to
+    // the reset-password form WITHOUT verifying it, so whatever `next` was stored cannot steer it anywhere.
+    h.jar.clear();
+    pending("recovery", stored);
+    const recoveryVerify = install({});
+    expect(await run(() => confirmEmailAction())).toEqual({ kind: "redirected", url: "/reset-password" });
+    expect(recoveryVerify).not.toHaveBeenCalled();
 
     // An invited sign-up whose link carries such a next still returns to the invitation, never off-site.
     h.jar.clear();
@@ -194,13 +202,21 @@ describe("customer confirmations keep their explicit destination", () => {
     expect(await run(() => confirmEmailAction())).toEqual({ kind: "redirected", url: "/" });
   });
 
-  it("recovery, email-change and invite confirmations never inherit it either", async () => {
-    for (const type of ["recovery", "email_change", "invite", "email"]) {
+  it("email-change, invite and email confirmations never inherit it either", async () => {
+    for (const type of ["email_change", "invite", "email"]) {
       h.jar.clear();
       pending(type, "/");
       install(hinted);
       expect(await run(() => confirmEmailAction()), type).toEqual({ kind: "redirected", url: "/" });
     }
+  });
+
+  it("a recovery link never inherits it either, because it is never completed here at all (Faz LAUNCH.1A)", async () => {
+    pending("recovery", "/");
+    const verifyOtp = install(hinted);
+
+    expect(await run(() => confirmEmailAction())).toEqual({ kind: "redirected", url: "/reset-password" });
+    expect(verifyOtp).not.toHaveBeenCalled();
   });
 
   it("a NEW customer's signup confirmation with no next and no hint is unchanged: /", async () => {

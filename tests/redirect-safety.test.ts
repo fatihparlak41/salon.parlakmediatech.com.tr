@@ -547,14 +547,17 @@ describe("real sink: /auth/confirm GET -> confirmEmailAction (the post-confirmat
   const confirmVia = async (type: string, rawNext: string, userMetadata: Record<string, unknown> = {}) => {
     install(userMetadata);
     const response = await authConfirmGet(new Request(`${SITE}/auth/confirm?token_hash=hash-for-tests&type=${type}&next=${encodeURIComponent(rawNext)}`));
-    expect(new URL(response.headers.get("location")!).pathname).toBe("/confirm-email");
+    // Faz LAUNCH.1A: a recovery link goes to the reset-password form and ignores `next` entirely.
+    expect(new URL(response.headers.get("location")!).pathname).toBe(type === "recovery" ? "/reset-password" : "/confirm-email");
     return run(() => confirmEmailAction());
   };
 
   it.each(sinkPayloads)("a crafted confirmation link (%s) lands on-site, for every confirmation type", async (_label, raw) => {
     for (const type of ["signup", "magiclink", "recovery", "email_change", "invite", "email"]) {
       h.jar.clear();
-      expect(await confirmVia(type, raw), `${type} ${raw}`).toEqual({ kind: "redirected", url: "/" });
+      // A recovery token is never completed by confirmEmailAction: it is sent to the reset-password form (still on-site).
+      const expected = type === "recovery" ? "/reset-password" : "/";
+      expect(await confirmVia(type, raw), `${type} ${raw}`).toEqual({ kind: "redirected", url: expected });
     }
   });
 
