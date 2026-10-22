@@ -83,9 +83,20 @@ export type ResetOutcome =
   | { kind: "failed" };
 
 type StepResult = { ok: true } | { ok: false; error: unknown };
+type VerifyResult = { ok: true; email: string | null } | { ok: false; error: unknown };
 
 export type ResetPasswordDeps = {
-  verifyRecoveryToken: (tokenHash: string) => Promise<StepResult>;
+  /** Verifies the token; on success returns the e-mail of the account the token belongs to. */
+  verifyRecoveryToken: (tokenHash: string) => Promise<VerifyResult>;
+  /**
+   * Service-role check on the account the verified token belongs to: confirmed AND already has a password.
+   * Enforced HERE, at the password-update boundary, because the provider's own recovery endpoint is public: a
+   * passwordless (customer magic-link) account can obtain a valid recovery token without passing the forgot-password
+   * eligibility check.
+   */
+  isEligibleAccount: (email: string) => Promise<boolean>;
+  /** End ONLY the session the verification just created (scope local). */
+  signOutThisSession: () => Promise<void>;
   updatePassword: (password: string) => Promise<StepResult>;
   /** Revoke every session of the account (scope "global"). Errors are swallowed and logged by the caller's dep. */
   signOutEverywhere: () => Promise<void>;
@@ -115,6 +126,20 @@ export async function completePasswordReset(
 
   if (!verified.ok) {
     log("[resetPassword] recovery token not accepted", authErrorLogFields(verified.error));
+    return { kind: "invalid_link" };
+  }
+
+  // A customer / magic-link-only identity must never turn itself into a password account through this surface.
+  // Fail closed: no e-mail, a failed check or a "no" all end here, with the same neutral answer as an expired link.
+  let eligible = false;
+  try {
+    eligible = verified.email ? await deps.isEligibleAccount(verified.email) : false;
+  } catch (error) {
+    log("[resetPassword] eligibility check failed", authErrorLogFields(error));
+  }
+  if (!eligible) {
+    await deps.signOutThisSession();
+    log("[resetPassword] recovery refused: the account has no existing password", {});
     return { kind: "invalid_link" };
   }
 

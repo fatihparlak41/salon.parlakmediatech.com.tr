@@ -21,6 +21,7 @@ import { PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH, forgotPasswordSchema, resetPas
 const EMAIL = "someone.private@example.com";
 const TOKEN = "tok_hash_0123456789abcdef";
 const NEW_PASSWORD = "Yeni-Sifre-2026!";
+const ACCOUNT_EMAIL = "staff.member@example.com";
 
 // ---------------------------------------------------------------------------------------------------------------------
 describe("performPasswordRecoveryRequest — non-enumerating", () => {
@@ -128,7 +129,14 @@ describe("completePasswordReset — which token, single use, no lingering sessio
     const deps: ResetPasswordDeps = {
       verifyRecoveryToken: vi.fn(async (hash: string) => {
         calls.push(`verify:${hash}`);
-        return { ok: true as const };
+        return { ok: true as const, email: ACCOUNT_EMAIL as string | null };
+      }),
+      isEligibleAccount: vi.fn(async (email: string) => {
+        calls.push(`eligible:${email}`);
+        return true;
+      }),
+      signOutThisSession: vi.fn(async () => {
+        calls.push("signOutThisSession");
       }),
       updatePassword: vi.fn(async (password: string) => {
         calls.push(`update:${password}`);
@@ -151,7 +159,7 @@ describe("completePasswordReset — which token, single use, no lingering sessio
   it("happy path: verify the parked token, clear it, set the new password, then revoke EVERY session — in that order", async () => {
     const { deps, calls } = harness();
     await expect(completePasswordReset({ pending: recovery, password: NEW_PASSWORD }, deps)).resolves.toEqual({ kind: "success" });
-    expect(calls).toEqual([`verify:${TOKEN}`, "clearPending", `update:${NEW_PASSWORD}`, "signOutEverywhere"]);
+    expect(calls).toEqual([`verify:${TOKEN}`, "clearPending", `eligible:${ACCOUNT_EMAIL}`, `update:${NEW_PASSWORD}`, "signOutEverywhere"]);
   });
 
   it("nothing parked: invalid link, and no service is called at all", async () => {
@@ -198,7 +206,7 @@ describe("completePasswordReset — which token, single use, no lingering sessio
       }),
     });
     await expect(completePasswordReset({ pending: recovery, password: NEW_PASSWORD }, deps)).resolves.toEqual(expected);
-    expect(calls).toEqual([`verify:${TOKEN}`, "clearPending", `update:${NEW_PASSWORD}`, "signOutEverywhere"]);
+    expect(calls).toEqual([`verify:${TOKEN}`, "clearPending", `eligible:${ACCOUNT_EMAIL}`, `update:${NEW_PASSWORD}`, "signOutEverywhere"]);
     const loggedText = JSON.stringify(logged);
     expect(loggedText).not.toContain(NEW_PASSWORD);
     expect(loggedText).not.toContain(TOKEN);
@@ -233,6 +241,74 @@ describe("completePasswordReset — which token, single use, no lingering sessio
     await expect(completePasswordReset({ pending: parked, password: NEW_PASSWORD }, deps)).resolves.toEqual({ kind: "invalid_link" });
     expect(deps.verifyRecoveryToken).toHaveBeenCalledTimes(1);
     expect(deps.updatePassword).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+describe("completePasswordReset — the password-update boundary refuses accounts that have no password", () => {
+  const recovery: PendingConfirmation = { tokenHash: TOKEN, type: "recovery", next: "/" };
+  const base = (over: Partial<ResetPasswordDeps>): { deps: ResetPasswordDeps; calls: string[] } => {
+    const calls: string[] = [];
+    const deps: ResetPasswordDeps = {
+      verifyRecoveryToken: vi.fn(async () => {
+        calls.push("verify");
+        return { ok: true as const, email: ACCOUNT_EMAIL as string | null };
+      }),
+      isEligibleAccount: vi.fn(async () => {
+        calls.push("eligible");
+        return true;
+      }),
+      signOutThisSession: vi.fn(async () => {
+        calls.push("signOutThisSession");
+      }),
+      updatePassword: vi.fn(async () => {
+        calls.push("update");
+        return { ok: true as const };
+      }),
+      signOutEverywhere: vi.fn(async () => {
+        calls.push("signOutEverywhere");
+      }),
+      clearPending: vi.fn(async () => {
+        calls.push("clearPending");
+      }),
+      log: () => {},
+      ...over,
+    };
+    return { deps, calls };
+  };
+
+  it("a PASSWORDLESS (customer / magic-link) account holding a valid recovery token cannot set a first password: neutral refusal, only its own new session is ended, no update, no global sign-out", async () => {
+    const { deps, calls } = base({ isEligibleAccount: vi.fn(async () => false) });
+    await expect(completePasswordReset({ pending: recovery, password: NEW_PASSWORD }, deps)).resolves.toEqual({ kind: "invalid_link" });
+    expect(calls).toEqual(["verify", "clearPending", "signOutThisSession"]);
+    expect(deps.isEligibleAccount).toHaveBeenCalledWith(ACCOUNT_EMAIL);
+    expect(deps.updatePassword).not.toHaveBeenCalled();
+    expect(deps.signOutEverywhere).not.toHaveBeenCalled();
+  });
+
+  it("fails CLOSED: a token that yields no e-mail, or an eligibility check that throws, is refused the same way", async () => {
+    const noEmail = base({ verifyRecoveryToken: vi.fn(async () => ({ ok: true as const, email: null })) });
+    await expect(completePasswordReset({ pending: recovery, password: NEW_PASSWORD }, noEmail.deps)).resolves.toEqual({ kind: "invalid_link" });
+    expect(noEmail.deps.isEligibleAccount).not.toHaveBeenCalled();
+    expect(noEmail.deps.updatePassword).not.toHaveBeenCalled();
+    expect(noEmail.deps.signOutThisSession).toHaveBeenCalledTimes(1);
+
+    const throws = base({ isEligibleAccount: vi.fn(async () => { throw new Error("rpc down"); }) });
+    await expect(completePasswordReset({ pending: recovery, password: NEW_PASSWORD }, throws.deps)).resolves.toEqual({ kind: "invalid_link" });
+    expect(throws.deps.updatePassword).not.toHaveBeenCalled();
+    expect(throws.deps.signOutThisSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("the refusal is indistinguishable from an expired link (same outcome), the spent cookie is cleared, and an eligible account is unaffected", async () => {
+    const refused = base({ isEligibleAccount: vi.fn(async () => false) });
+    const expired = base({ verifyRecoveryToken: vi.fn(async () => ({ ok: false as const, error: { code: "otp_expired" } })) });
+    expect(await completePasswordReset({ pending: recovery, password: NEW_PASSWORD }, refused.deps)).toEqual(
+      await completePasswordReset({ pending: recovery, password: NEW_PASSWORD }, expired.deps),
+    );
+    expect(refused.deps.clearPending).toHaveBeenCalledTimes(1);
+    const ok = base({});
+    await expect(completePasswordReset({ pending: recovery, password: NEW_PASSWORD }, ok.deps)).resolves.toEqual({ kind: "success" });
+    expect(ok.deps.signOutThisSession).not.toHaveBeenCalled();
   });
 });
 

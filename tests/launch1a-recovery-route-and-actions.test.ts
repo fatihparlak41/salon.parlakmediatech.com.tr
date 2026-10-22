@@ -162,7 +162,7 @@ beforeEach(() => {
   for (const fn of [h.verifyOtp, h.updateUser, h.signOut, h.adminRpc, h.resetPasswordForEmail]) fn.mockReset();
   h.verifyOtp.mockImplementation(async () => {
     h.order.push("verifyOtp");
-    return { data: { user: { id: "u", user_metadata: {} } }, error: null };
+    return { data: { user: { id: "u", email: EMAIL, user_metadata: {} } }, error: null };
   });
   h.updateUser.mockImplementation(async () => {
     h.order.push("updateUser");
@@ -444,6 +444,29 @@ describe("resetPasswordAction — the only place a recovery token is verified", 
     expect(parked()).toBeNull();
   });
 
+  it("DIRECT-PROVIDER BYPASS: a passwordless (customer) account holding a valid recovery token cannot set a first password through this surface", async () => {
+    park({ tokenHash: TOKEN, type: "recovery", next: "/" });
+    h.adminRpc.mockResolvedValue({ data: false, error: null });
+    const outcome = await run(() => resetPasswordAction(null, fields()));
+    expect(outcome).toEqual({
+      kind: "returned",
+      value: { success: false, error: { code: "UNAUTHENTICATED", message: RESET_INVALID_LINK_MESSAGE } },
+    });
+    expect(h.adminRpc).toHaveBeenCalledWith("password_recovery_allowed", { p_email: EMAIL });
+    expect(h.updateUser).not.toHaveBeenCalled();
+    expect(h.signOut).toHaveBeenCalledTimes(1);
+    expect(h.signOut).toHaveBeenCalledWith({ scope: "local" }); // only the session this attempt created
+    expect(parked()).toBeNull();
+  });
+
+  it("an eligibility-check failure at the boundary fails closed (no password is set)", async () => {
+    park({ tokenHash: TOKEN, type: "recovery", next: "/" });
+    h.adminRpc.mockResolvedValue({ data: null, error: { code: "PGRST301", status: 500, message: "boom" } });
+    const outcome = await run(() => resetPasswordAction(null, fields()));
+    expect(outcome).toMatchObject({ kind: "returned", value: { success: false, error: { code: "UNAUTHENTICATED" } } });
+    expect(h.updateUser).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["same_password", RESET_SAME_PASSWORD_MESSAGE, "VALIDATION"],
     ["weak_password", RESET_WEAK_PASSWORD_MESSAGE, "VALIDATION"],
@@ -471,7 +494,7 @@ describe("resetPasswordAction — the only place a recovery token is verified", 
     h.verifyOtp.mockResolvedValue({ data: { user: null }, error: { code: "otp_expired", message: TOKEN } });
     seen.push(JSON.stringify(await run(() => resetPasswordAction(null, fields()))));
     park({ tokenHash: TOKEN, type: "recovery", next: "/" });
-    h.verifyOtp.mockResolvedValue({ data: { user: {} }, error: null });
+    h.verifyOtp.mockResolvedValue({ data: { user: { email: EMAIL } }, error: null });
     h.updateUser.mockResolvedValue({ data: {}, error: { code: "weak_password", message: NEW_PASSWORD } });
     seen.push(JSON.stringify(await run(() => resetPasswordAction(null, fields()))));
     seen.push(JSON.stringify(consoleError.mock.calls));

@@ -338,8 +338,24 @@ export async function resetPasswordAction(
     { pending, password: parsed.data.password },
     {
       verifyRecoveryToken: async (tokenHash) => {
-        const { error } = await supabase.auth.verifyOtp({ type: "recovery", token_hash: tokenHash });
-        return error ? { ok: false, error } : { ok: true };
+        const { data, error } = await supabase.auth.verifyOtp({ type: "recovery", token_hash: tokenHash });
+        return error ? { ok: false, error } : { ok: true, email: data?.user?.email ?? null };
+      },
+      // The provider's recovery endpoint is public, so a passwordless (customer) account can hold a valid recovery
+      // token without ever passing the forgot-password check: re-check at the password-update boundary.
+      isEligibleAccount: async (email) => {
+        const { data, error } = await createAdminClient().rpc("password_recovery_allowed", { p_email: email });
+        if (error) {
+          console.error("[resetPasswordAction] eligibility check failed", authErrorLogFields(error));
+          return false;
+        }
+        return data === true;
+      },
+      signOutThisSession: async () => {
+        const { error } = await supabase.auth.signOut({ scope: "local" });
+        if (error) {
+          console.error("[resetPasswordAction] local sign-out failed", authErrorLogFields(error));
+        }
       },
       updatePassword: async (password) => {
         const { error } = await supabase.auth.updateUser({ password });
