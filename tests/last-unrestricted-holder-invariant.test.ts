@@ -7,6 +7,7 @@ import {
   createRoleForTenant,
   createTestTenant,
   createTestUser,
+  grantTenantProvisioningApproval,
   signInAs,
   testDb,
   type TestUser,
@@ -136,6 +137,8 @@ describe("bootstrap compatibility", () => {
   it("create_tenant_with_owner still succeeds and yields exactly one active unrestricted holder", async () => {
     const owner = await createTestUser("luh-bootstrap-owner");
     createdUserIds.push(owner.id);
+    // Faz LAUNCH.1A: the real create_tenant is owner-approval gated.
+    await grantTenantProvisioningApproval(owner.email);
     const client = await signInAs(owner);
 
     const { data, error } = await client.rpc("create_tenant", {

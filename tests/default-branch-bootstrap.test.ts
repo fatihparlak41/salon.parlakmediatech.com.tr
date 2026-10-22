@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { cleanupTenants, cleanupUsers, createTestUser, signInAs, testDb } from "./helpers";
+import { cleanupTenants, cleanupUsers, createTestUser, grantTenantProvisioningApproval, signInAs, testDb } from "./helpers";
 
 /**
  * Phase 2I.2C — every new tenant must get exactly one initial branch
@@ -27,6 +27,8 @@ afterAll(async () => {
 async function createRealTenant(slugPrefix: string): Promise<{ tenantId: string; slug: string; userId: string }> {
   const user = await createTestUser(`p2i2c-${slugPrefix}`);
   createdUserIds.push(user.id);
+  // Faz LAUNCH.1A: the real create_tenant is owner-approval gated.
+  await grantTenantProvisioningApproval(user.email);
   const client = await signInAs(user);
   const slug = `test-p2i2c-${slugPrefix}-${crypto.randomUUID().slice(0, 8)}`;
   const { data, error } = await client.rpc("create_tenant", { p_name: `Test ${slugPrefix}`, p_slug: slug });

@@ -15,9 +15,35 @@
       "submit": "Giriş yap",
       "submitting": "Giriş yapılıyor…",
       "noAccount": "Hesabınız yok mu?",
-      "signUpLink": "Kayıt olun"
+      "signUpLink": "Kayıt olun",
+      "forgotPasswordLink": "Şifremi unuttum",
+      "resetSuccess": "Şifreniz güncellendi. Yeni şifrenizle giriş yapabilirsiniz."
+    },
+    "forgotPassword": {
+      "title": "Şifrenizi mi unuttunuz?",
+      "description": "Salon hesabınızın e-posta adresini yazın. Hesabınız varsa size şifre yenileme bağlantısı gönderelim.",
+      "emailLabel": "E-posta",
+      "submit": "Bağlantı gönder",
+      "submitting": "Gönderiliyor…",
+      "backToLogin": "Giriş sayfasına dön",
+      "customerHint": "Müşteri hesabınız için şifre gerekmez:",
+      "customerLink": "müşteri girişi"
+    },
+    "resetPassword": {
+      "title": "Yeni şifre belirleyin",
+      "description": "Hesabınız için yeni bir şifre seçin. Kaydettiğinizde tüm cihazlardaki oturumlarınız kapanır.",
+      "passwordLabel": "Yeni şifre",
+      "passwordHint": "En az 8 karakter",
+      "confirmLabel": "Yeni şifre (tekrar)",
+      "submit": "Şifreyi kaydet",
+      "submitting": "Kaydediliyor…",
+      "invalidTitle": "Bu bağlantının süresi dolmuş veya daha önce kullanılmış.",
+      "invalidDescription": "Güvenliğiniz için şifre yenileme bağlantıları tek kullanımlıktır. Yeni bir bağlantı isteyebilirsiniz.",
+      "requestNewLink": "Yeni bağlantı iste",
+      "backToLogin": "Giriş sayfasına dön"
     },
     "signUp": {
+      "inviteOnlyNotice": "SalonOS şu anda davetle çalışıyor. Bir salona katılmak için davet e-postanızdaki bağlantıyı kullanın; yeni bir salon açmak için SalonOS ekibinin onayı gerekir.",
       "title": "Kayıt ol",
       "fullNameLabel": "Ad Soyad",
       "fullNameHint": "Kişisel adınızı yazın (salon adını değil). Panelde bu adla karşılanırsınız.",
@@ -83,6 +109,7 @@
       "openSalon": "Aç",
       "noSalons": "Henüz bir salonunuz yok.",
       "createSalon": "Salon oluştur",
+      "createSalonPending": "Salon oluşturma şu anda yalnızca onaylı hesaplar için açık. Onay için SalonOS ekibiyle iletişime geçin.",
       "platformAdmin": "Platform yönetimi",
       "openSuperAdmin": "Süper admin paneline git"
     }
@@ -94,7 +121,10 @@
     "slugLabel": "Adres (URL)",
     "slugHint": "Küçük harf, rakam ve tire kullanılabilir. Randevu sayfanız: /book/{slug}",
     "submit": "Salonu oluştur",
-    "submitting": "Oluşturuluyor…"
+    "submitting": "Oluşturuluyor…",
+    "pendingApprovalTitle": "Hesabınız henüz onaylanmadı",
+    "pendingApprovalDescription": "SalonOS şu anda yalnızca davetle ve onayla salon açıyor. Hesabınız onaylandığında salonunuzu bu sayfadan oluşturabilirsiniz. Onay için SalonOS ekibiyle iletişime geçin.",
+    "pendingApprovalHome": "Ana sayfaya dön"
   },
   "TenantApp": {
     "nav": {
@@ -337,7 +367,58 @@
     "title": "Ekip ve Yetkiler",
     "description": "Salonunuza erişebilen kullanıcıları ve bekleyen davetleri yönetin.",
     "inviteCta": "Yeni Davet",
-    "membersSectionTitle": "Aktif Ekip Üyeleri",
+    "membersSectionTitle": "Ekip Üyeleri",
+    "memberActions": {
+      "actionsColumn": "İşlemler",
+      "statusColumn": "Durum",
+      "statusActive": "Aktif",
+      "statusSuspended": "Askıda",
+      "selfBadge": "Siz",
+      "unnamedMember": "İsimsiz kullanıcı",
+      "changeRole": "Rolü değiştir",
+      "suspend": "Erişimi askıya al",
+      "reactivate": "Erişimi geri ver",
+      "remove": "Ekipten çıkar",
+      "noActions": "—",
+      "menuLabel": "Üye işlemleri",
+      "roleDialog": {
+        "title": "Rolü değiştir",
+        "description": "{name} için yeni bir rol seçin. Değişiklik hemen geçerli olur.",
+        "roleLabel": "Yeni rol",
+        "rolePlaceholder": "Bir rol seçin",
+        "noRoles": "Atayabileceğiniz başka bir rol yok.",
+        "submit": "Rolü kaydet",
+        "pending": "Kaydediliyor…",
+        "cancel": "Vazgeç"
+      },
+      "suspendDialog": {
+        "title": "Erişim askıya alınsın mı?",
+        "description": "{name} salona giriş yapamayacak ve bildirim almayacak. Kayıtları silinmez; erişimi istediğiniz zaman geri verebilirsiniz.",
+        "confirm": "Askıya al",
+        "pending": "Askıya alınıyor…",
+        "cancel": "Vazgeç"
+      },
+      "reactivateDialog": {
+        "title": "Erişim geri verilsin mi?",
+        "description": "{name} mevcut rolüyle yeniden salona giriş yapabilecek.",
+        "confirm": "Erişimi geri ver",
+        "pending": "Geri veriliyor…",
+        "cancel": "Vazgeç"
+      },
+      "removeDialog": {
+        "title": "Ekipten çıkarılsın mı?",
+        "description": "{name} bu salona artık giriş yapamayacak. Personel kaydı ve geçmiş randevular korunur; yeniden eklemek için yeni bir davet göndermeniz gerekir.",
+        "confirm": "Ekipten çıkar",
+        "pending": "Çıkarılıyor…",
+        "cancel": "Vazgeç"
+      },
+      "banners": {
+        "roleChanged": "Rol güncellendi.",
+        "suspended": "Erişim askıya alındı.",
+        "reactivated": "Erişim geri verildi.",
+        "removed": "Üye ekipten çıkarıldı."
+      }
+    },
     "invitationsSectionTitle": "Davetler",
     "membersTable": {
       "nameColumn": "Kullanıcı",
@@ -839,6 +920,36 @@
     "statusActions": {
       "activate": "Aktifleştir",
       "suspend": "Askıya al"
+    },
+    "approvals": {
+      "heading": "Salon sahibi onayları",
+      "description": "SalonOS şu anda yalnızca onaylanan e-posta adreslerinin salon oluşturmasına izin veriyor. Burada onayladığınız adres, hesabını açıp e-postasını doğruladıktan sonra tek bir salon oluşturabilir.",
+      "emailLabel": "E-posta adresi",
+      "noteLabel": "Not (yalnızca siz görürsünüz)",
+      "daysLabel": "Geçerlilik",
+      "daysOption": "{count} gün",
+      "submit": "Onayla",
+      "submitting": "Onaylanıyor…",
+      "approvedMessage": "Onay kaydedildi.",
+      "revokedMessage": "Onay geri alındı.",
+      "revoke": "Onayı geri al",
+      "revoking": "Geri alınıyor…",
+      "empty": "Henüz onay kaydı yok.",
+      "ownerOnly": "Bu bölümü yalnızca platform sahibi yönetebilir.",
+      "columns": {
+        "email": "E-posta",
+        "note": "Not",
+        "status": "Durum",
+        "expires": "Geçerlilik sonu",
+        "salon": "Oluşturulan salon",
+        "actions": "İşlemler"
+      },
+      "status": {
+        "approved": "Onaylı",
+        "expired": "Süresi doldu",
+        "consumed": "Kullanıldı",
+        "revoked": "Geri alındı"
+      }
     }
   },
   "NotFound": {

@@ -584,6 +584,12 @@ async function deleteUserWithRetry(userId: string): Promise<void> {
 }
 
 export async function cleanupUsers(userIds: string[]): Promise<void> {
+  // Faz LAUNCH.1A: consuming a tenant-provisioning approval (and every platform-owner approve / revoke) writes a
+  // PLATFORM-level audit row (tenant_id null) whose actor is the acting user. audit_logs.actor_user_id has no ON
+  // DELETE action and cleanupTenants only removes tenant-level rows, so these must go before their authors do.
+  if (userIds.length > 0) {
+    await testDb`delete from audit_logs where tenant_id is null and actor_user_id in ${testDb(userIds)}`;
+  }
   for (const id of userIds) {
     await deleteUserWithRetry(id);
   }
@@ -592,6 +598,38 @@ export async function cleanupUsers(userIds: string[]): Promise<void> {
 export async function cleanupPlatformAdmins(userIds: string[]): Promise<void> {
   if (userIds.length === 0) return;
   await testDb`delete from platform_admins where user_id in ${testDb(userIds)}`;
+}
+
+// --- Faz LAUNCH.1A fixture helpers -------------------------------------
+
+/** create_tenant is owner-approval gated since migration 20261022150000: a
+ * signed-in user may create a salon only with a live approval for their own
+ * confirmed e-mail address. A test that calls the REAL create_tenant for
+ * `email` first records the approval an operator would have granted.
+ * A no-op on a database that does not carry the gate yet (DEV never received
+ * it), so the same test file runs on every schema era. */
+export async function grantTenantProvisioningApproval(email: string, validDays = 1): Promise<void> {
+  const [gate] = await testDb<{ present: boolean }[]>`select to_regclass('public.tenant_provisioning_approvals') is not null as present`;
+  if (!gate?.present) return;
+  await testDb`
+    insert into tenant_provisioning_approvals (email_normalized, note, expires_at)
+    values (${email.trim().toLowerCase()}, 'test fixture', now() + make_interval(days => ${validDays}))
+    on conflict (email_normalized) where status = 'approved' do nothing
+  `;
+}
+
+/** Approvals reference nothing with a blocking foreign key (all ON DELETE SET
+ * NULL), so this is hygiene, not an ordering requirement. Exact e-mails only. */
+export async function cleanupTenantProvisioningApprovals(emails: string[]): Promise<void> {
+  if (emails.length === 0) return;
+  const [gate] = await testDb<{ present: boolean }[]>`select to_regclass('public.tenant_provisioning_approvals') is not null as present`;
+  if (!gate?.present) return;
+  await testDb`delete from tenant_provisioning_approvals where email_normalized in ${testDb(emails.map((e) => e.trim().toLowerCase()))}`;
+}
+
+/** A platform_admins row for `userId` (role `owner` may manage approvals; `support` may not). */
+export async function createPlatformAdmin(userId: string, role: "owner" | "support" = "support", isActive = true): Promise<void> {
+  await testDb`insert into platform_admins (user_id, role, is_active) values (${userId}, ${role}, ${isActive})`;
 }
 
 // --- Faz SAAS.1C.1 fixture helpers -------------------------------------

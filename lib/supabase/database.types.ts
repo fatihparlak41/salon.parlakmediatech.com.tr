@@ -2313,6 +2313,65 @@ export type Database = {
           },
         ]
       }
+      tenant_provisioning_approvals: {
+        Row: {
+          approved_at: string
+          approved_by: string | null
+          consumed_at: string | null
+          consumed_by: string | null
+          consumed_tenant_id: string | null
+          created_at: string
+          email_normalized: string
+          expires_at: string
+          id: string
+          note: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string
+          approved_by?: string | null
+          consumed_at?: string | null
+          consumed_by?: string | null
+          consumed_tenant_id?: string | null
+          created_at?: string
+          email_normalized: string
+          expires_at: string
+          id?: string
+          note?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string
+          approved_by?: string | null
+          consumed_at?: string | null
+          consumed_by?: string | null
+          consumed_tenant_id?: string | null
+          created_at?: string
+          email_normalized?: string
+          expires_at?: string
+          id?: string
+          note?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_provisioning_approvals_consumed_tenant_id_fkey"
+            columns: ["consumed_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenants: {
         Row: {
           created_at: string
@@ -2559,6 +2618,7 @@ export type Database = {
           staff_member_id: string
         }[]
       }
+      get_my_tenant_provisioning_status: { Args: never; Returns: boolean }
       get_notification_delivery_activation: { Args: never; Returns: string }
       get_or_create_appointment_sale: {
         Args: { p_appointment_id: string }
@@ -2676,6 +2736,14 @@ export type Database = {
         }
         Returns: undefined
       }
+      list_assignable_roles: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          assignable: boolean
+          role_id: string
+          role_name: string
+        }[]
+      }
       list_expense_categories: { Args: { p_tenant_id: string }; Returns: Json }
       list_expenses: {
         Args: {
@@ -2713,6 +2781,19 @@ export type Database = {
           status: string
         }[]
       }
+      list_team_members: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          can_manage: boolean
+          display_name: string
+          is_self: boolean
+          linked_staff_name: string
+          membership_id: string
+          role_id: string
+          role_name: string
+          status: string
+        }[]
+      }
       log_team_invitation_email_delivery: {
         Args: {
           p_actor_user_id: string
@@ -2733,6 +2814,37 @@ export type Database = {
       materialize_pending_notification_events: {
         Args: { p_batch_size?: number }
         Returns: Json
+      }
+      password_recovery_allowed: { Args: { p_email: string }; Returns: boolean }
+      platform_approve_tenant_owner: {
+        Args: { p_email: string; p_note?: string; p_valid_days?: number }
+        Returns: {
+          approved_at: string
+          email: string
+          expires_at: string
+          id: string
+          note: string
+          status: string
+        }[]
+      }
+      platform_list_tenant_owner_approvals: {
+        Args: never
+        Returns: {
+          approved_at: string
+          consumed_at: string
+          consumed_tenant_name: string
+          effective_status: string
+          email: string
+          expires_at: string
+          id: string
+          note: string
+          revoked_at: string
+          status: string
+        }[]
+      }
+      platform_revoke_tenant_owner_approval: {
+        Args: { p_approval_id: string }
+        Returns: undefined
       }
       prepare_notification_delivery_targets: {
         Args: { p_batch_size?: number }

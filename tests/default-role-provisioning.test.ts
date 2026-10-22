@@ -10,6 +10,7 @@ import {
   createCustomRole,
   createTestTenant,
   createTestUser,
+  grantTenantProvisioningApproval,
   testDb,
   type TestTenant,
   type TestUser,
@@ -118,6 +119,8 @@ describe("a NEW tenant is born with exactly the four primary roles", () => {
 
   beforeAll(async () => {
     creator = await newUser("creator");
+    // Faz LAUNCH.1A: the real create_tenant is owner-approval gated.
+    await grantTenantProvisioningApproval(creator.email);
     const slug = `drp-new-${randomUUID().slice(0, 8)}`;
     tenantId = await asAuthenticatedUser(creator.id, async (sql) => {
       const [row] = await sql<{ id: string }[]>`select public.create_tenant(${"DRP Test Salon"}, ${slug}) as id`;
@@ -174,6 +177,10 @@ describe("a NEW tenant is born with exactly the four primary roles", () => {
   });
 
   it("the tenant-creation transaction still fails cleanly on a bad slug and leaves nothing behind", async () => {
+    // Faz LAUNCH.1A: the approval gate runs BEFORE argument validation (an unapproved caller must not learn anything
+    // about slugs), and beforeAll consumed the creator's approval — grant a fresh one, otherwise this call would be
+    // refused for the wrong reason.
+    await grantTenantProvisioningApproval(creator.email);
     const before = await testDb<{ n: number }[]>`select count(*)::int as n from roles`;
     const outcome = await attemptAs(creator.id, (sql) => sql`select public.create_tenant(${"Bad Slug"}, ${"Not A Valid Slug!"})`);
     expect(outcome).toMatchObject({ ok: false, message: "invalid slug format" });

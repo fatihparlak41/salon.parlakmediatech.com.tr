@@ -10,6 +10,7 @@ import {
   createStaffMember,
   cleanupTenants,
   cleanupUsers,
+  grantTenantProvisioningApproval,
   type TestUser,
 } from "./helpers";
 
@@ -243,6 +244,8 @@ describe("policy defaults and settings.manage RLS", () => {
 describe("settings.manage via the REAL onboarding path (not createTestTenant)", () => {
   it("an owner from create_tenant_with_owner CAN update policy fields, and a fresh read confirms it actually persisted", async () => {
     const realOwner = await createTestUser("p2i4a-real-onboarding-owner");
+    // Faz LAUNCH.1A: the real create_tenant is owner-approval gated.
+    await grantTenantProvisioningApproval(realOwner.email);
     const realOwnerClient = await signInAs(realOwner);
     const slug = `test-p2i4a-real-${crypto.randomUUID().slice(0, 8)}`;
 
@@ -750,7 +753,12 @@ describe("security", () => {
     // elsewhere (security-grants-regression.test.ts's own
     // SERVICE_ROLE_FUNCTION_WHITELIST). This test's job is only to confirm
     // this baseline never grew an UNREVIEWED one.
+    // Faz LAUNCH.1A: password_recovery_allowed (migration 20261022150100, the forgot-password action's eligibility
+    // check — executable by service_role ONLY, see launch1a-recovery-eligibility.test.ts) is one more reviewed, narrow
+    // grant; it exists only on databases that carry that migration.
+    const [recovery] = await testDb<{ present: boolean }[]>`select to_regprocedure('public.password_recovery_allowed(text)') is not null as present`;
     expect(serviceRoleGrants.map((g) => g.function_name).sort()).toEqual([
+      ...(recovery!.present ? ["password_recovery_allowed"] : []),
       "begin_customer_notification_send",
       "claim_customer_notification_jobs",
       "claim_notification_delivery_targets",
@@ -764,7 +772,7 @@ describe("security", () => {
       "purge_expired_notification_event_display_snapshots",
       "record_customer_notification_result",
       "record_notification_delivery_target_result",
-    ]);
+    ].sort());
   });
 
   it("default-privilege baseline is untouched", async () => {

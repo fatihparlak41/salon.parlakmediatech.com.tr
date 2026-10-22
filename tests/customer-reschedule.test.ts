@@ -814,7 +814,11 @@ describe("security", () => {
     // security-grants-regression.test.ts's own
     // SERVICE_ROLE_FUNCTION_WHITELIST for the reviewed detail. This test's
     // job is only to confirm no UNREVIEWED one appeared.
+    // Faz LAUNCH.1A: password_recovery_allowed (migration 20261022150100, service_role ONLY) is one more reviewed,
+    // narrow grant; it exists only on databases that carry that migration.
+    const [recovery] = await testDb<{ present: boolean }[]>`select to_regprocedure('public.password_recovery_allowed(text)') is not null as present`;
     expect(data.filter((g) => g.grantee === "service_role").map((g) => g.function_name).sort()).toEqual([
+      ...(recovery!.present ? ["password_recovery_allowed"] : []),
       "begin_customer_notification_send",
       "claim_customer_notification_jobs",
       "claim_notification_delivery_targets",
@@ -828,7 +832,7 @@ describe("security", () => {
       "purge_expired_notification_event_display_snapshots",
       "record_customer_notification_result",
       "record_notification_delivery_target_result",
-    ]);
+    ].sort());
     const defaults = await testDb<{ grantee: string }[]>`select * from public.security_audit_default_privileges()`;
     expect(defaults.length).toBe(4);
     for (const row of defaults) expect(row.grantee).toBe("service_role");

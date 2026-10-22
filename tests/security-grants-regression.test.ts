@@ -338,15 +338,39 @@ const FIN_1B1_AUTHENTICATED_FUNCTIONS = [
   "public.void_expense_payment",
 ];
 
+// Faz LAUNCH.1A (migrations 20261022150000 / 150100 / 150200) is a schema ERA in
+// the same sense: PROD carries it only after the Owner releases it, DEV never
+// will. Sentinel = the approvals table. Once it exists EVERY object of the era
+// must be present with exactly these grants — never "whatever is there".
+//
+//  - Six client-facing RPCs for `authenticated` (never anon): the owner-approval
+//    management RPCs (each re-checks that the caller is a platform OWNER), the
+//    caller-only "may I create a salon" status, and the two Team read models
+//    (each re-checks staff.manage).
+//  - ONE service_role-only function: password_recovery_allowed. It is the
+//    account-existence check behind forgot-password; granting it to anon or
+//    authenticated would turn it into an oracle, so it must never leave this list.
+const LAUNCH_1A_AUTHENTICATED_FUNCTIONS = [
+  "public.platform_approve_tenant_owner",
+  "public.platform_revoke_tenant_owner_approval",
+  "public.platform_list_tenant_owner_approvals",
+  "public.get_my_tenant_provisioning_status",
+  "public.list_team_members",
+  "public.list_assignable_roles",
+];
+const LAUNCH_1A_SERVICE_ROLE_FUNCTIONS = ["public.password_recovery_allowed"];
+
 // The fully locked-down finance ledgers: RLS on, zero policies, no privilege at
 // all for any API role. Checked only for the eras that exist.
 const FIN_1A_LOCKED_DOWN_TABLES = ["appointment_sales", "appointment_sale_items", "payments"];
 const FIN_1B1_LOCKED_DOWN_TABLES = ["expense_categories", "expenses", "expense_payments"];
+const LAUNCH_1A_LOCKED_DOWN_TABLES = ["tenant_provisioning_approvals"];
 
-async function readFinanceEra(): Promise<{ fin1a: boolean; fin1b1: boolean }> {
-  const [row] = await testDb<{ fin1a: boolean; fin1b1: boolean }[]>`
+async function readFinanceEra(): Promise<{ fin1a: boolean; fin1b1: boolean; launch1a: boolean }> {
+  const [row] = await testDb<{ fin1a: boolean; fin1b1: boolean; launch1a: boolean }[]>`
     select to_regclass('public.appointment_sales') is not null as fin1a,
-           to_regclass('public.expenses') is not null as fin1b1`;
+           to_regclass('public.expenses') is not null as fin1b1,
+           to_regclass('public.tenant_provisioning_approvals') is not null as launch1a`;
   return row!;
 }
 
@@ -642,11 +666,12 @@ describe("security grants regression", () => {
     // intentionally grant service_role anything at the application
     // runtime layer; see SERVICE_ROLE_FUNCTION_WHITELIST above.
     const data = await testDb<FunctionGrantRow[]>`select * from security_audit_function_grants()`;
+    const era = await readFinanceEra();
     const actual = new Set(
       data.filter((g) => g.grantee === "service_role").map((g) => `${g.schema_name}.${g.function_name}`),
     );
 
-    for (const fn of SERVICE_ROLE_FUNCTION_WHITELIST) {
+    for (const fn of [...SERVICE_ROLE_FUNCTION_WHITELIST, ...(era.launch1a ? LAUNCH_1A_SERVICE_ROLE_FUNCTIONS : [])]) {
       expect(actual.has(fn), `expected service_role to have execute on ${fn}`).toBe(true);
       actual.delete(fn);
     }
@@ -686,6 +711,7 @@ describe("security grants regression", () => {
       ...AUTHENTICATED_FUNCTION_WHITELIST,
       ...(era.fin1a ? FIN_1A_AUTHENTICATED_FUNCTIONS : []),
       ...(era.fin1b1 ? FIN_1B1_AUTHENTICATED_FUNCTIONS : []),
+      ...(era.launch1a ? LAUNCH_1A_AUTHENTICATED_FUNCTIONS : []),
     ];
 
     const actual = new Set(
@@ -702,7 +728,11 @@ describe("security grants regression", () => {
 
   it("the finance ledger tables that exist on this schema are fully locked down (RLS on, zero policies, no API-role privilege)", async () => {
     const era = await readFinanceEra();
-    const tables = [...(era.fin1a ? FIN_1A_LOCKED_DOWN_TABLES : []), ...(era.fin1b1 ? FIN_1B1_LOCKED_DOWN_TABLES : [])];
+    const tables = [
+      ...(era.fin1a ? FIN_1A_LOCKED_DOWN_TABLES : []),
+      ...(era.fin1b1 ? FIN_1B1_LOCKED_DOWN_TABLES : []),
+      ...(era.launch1a ? LAUNCH_1A_LOCKED_DOWN_TABLES : []),
+    ];
 
     const rls = await testDb<RlsStatusRow[]>`select * from security_audit_rls_status()`;
     const grants = await testDb<TableGrantRow[]>`select * from security_audit_table_grants()`;

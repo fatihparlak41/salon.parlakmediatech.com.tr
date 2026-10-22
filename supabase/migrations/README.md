@@ -139,3 +139,34 @@ gated.
   AND to the two baseline pins in `tests/customer-reschedule.test.ts` and
   `tests/customer-cancellation.test.ts`, with the reason. A new `vercel.json`
   cron entry is pinned the same way in `tests/notification-purge-endpoint.test.ts`.
+
+## Tenant provisioning is owner-approval only (Faz LAUNCH.1A)
+
+`public.create_tenant` -> `private.create_tenant_with_owner` is the only way a
+tenant comes into existence. Since `20261022150000` it refuses everyone who is
+not an active platform admin unless `public.tenant_provisioning_approvals` holds
+an unexpired, unused row for the caller's own **confirmed** e-mail address. The
+platform owner grants it from `/super-admin`; it is locked and consumed in the
+same transaction as the creation and audited at platform level. The table has
+RLS on, no policy and no API-role grant — it is reached only through
+`platform_approve_tenant_owner`, `platform_revoke_tenant_owner_approval` and
+`platform_list_tenant_owner_approvals` (platform owner only).
+
+- The gate runs before any argument validation, so an unapproved caller cannot
+  probe which slugs exist.
+- It trusts `auth.users.email_confirmed_at`: the hosted project's "Confirm
+  email" setting must stay ON.
+- A second function that inserts into `tenants` is a gate decision, not a
+  convenience. `tests/launch1a-tenant-provisioning-gate.test.ts` ("CATALOG
+  GUARD") fails if any function other than `private.create_tenant_with_owner`
+  inserts into `tenants`, or if an API role gains `INSERT` on it.
+- A test that calls the real `create_tenant` first calls
+  `grantTenantProvisioningApproval(email)` from `tests/helpers.ts` (a no-op on a
+  database that does not carry the gate yet, e.g. DEV).
+- `public.password_recovery_allowed(email)` is deliberately executable by
+  `service_role` only: for `anon` or `authenticated` it would be an
+  account-existence oracle. It is the one `service_role` grant added since
+  NOTIF.1A and is pinned era-aware in the three grant baselines above.
+- Release order: the migrations first, the application second. The new Team page
+  reads through `list_team_members` / `list_assignable_roles`, which the old
+  database does not have.
