@@ -18,6 +18,11 @@ export default async function SignUpPage({ searchParams }: PageProps<"/[locale]/
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-xl font-semibold tracking-tight">{t("title")}</h1>
+      {/* Faz LAUNCH.1A — account creation stays open (invited team members
+          and approved salon owners both need an account), but creating a
+          SALON is gated in the database. Say so up front instead of letting
+          people discover it on /onboarding. */}
+      <p className="text-muted-foreground text-sm">{t("inviteOnlyNotice")}</p>
       <SignUpForm next={next} />
       <p className="text-muted-foreground text-center text-sm">
         {t("hasAccount")}{" "}

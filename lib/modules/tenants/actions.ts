@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { fail, type ActionResult } from "@/lib/errors";
 import { requireUser } from "@/lib/auth/session";
 import { createTenantSchema } from "./schemas";
+import { TENANT_PROVISIONING_NOT_APPROVED_MESSAGE, isTenantProvisioningNotApprovedError } from "./provisioning";
 
 /**
  * Client validates the slug against lib/tenancy/reserved-slugs.ts (fast
@@ -39,6 +40,12 @@ export async function createTenantAction(
   });
 
   if (error) {
+    // Faz LAUNCH.1A: the database refuses everyone without an owner approval
+    // (or a platform-admin row) before it looks at the slug, so this is also
+    // the answer for an unapproved caller who typed an already-taken slug.
+    if (isTenantProvisioningNotApprovedError(error)) {
+      return fail("UNAUTHORIZED", TENANT_PROVISIONING_NOT_APPROVED_MESSAGE);
+    }
     if (error.code === "23505") {
       return fail("CONFLICT", "Bu adres zaten kullanımda");
     }

@@ -1,6 +1,8 @@
 import { getTranslations } from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
 import { updateTenantStatusAction } from "@/lib/modules/platform/actions";
+import { listTenantOwnerApprovals } from "@/lib/modules/platform/approvals";
+import { TenantOwnerApprovals } from "@/components/platform/tenant-owner-approvals";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +27,11 @@ export default async function SuperAdminPage() {
     .select("id, name, slug, status, created_at")
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
+
+  // Faz LAUNCH.1A — owner approvals for creating a salon. Answered only to a
+  // platform OWNER; any other admin gets { allowed: false } and no section.
+  const approvals = await listTenantOwnerApprovals(supabase);
+  const tApprovals = await getTranslations("SuperAdmin.approvals");
 
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-16">
@@ -92,6 +99,43 @@ export default async function SuperAdminPage() {
             </TableBody>
           </Table>
         </div>
+      )}
+
+      {approvals.allowed ? (
+        <TenantOwnerApprovals
+          rows={approvals.rows}
+          labels={{
+            heading: tApprovals("heading"),
+            description: tApprovals("description"),
+            emailLabel: tApprovals("emailLabel"),
+            noteLabel: tApprovals("noteLabel"),
+            daysLabel: tApprovals("daysLabel"),
+            daysOptions: [7, 14, 30, 60, 90].map((count) => ({ value: count, label: tApprovals("daysOption", { count }) })),
+            submit: tApprovals("submit"),
+            submitting: tApprovals("submitting"),
+            approvedMessage: tApprovals("approvedMessage"),
+            revokedMessage: tApprovals("revokedMessage"),
+            revoke: tApprovals("revoke"),
+            revoking: tApprovals("revoking"),
+            empty: tApprovals("empty"),
+            columns: {
+              email: tApprovals("columns.email"),
+              note: tApprovals("columns.note"),
+              status: tApprovals("columns.status"),
+              expires: tApprovals("columns.expires"),
+              salon: tApprovals("columns.salon"),
+              actions: tApprovals("columns.actions"),
+            },
+            status: {
+              approved: tApprovals("status.approved"),
+              expired: tApprovals("status.expired"),
+              consumed: tApprovals("status.consumed"),
+              revoked: tApprovals("status.revoked"),
+            },
+          }}
+        />
+      ) : (
+        <p className="text-muted-foreground mt-12 text-sm">{tApprovals("ownerOnly")}</p>
       )}
     </div>
   );
