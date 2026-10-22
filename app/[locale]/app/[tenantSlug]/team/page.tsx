@@ -7,6 +7,7 @@ import {
   getTeamInvitations,
   getEligibleStaffForLinking,
   getTenantRoleOptions,
+  getAssignableRoles,
 } from "@/lib/modules/team/queries";
 import { TeamPageClient } from "@/components/team/team-page-client";
 
@@ -28,11 +29,12 @@ export default async function TeamPage({
   }
 
   const supabase = await createClient();
-  const [members, invitations, eligibleStaff, roles] = await Promise.all([
+  const [members, invitations, eligibleStaff, roles, assignableRoles] = await Promise.all([
     getTeamMembers(supabase, access.tenant.id),
     getTeamInvitations(supabase, access.tenant.id),
     getEligibleStaffForLinking(supabase, access.tenant.id),
     getTenantRoleOptions(supabase, access.tenant.id),
+    getAssignableRoles(supabase, access.tenant.id),
   ]);
 
   // A staff member already targeted by a pending invitation is excluded
@@ -55,6 +57,7 @@ export default async function TeamPage({
       initialInvitations={invitations}
       staffLinkOptions={staffLinkOptions}
       roleOptions={roles}
+      assignableRoles={assignableRoles}
       labels={{
         title: t("title"),
         description: t("description"),
@@ -66,6 +69,58 @@ export default async function TeamPage({
           roleColumn: t("membersTable.roleColumn"),
           staffLinkColumn: t("membersTable.staffLinkColumn"),
           unlinkedLabel: t("membersTable.unlinkedLabel"),
+        },
+        // t.raw: the dialog descriptions carry a "{name}" placeholder that is
+        // filled in on the client per member; formatting them here would fail
+        // on the missing argument.
+        memberActions: {
+          statusColumn: t("memberActions.statusColumn"),
+          actionsColumn: t("memberActions.actionsColumn"),
+          selfBadge: t("memberActions.selfBadge"),
+          statusActive: t("memberActions.statusActive"),
+          statusSuspended: t("memberActions.statusSuspended"),
+          changeRole: t("memberActions.changeRole"),
+          suspend: t("memberActions.suspend"),
+          reactivate: t("memberActions.reactivate"),
+          remove: t("memberActions.remove"),
+          noActions: t("memberActions.noActions"),
+          roleDialog: {
+            title: t("memberActions.roleDialog.title"),
+            description: t.raw("memberActions.roleDialog.description") as string,
+            roleLabel: t("memberActions.roleDialog.roleLabel"),
+            rolePlaceholder: t("memberActions.roleDialog.rolePlaceholder"),
+            noRoles: t("memberActions.roleDialog.noRoles"),
+            submit: t("memberActions.roleDialog.submit"),
+            pending: t("memberActions.roleDialog.pending"),
+            cancel: t("memberActions.roleDialog.cancel"),
+          },
+          suspendDialog: {
+            title: t("memberActions.suspendDialog.title"),
+            description: t.raw("memberActions.suspendDialog.description") as string,
+            confirm: t("memberActions.suspendDialog.confirm"),
+            pending: t("memberActions.suspendDialog.pending"),
+            cancel: t("memberActions.suspendDialog.cancel"),
+          },
+          reactivateDialog: {
+            title: t("memberActions.reactivateDialog.title"),
+            description: t.raw("memberActions.reactivateDialog.description") as string,
+            confirm: t("memberActions.reactivateDialog.confirm"),
+            pending: t("memberActions.reactivateDialog.pending"),
+            cancel: t("memberActions.reactivateDialog.cancel"),
+          },
+          removeDialog: {
+            title: t("memberActions.removeDialog.title"),
+            description: t.raw("memberActions.removeDialog.description") as string,
+            confirm: t("memberActions.removeDialog.confirm"),
+            pending: t("memberActions.removeDialog.pending"),
+            cancel: t("memberActions.removeDialog.cancel"),
+          },
+          banners: {
+            roleChanged: t("memberActions.banners.roleChanged"),
+            suspended: t("memberActions.banners.suspended"),
+            reactivated: t("memberActions.banners.reactivated"),
+            removed: t("memberActions.banners.removed"),
+          },
         },
         invitationsTable: {
           emailColumn: t("invitationsTable.emailColumn"),
