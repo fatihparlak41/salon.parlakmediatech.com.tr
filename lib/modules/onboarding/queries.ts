@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { getOwnerManagedBranches } from "@/lib/modules/branches/queries";
 import { parseOnboardingStatus, type OnboardingStatus } from "./model";
 
 /**
@@ -24,16 +25,8 @@ export type OnboardingWorkspace = {
 /** What the wizard prefills from, so reopening it (resume) shows everything already entered. RLS scopes every read to the caller's salon. */
 export async function getOnboardingWorkspace(tenantId: string): Promise<OnboardingWorkspace> {
   const supabase = await createClient();
-  const [branchRes, servicesRes, staffRes, hoursRes] = await Promise.all([
-    supabase
-      .from("branches")
-      .select("phone, address")
-      .eq("tenant_id", tenantId)
-      .is("deleted_at", null)
-      .order("is_primary", { ascending: false })
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle(),
+  const [branches, servicesRes, staffRes, hoursRes] = await Promise.all([
+    getOwnerManagedBranches(tenantId),
     supabase
       .from("services")
       .select("id, name, category, duration_minutes, price")
@@ -77,7 +70,7 @@ export async function getOnboardingWorkspace(tenantId: string): Promise<Onboardi
   }
 
   return {
-    branch: { phone: branchRes.data?.phone ?? "", address: branchRes.data?.address ?? "" },
+    branch: { phone: branches[0]?.phone ?? "", address: branches[0]?.address ?? "" },
     services,
     staff: staffRows.map((s) => ({ id: s.id, fullName: s.full_name, hasHours: withHours.has(s.id) })),
     pairs,

@@ -514,7 +514,7 @@ begin
     v_seen := v_seen || lower(v_name);
 
     v_order := v_order + 1;
-    -- a roster record only: no login, no invitation (tenant_membership_id stays null)
+    -- a roster record only: no login, no invitation (the person is not linked to any account)
     insert into public.staff_members (tenant_id, full_name, phone, display_order, created_by)
     values (p_tenant_id, v_name, v_phone, v_order, auth.uid())
     returning id into v_staff_id;
