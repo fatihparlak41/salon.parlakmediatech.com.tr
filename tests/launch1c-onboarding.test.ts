@@ -326,6 +326,64 @@ describe("BOOKING READINESS — every missing piece produces its own blocker", (
     expect(s.counts.bookablePaths).toBe(1);
     expect(s.blockers).toEqual(["no_available_slot"]);
     expect(s.hasAppointments).toBe(true);
+
+    // another salon's appointments are not this salon's history ...
+    expect((await status(salon.id, owner.id)).hasAppointments).toBe(false);
+
+    // ... and a cancelled appointment frees its slot again
+    await testDb`update appointments set status = 'cancelled' where tenant_id = ${f.t.id}`;
+    const freed = await status(f.t.id, f.o.id);
+    expect(freed.blockers).toEqual([]);
+    expect(freed.ready).toBe(true);
+    expect(freed.hasAppointments).toBe(true);
+  });
+
+  it("a salon whose only branch was removed has no profile, no services and no bookable path", async () => {
+    const f = await fullSalon("r14");
+    await testDb`update branches set deleted_at = now() where tenant_id = ${f.t.id}`;
+    const s = await status(f.t.id, f.o.id);
+    expect(s.profile.missing).toContain("branch");
+    expect(s.blockers).toEqual(expect.arrayContaining(["salon_profile_missing", "no_services", "no_bookable_staff"]));
+    expect(s.counts.bookablePaths).toBe(0);
+    expect(s.ready).toBe(false);
+  });
+
+  it("a deleted salon is inactive even though its status text still says active", async () => {
+    const f = await fullSalon("r15");
+    await testDb`update tenants set deleted_at = now() where id = ${f.t.id}`;
+    const s = await status(f.t.id, f.o.id);
+    expect(s.blockers).toContain("tenant_inactive");
+    expect(s.ready).toBe(false);
+  });
+
+  it("a stored time zone the database does not know is a profile gap", async () => {
+    const f = await fullSalon("r16");
+    await testDb`update tenants set timezone = 'UTC+3' where id = ${f.t.id}`;
+    const s = await status(f.t.id, f.o.id);
+    expect(s.profile.missing).toEqual(["timezone"]);
+    expect(s.blockers).toContain("salon_profile_missing");
+  });
+
+  it("services are counted per salon: another salon's service linked to this salon's branch (corrupt data) is not counted", async () => {
+    const o = await newUser("iso1");
+    const x = await freshSalon("iso1", o);
+    const o2 = await newUser("iso2");
+    const y = await freshSalon("iso2", o2);
+    await rpc.services(o2.id, y.id, [{ name: "Baska Salon Hizmeti", durationMinutes: 30, price: "10" }]);
+    const [foreignService] = await testDb<{ id: string }[]>`select id from services where tenant_id = ${y.id}`;
+    await testDb`insert into service_branches (service_id, branch_id) values (${foreignService!.id}, ${x.branchId})`;
+    expect((await status(x.id, o.id)).counts.services).toBe(0);
+    expect((await status(y.id, o2.id)).counts.services).toBe(1);
+  });
+
+  it("each step's 'done' follows its own data: people without any hours leave the hours step open", async () => {
+    const o = await newUser("steps");
+    const t = await freshSalon("steps", o);
+    await rpc.staff(o.id, t.id, [{ fullName: "Sadece Kisi" }]);
+    const s = await status(t.id, o.id);
+    expect(s.steps.find((x) => x.key === "staff")!.done).toBe(true);
+    expect(s.steps.find((x) => x.key === "hours")!.done).toBe(false);
+    expect(s.steps.find((x) => x.key === "mapping")!.done).toBe(false);
   });
 
   it("a suspended salon is never ready (tenant_inactive)", async () => {
@@ -738,6 +796,55 @@ describe("AUTHORIZATION — Owner yes, others per their real permissions, other 
       const rows = await auditRows(salon.id, action);
       expect(rows.length, action).toBeGreaterThan(0);
       expect(rows.every((r) => r.actor_user_id !== null)).toBe(true);
+    }
+  });
+});
+
+describe("TENANT ISOLATION — a write for one salon never reaches another", () => {
+  it("bulk-added services and staff are linked only to THIS salon's branches", async () => {
+    const oa = await newUser("isoa");
+    const a = await freshSalon("isoa", oa);
+    const ob = await newUser("isob");
+    const b = await freshSalon("isob", ob);
+    await rpc.services(oa.id, a.id, [{ name: "A Hizmeti", durationMinutes: 30, price: "10" }]);
+    await rpc.staff(oa.id, a.id, [{ fullName: "A Personeli" }]);
+    const foreignServiceLinks = await testDb<{ n: string }[]>`
+      select count(*)::text as n from service_branches sb join services s on s.id = sb.service_id join branches br on br.id = sb.branch_id
+      where s.tenant_id = ${a.id} and br.tenant_id <> ${a.id}`;
+    const foreignStaffLinks = await testDb<{ n: string }[]>`
+      select count(*)::text as n from staff_branches sb join staff_members sm on sm.id = sb.staff_member_id join branches br on br.id = sb.branch_id
+      where sm.tenant_id = ${a.id} and br.tenant_id <> ${a.id}`;
+    expect([foreignServiceLinks[0]!.n, foreignStaffLinks[0]!.n]).toEqual(["0", "0"]);
+    // and the other salon saw nothing of it
+    const bLinks = await testDb<{ n: string }[]>`select count(*)::text as n from service_branches where branch_id = ${b.branchId}`;
+    expect(bLinks[0]!.n).toBe("0");
+  });
+
+  it("updating one salon's profile leaves every other salon's name, time zone, currency and contact untouched", async () => {
+    const oa = await newUser("profa");
+    const a = await freshSalon("profa", oa);
+    const ob = await newUser("profb");
+    const b = await freshSalon("profb", ob);
+    await rpc.profile(ob.id, b.id, "B Salonu", "Asia/Nicosia", "EUR", "0533 000 11 22", "B Adresi");
+    const snapshot = async () => ({
+      tenant: await testDb`select name, timezone, currency from tenants where id = ${b.id}`,
+      branch: await testDb`select name, phone, address from branches where tenant_id = ${b.id}`,
+    });
+    const before = await snapshot();
+    await rpc.profile(oa.id, a.id, "A Salonu", "Europe/Istanbul", "TRY", "0542 999 88 77", "A Adresi");
+    expect(await snapshot()).toEqual(before);
+    const [mine] = await testDb<{ name: string }[]>`select name from tenants where id = ${a.id}`;
+    expect(mine!.name).toBe("A Salonu");
+  });
+
+  it("a session without a signed-in user is refused with its own code, for the status and for every write", async () => {
+    const calls = [
+      (sql: never) => (sql as never as typeof testDb)`select public.get_onboarding_status(${salon.id})`,
+      (sql: never) => (sql as never as typeof testDb)`select public.onboarding_add_staff(${salon.id}, '[{"fullName":"X"}]'::jsonb)`,
+      (sql: never) => (sql as never as typeof testDb)`select public.onboarding_add_services(${salon.id}, '[{"name":"X","durationMinutes":30,"price":"1"}]'::jsonb)`,
+    ];
+    for (const call of calls) {
+      await expect(asDatabaseRole("authenticated", null, (sql) => call(sql as never) as never)).rejects.toMatchObject({ code: "OB010" });
     }
   });
 });

@@ -53,6 +53,30 @@ describe("every action", () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
+  it("each of the five actions requires a signed-in user and refuses a malformed salon id before any RPC", async () => {
+    const valid = {
+      profile: { tenantSlug: "s", name: "X", timezone: "Europe/Istanbul", currency: "TRY", phone: "0532 000 00 00", address: "" },
+      services: { tenantSlug: "s", items: [{ name: "X", durationMinutes: 30, price: "1" }] },
+      staff: { tenantSlug: "s", items: [{ fullName: "X" }] },
+      hours: { tenantSlug: "s", staffIds: [STAFF], days: [] },
+      mapping: { tenantSlug: "s", assignments: [{ staffId: STAFF, serviceIds: [] }] },
+    };
+    const run = {
+      profile: (extra: object) => saveSalonProfileAction(null, { ...valid.profile, ...extra }),
+      services: (extra: object) => addServicesAction(null, { ...valid.services, ...extra }),
+      staff: (extra: object) => addStaffAction(null, { ...valid.staff, ...extra }),
+      hours: (extra: object) => applyWeeklyHoursAction(null, { ...valid.hours, ...extra }),
+      mapping: (extra: object) => setStaffServicesAction(null, { ...valid.mapping, ...extra }),
+    };
+    for (const [name, call] of Object.entries(run)) {
+      requireUser.mockRejectedValueOnce(new Error("redirect to login"));
+      await expect(call({ tenantId: TENANT }), name).rejects.toThrow("redirect to login");
+      const bad = await call({ tenantId: "not-a-uuid" });
+      expect(bad.success, name).toBe(false);
+    }
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
   it("maps each database refusal to a plain message and never leaks database text", async () => {
     const cases: [string, string, string][] = [
       ["OB011", "UNAUTHORIZED", "Bu işlem için yetkiniz yok"],
