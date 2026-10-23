@@ -2,7 +2,12 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 import { sendSmtpMail, WORKER_SMTP_TIMEOUTS, type SendMailFn, type SmtpSendResult } from "@/lib/email/smtp-transport";
-import { buildAppointmentConfirmationEmail } from "@/lib/email/templates/appointment-confirmation";
+import {
+  buildCustomerNotificationEmail,
+  CUSTOMER_NOTIFICATION_TYPES,
+  type CustomerNotificationType,
+} from "@/lib/email/templates/appointment-notifications";
+import { getSiteUrl } from "@/lib/site-url";
 
 /**
  * Faz NOTIF.1A — the server-only worker core for the customer
@@ -37,13 +42,26 @@ export type ClaimedConfirmationJob = {
   jobId: string;
   lockToken: string;
   attemptCount: number;
+  /** Faz LAUNCH.1B: which of the four lifecycle emails this job is. */
+  notificationType: CustomerNotificationType;
   recipientEmail: string;
   greetingName: string | null;
   salonName: string;
+  tenantSlug: string | null;
   tenantTimezone: string;
   appointmentStartAt: string;
   serviceNames: string[];
+  staffNames: string[];
+  contactPhone: string | null;
   locationUrl: string | null;
+};
+
+/** Short, fixed prefixes for the Message-ID local part (never customer data). */
+const MESSAGE_ID_PREFIXES: Record<CustomerNotificationType, string> = {
+  appointment_confirmation: "confirmation.",
+  appointment_update: "update.",
+  appointment_cancellation: "cancellation.",
+  appointment_reminder_24h: "reminder.",
 };
 
 export type ProcessConfirmationEmailBatchOptions = {
@@ -80,8 +98,6 @@ export type ProcessConfirmationEmailBatchResult = {
 const DEFAULT_BATCH_SIZE = 5;
 const DEFAULT_LEASE_SECONDS = 180;
 const DEFAULT_TIME_BUDGET_MS = 20_000;
-
-const MESSAGE_ID_PREFIX = "confirmation.";
 
 /** Recording the outcome of a send that may already have happened must not
  * be lost to one flaky round trip: a delivered message left "processing"
@@ -121,20 +137,30 @@ function parseClaimedJob(raw: unknown): ClaimedConfirmationJob | null {
   const appointmentStartAt = asString(raw.appointmentStartAt);
   if (!jobId || !lockToken || !recipientEmail || !salonName || !tenantTimezone || !appointmentStartAt) return null;
 
-  const serviceNames = Array.isArray(raw.serviceNames)
-    ? raw.serviceNames.filter((name): name is string => typeof name === "string")
-    : [];
+  // A claim from a database that predates the lifecycle migration carries no type:
+  // it can only be the confirmation. An UNKNOWN type is refused (the job's lease
+  // simply expires; nothing is sent for something this code does not understand).
+  const rawType = raw.notificationType === undefined ? "appointment_confirmation" : asString(raw.notificationType);
+  const notificationType = CUSTOMER_NOTIFICATION_TYPES.find((type) => type === rawType);
+  if (!notificationType) return null;
+
+  const stringArray = (value: unknown): string[] =>
+    Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 
   return {
     jobId,
     lockToken,
     attemptCount: typeof raw.attemptCount === "number" ? raw.attemptCount : 0,
+    notificationType,
     recipientEmail,
     greetingName: asString(raw.greetingName),
     salonName,
+    tenantSlug: asString(raw.tenantSlug),
     tenantTimezone,
     appointmentStartAt,
-    serviceNames,
+    serviceNames: stringArray(raw.serviceNames),
+    staffNames: stringArray(raw.staffNames),
+    contactPhone: asString(raw.contactPhone),
     locationUrl: asString(raw.locationUrl),
   };
 }
@@ -254,13 +280,17 @@ export async function processCustomerConfirmationEmailBatch(
 
       let content;
       try {
-        content = buildAppointmentConfirmationEmail({
+        content = buildCustomerNotificationEmail(job.notificationType, {
           salonName: job.salonName,
           greetingName: job.greetingName,
           appointmentStartAt: job.appointmentStartAt,
           tenantTimezone: job.tenantTimezone,
           serviceNames: job.serviceNames,
+          staffNames: job.staffNames,
+          contactPhone: job.contactPhone,
           locationUrl: job.locationUrl,
+          referenceInstant: new Date(now()).toISOString(),
+          rebookUrl: job.tenantSlug ? `${getSiteUrl()}/book/${encodeURIComponent(job.tenantSlug)}` : null,
         });
       } catch {
         // Nothing was sent (a bad timezone/date makes rendering throw).
@@ -285,7 +315,7 @@ export async function processCustomerConfirmationEmailBatch(
           subject: content.subject,
           html: content.html,
           text: content.text,
-          messageIdLocalPart: `${MESSAGE_ID_PREFIX}${job.jobId}`,
+          messageIdLocalPart: `${MESSAGE_ID_PREFIXES[job.notificationType]}${job.jobId}`,
           headers: { ...AUTO_SUBMITTED_HEADERS },
         });
       } catch {
@@ -305,6 +335,9 @@ export async function processCustomerConfirmationEmailBatch(
 
   return result;
 }
+
+/** Faz LAUNCH.1B: the worker now handles all four lifecycle emails; this is its honest name. */
+export const processCustomerNotificationBatch = processCustomerConfirmationEmailBatch;
 
 /** Retention of the booking-time recipient snapshots (see the migration).
  * One bounded call; failures are the caller's to log without detail. */
