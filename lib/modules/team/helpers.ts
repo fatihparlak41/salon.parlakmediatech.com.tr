@@ -131,6 +131,59 @@ export function mapRevokeInvitationError(error: { message: string }): ActionResu
   return fail("UNEXPECTED", "Davet iptal edilemedi, lütfen tekrar deneyin");
 }
 
+/** Faz LAUNCH.1A — shown when the member's role or status changed between the
+ * moment the page was rendered and the moment the action ran (another owner
+ * acted first, or the list was stale). The client refreshes the list when it
+ * sees exactly this text, so it is exported rather than repeated. */
+export const MEMBER_STATE_CHANGED_MESSAGE = "Üyenin durumu başka bir işlemle değiştirilmiş. Liste yenilendi.";
+export const MEMBER_NOT_FOUND_MESSAGE = "Ekip üyesi bulunamadı";
+export const MEMBER_SELF_ACTION_MESSAGE = "Kendi hesabınız üzerinde bu işlemi yapamazsınız";
+export const MEMBER_NOT_MANAGEABLE_MESSAGE = "Bu üye üzerinde işlem yapma yetkiniz yok";
+
+/** Exact live RPC error messages of the membership lifecycle
+ * (private.suspend_membership / reactivate_membership /
+ * remove_membership_access, migration 20260921061657, and
+ * private.update_membership_role as last redefined by 20260921132660), plus
+ * the deferred last-unrestricted-holder trigger and the staged-release gate.
+ * Re-read from those migrations for this phase, not recalled. Substring
+ * matching because PostgREST wraps the text but never changes it. */
+export function mapMemberManagementError(error: { message?: string } | null | undefined): ActionResult<never> {
+  const msg = error?.message ?? "";
+  if (msg.includes("authentication_required") || msg.includes("authentication required")) {
+    return fail("UNAUTHENTICATED", "Oturum açmanız gerekiyor");
+  }
+  if (msg.includes("staff_manage_required") || msg.includes("staff.manage required")) {
+    return fail("UNAUTHORIZED", "Bu işlem için yetkiniz yok");
+  }
+  if (msg.includes("membership_not_found") || msg.includes("membership not found")) {
+    return fail("NOT_FOUND", MEMBER_NOT_FOUND_MESSAGE);
+  }
+  if (msg.includes("cannot_manage_self") || msg.includes("cannot change your own role")) {
+    return fail("UNAUTHORIZED", MEMBER_SELF_ACTION_MESSAGE);
+  }
+  if (msg.includes("insufficient_authority")) {
+    return fail("UNAUTHORIZED", MEMBER_NOT_MANAGEABLE_MESSAGE);
+  }
+  if (msg.includes("cannot assign a role with permissions you do not hold")) {
+    return fail("UNAUTHORIZED", "Sahip olmadığınız izinleri içeren bir rol atayamazsınız");
+  }
+  if (msg.includes("role not found in this tenant") || msg.includes("role_not_found")) {
+    return fail("VALIDATION", "Geçersiz rol");
+  }
+  if (msg.includes("membership_not_active") || msg.includes("membership_not_suspended")) {
+    return fail("CONFLICT", MEMBER_STATE_CHANGED_MESSAGE);
+  }
+  if (msg.includes("tenant_would_lose_last_unrestricted_holder")) {
+    return fail("CONFLICT", "Salonun en az bir tam yetkili sahibi kalmalı; bu işlem yapılamaz");
+  }
+  // Staged-release gate (private.release_gates): a transition into a
+  // non-unrestricted role is refused while the gate is closed.
+  if (msg.includes("non_owner_roles_not_yet_available")) {
+    return fail("UNAUTHORIZED", "Bu rol için işlem henüz kullanıma açılmadı, lütfen daha sonra tekrar deneyin");
+  }
+  return fail("UNEXPECTED", "İşlem tamamlanamadı, lütfen tekrar deneyin");
+}
+
 export function buildAcceptUrl(rawToken: string): string {
   return `${getSiteUrl()}/accept-invite?token=${encodeURIComponent(rawToken)}`;
 }

@@ -3,12 +3,28 @@
 import { useState } from "react";
 import { Plus, UsersRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { TeamMemberRow, TeamInvitationRow, EligibleStaffOption, RoleOption } from "@/lib/modules/team/queries";
+import type {
+  TeamMemberRow,
+  TeamInvitationRow,
+  EligibleStaffOption,
+  RoleOption,
+  AssignableRoleOption,
+} from "@/lib/modules/team/queries";
 import type { CreateTeamInvitationResultData } from "@/lib/modules/team/actions";
-import { TeamMembersSection } from "@/components/team/team-members-section";
+import { TeamMembersSection, type MemberActionKind } from "@/components/team/team-members-section";
 import { TeamInvitationsSection } from "@/components/team/team-invitations-section";
 import { CreateInvitationDialog } from "@/components/team/create-invitation-dialog";
 import { RevokeInvitationDialog } from "@/components/team/revoke-invitation-dialog";
+import { ChangeMemberRoleDialog } from "@/components/team/change-member-role-dialog";
+import { MemberConfirmDialog } from "@/components/team/member-confirm-dialog";
+
+type ConfirmLabels = {
+  title: string;
+  description: string;
+  confirm: string;
+  pending: string;
+  cancel: string;
+};
 
 type Labels = {
   title: string;
@@ -21,6 +37,32 @@ type Labels = {
     roleColumn: string;
     staffLinkColumn: string;
     unlinkedLabel: string;
+  };
+  memberActions: {
+    statusColumn: string;
+    actionsColumn: string;
+    selfBadge: string;
+    statusActive: string;
+    statusSuspended: string;
+    changeRole: string;
+    suspend: string;
+    reactivate: string;
+    remove: string;
+    noActions: string;
+    roleDialog: {
+      title: string;
+      description: string;
+      roleLabel: string;
+      rolePlaceholder: string;
+      noRoles: string;
+      submit: string;
+      pending: string;
+      cancel: string;
+    };
+    suspendDialog: ConfirmLabels;
+    reactivateDialog: ConfirmLabels;
+    removeDialog: ConfirmLabels;
+    banners: { roleChanged: string; suspended: string; reactivated: string; removed: string };
   };
   invitationsTable: {
     emailColumn: string;
@@ -65,6 +107,11 @@ type Labels = {
   };
 };
 
+/** "{name}" is substituted here rather than by next-intl so the labels stay plain strings across the server/client boundary. */
+function withName(template: string, name: string): string {
+  return template.replace("{name}", name);
+}
+
 export function TeamPageClient({
   tenantId,
   tenantSlug,
@@ -72,6 +119,7 @@ export function TeamPageClient({
   initialInvitations,
   staffLinkOptions,
   roleOptions,
+  assignableRoles,
   labels,
 }: {
   tenantId: string;
@@ -80,10 +128,12 @@ export function TeamPageClient({
   initialInvitations: TeamInvitationRow[];
   staffLinkOptions: EligibleStaffOption[];
   roleOptions: RoleOption[];
+  assignableRoles: AssignableRoleOption[];
   labels: Labels;
 }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [revokeInvitationId, setRevokeInvitationId] = useState<string | null>(null);
+  const [memberAction, setMemberAction] = useState<{ kind: MemberActionKind; member: TeamMemberRow } | null>(null);
   const [banner, setBanner] = useState<{ tone: "success" | "warning"; message: string } | null>(null);
 
   function handleCreated(outcome: CreateTeamInvitationResultData["outcome"]) {
@@ -93,6 +143,14 @@ export function TeamPageClient({
         ? { tone: "success", message: labels.createSentMessage }
         : { tone: "warning", message: labels.createDeliveryFailedMessage },
     );
+  }
+
+  function handleMemberDone(kind: MemberActionKind) {
+    setMemberAction(null);
+    const text = labels.memberActions.banners;
+    const message =
+      kind === "role" ? text.roleChanged : kind === "suspend" ? text.suspended : kind === "reactivate" ? text.reactivated : text.removed;
+    setBanner({ tone: "success", message });
   }
 
   return (
@@ -126,7 +184,23 @@ export function TeamPageClient({
         {initialMembers.length === 0 ? (
           <p className="text-muted-foreground py-6 text-center text-sm">{labels.noMembersTitle}</p>
         ) : (
-          <TeamMembersSection members={initialMembers} labels={labels.membersTable} />
+          <TeamMembersSection
+            members={initialMembers}
+            labels={{
+              ...labels.membersTable,
+              statusColumn: labels.memberActions.statusColumn,
+              actionsColumn: labels.memberActions.actionsColumn,
+              selfBadge: labels.memberActions.selfBadge,
+              statusActive: labels.memberActions.statusActive,
+              statusSuspended: labels.memberActions.statusSuspended,
+              changeRole: labels.memberActions.changeRole,
+              suspend: labels.memberActions.suspend,
+              reactivate: labels.memberActions.reactivate,
+              remove: labels.memberActions.remove,
+              noActions: labels.memberActions.noActions,
+            }}
+            onAction={(kind, member) => setMemberAction({ kind, member })}
+          />
         )}
       </section>
 
@@ -184,6 +258,53 @@ export function TeamPageClient({
           revokeConfirmPending: labels.revokeConfirmPending,
         }}
       />
+
+      {/* Faz LAUNCH.1A — exactly one member dialog exists at a time, mounted
+          only while its action is chosen and keyed by member + kind, so no
+          picked role, pending state or error survives from one member to the
+          next. */}
+      {memberAction?.kind === "role" ? (
+        <ChangeMemberRoleDialog
+          key={`role-${memberAction.member.membershipId}`}
+          open
+          onOpenChange={(open) => {
+            if (!open) setMemberAction(null);
+          }}
+          tenantId={tenantId}
+          tenantSlug={tenantSlug}
+          member={memberAction.member}
+          roles={assignableRoles}
+          onDone={() => handleMemberDone("role")}
+          labels={{
+            ...labels.memberActions.roleDialog,
+            description: withName(labels.memberActions.roleDialog.description, memberAction.member.displayName),
+          }}
+        />
+      ) : null}
+
+      {memberAction && memberAction.kind !== "role" ? (
+        <MemberConfirmDialog
+          key={`${memberAction.kind}-${memberAction.member.membershipId}`}
+          open
+          onOpenChange={(open) => {
+            if (!open) setMemberAction(null);
+          }}
+          kind={memberAction.kind}
+          tenantId={tenantId}
+          tenantSlug={tenantSlug}
+          member={memberAction.member}
+          onDone={() => handleMemberDone(memberAction.kind)}
+          labels={(() => {
+            const source =
+              memberAction.kind === "suspend"
+                ? labels.memberActions.suspendDialog
+                : memberAction.kind === "reactivate"
+                  ? labels.memberActions.reactivateDialog
+                  : labels.memberActions.removeDialog;
+            return { ...source, description: withName(source.description, memberAction.member.displayName) };
+          })()}
+        />
+      ) : null}
     </div>
   );
 }

@@ -36,63 +36,64 @@ import { getStaffManagementDetails } from "@/lib/modules/staff/management-detail
 
 type AnySupabaseClient = SupabaseClient<Database>;
 
+/** One member row as the Team page may see it. Faz LAUNCH.1A: this is the
+ * output of list_team_members, so by construction it has NO auth user id, e-mail
+ * or phone. `membershipId` is the opaque handle the membership RPCs take (the
+ * one thing a management action genuinely needs); it is never rendered as text.
+ * `canManage` is the database's own authority decision for THIS caller and this
+ * member (private.membership_authority_decision) — advisory for the UI; every
+ * mutation re-checks it. */
 export type TeamMemberRow = {
   membershipId: string;
-  userId: string;
   displayName: string;
+  roleId: string;
   roleName: string;
-  status: string;
+  status: "active" | "suspended";
+  isSelf: boolean;
   linkedStaffName: string | null;
+  canManage: boolean;
 };
 
-/** auth.users (and its email) isn't reachable via PostgREST — profiles is
- * the only client-safe source for a human-readable name, and it carries
- * no email column at all (confirmed against database.types.ts). Email is
- * therefore never shown for an existing member, only ever for a pending
- * invitation (team_invitations.email, via getTeamInvitations below) —
- * this is a real product gap, not an oversight, and is called out in the
- * phase report rather than worked around with an unsafe query. */
+export const UNNAMED_MEMBER_LABEL = "İsimsiz kullanıcı";
+
+/** Active AND suspended members of the tenant, through list_team_members
+ * (migration 20261022150200). The function replaces the previous
+ * PostgREST-table read that returned every row's auth user id to the browser;
+ * a member's e-mail was never available here (auth.users is not reachable and
+ * profiles has no e-mail column), only a pending invitation's, via
+ * getTeamInvitations below.
+ *
+ * Throws on failure instead of returning an empty list: an empty "no members"
+ * screen on a management page would be a lie during an outage. */
 export async function getTeamMembers(supabase: AnySupabaseClient, tenantId: string): Promise<TeamMemberRow[]> {
-  const { data: memberships } = await supabase
-    .from("tenant_memberships")
-    .select("id, user_id, status, roles!tenant_memberships_role_id_fkey(name)")
-    .eq("tenant_id", tenantId)
-    .eq("status", "active")
-    .is("deleted_at", null)
-    .order("created_at", { ascending: true });
-
-  if (!memberships) return [];
-
-  const userIds = memberships.map((m) => m.user_id);
-  const { data: profiles } = userIds.length
-    ? await supabase.from("profiles").select("id, full_name").in("id", userIds)
-    : { data: [] as { id: string; full_name: string | null }[] };
-  const nameById = new Map((profiles ?? []).map((p) => [p.id, p.full_name]));
-
-  // Faz SAAS.1E.1: tenant_membership_id is no longer a selectable column
-  // directly (staff.view/staff.manage required, which the Team page's own
-  // nav gate already requires to reach here) — read through
-  // get_staff_management_details and cross-reference by staff id.
-  const [staffRes, details] = await Promise.all([
-    supabase.from("staff_members").select("id, full_name").eq("tenant_id", tenantId).is("deleted_at", null),
-    getStaffManagementDetails(supabase, tenantId),
-  ]);
-  const staffNameByMembershipId = new Map<string, string>();
-  for (const s of staffRes.data ?? []) {
-    const membershipId = details.get(s.id)?.tenantMembershipId;
-    if (membershipId) staffNameByMembershipId.set(membershipId, s.full_name);
+  const { data, error } = await supabase.rpc("list_team_members", { p_tenant_id: tenantId });
+  if (error || !data) {
+    throw new Error("team members could not be loaded");
   }
 
-  return memberships
-    .filter((m): m is typeof m & { roles: { name: string } } => m.roles !== null)
-    .map((m) => ({
-      membershipId: m.id,
-      userId: m.user_id,
-      displayName: nameById.get(m.user_id) || "İsimsiz kullanıcı",
-      roleName: m.roles.name,
-      status: m.status,
-      linkedStaffName: staffNameByMembershipId.get(m.id) ?? null,
-    }));
+  return data.map((row) => ({
+    membershipId: row.membership_id,
+    displayName: (row.display_name as string | null) || UNNAMED_MEMBER_LABEL,
+    roleId: row.role_id,
+    roleName: row.role_name,
+    status: row.status === "suspended" ? "suspended" : "active",
+    isSelf: row.is_self,
+    linkedStaffName: (row.linked_staff_name as string | null) ?? null,
+    canManage: row.can_manage,
+  }));
+}
+
+export type AssignableRoleOption = { id: string; name: string };
+
+/** The roles THIS caller may put a member into (list_assignable_roles). An
+ * advisory narrowing for the role picker only — update_membership_role
+ * re-checks the grant ceiling and the strictly-below rule. A failed read yields
+ * an empty picker (the dialog then says there is nothing to assign), never a
+ * guess. */
+export async function getAssignableRoles(supabase: AnySupabaseClient, tenantId: string): Promise<AssignableRoleOption[]> {
+  const { data, error } = await supabase.rpc("list_assignable_roles", { p_tenant_id: tenantId });
+  if (error || !data) return [];
+  return data.filter((row) => row.assignable).map((row) => ({ id: row.role_id, name: row.role_name }));
 }
 
 export type TeamInvitationRow = {

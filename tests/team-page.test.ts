@@ -46,6 +46,8 @@ let managerAClient: SupabaseClient;
 let managerRoleId: string; // within ownerA's ceiling
 let linkedStaffId: string;
 let unlinkedStaffId: string;
+let ownerAMembershipId: string;
+let managerAMembershipId: string;
 
 const createdUserIds: string[] = [];
 
@@ -78,6 +80,9 @@ beforeAll(async () => {
   `;
   unlinkedStaffId = unlinked!.id;
 
+  ownerAMembershipId = await membershipIdOf(tenantA.id, ownerA.id);
+  managerAMembershipId = await membershipIdOf(tenantA.id, managerA.id);
+
   ownerAClient = await signInAs(ownerA);
   managerAClient = await signInAs(managerA);
 }, 60000);
@@ -104,19 +109,26 @@ async function createInvitation(email: string, roleId = managerRoleId, staffMemb
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-describe("getTeamMembers (1, 3, 4, 5, 6)", () => {
-  it("1/4/5. returns active members with role name and linked-staff name", async () => {
+/** Faz LAUNCH.1A: TeamMemberRow no longer carries an auth user id, so fixtures are matched by membership id (read straight from the database). */
+async function membershipIdOf(tenantId: string, userId: string): Promise<string> {
+  const [row] = await testDb<{ id: string }[]>`select id from tenant_memberships where tenant_id = ${tenantId} and user_id = ${userId}`;
+  if (!row) throw new Error("fixture membership missing");
+  return row.id;
+}
+
+describe("getTeamMembers (1, 3, 4, 5, 6) — Faz LAUNCH.1A: through list_team_members", () => {
+  it("1/4/5. returns members with role name and linked-staff name", async () => {
     const members = await getTeamMembers(ownerAClient, tenantA.id);
     expect(members.length).toBeGreaterThanOrEqual(2);
 
-    const owner = members.find((m) => m.userId === ownerA.id);
+    const owner = members.find((m) => m.membershipId === ownerAMembershipId);
     expect(owner).toBeDefined();
     // createTestTenant clones the SALON_OWNER role_template, whose own
     // display name is "Salon Sahibi" (supabase/migrations/20260815120006).
     expect(owner!.roleName).toBe("Salon Sahibi");
     expect(owner!.linkedStaffName).toBeNull();
 
-    const manager = members.find((m) => m.userId === managerA.id);
+    const manager = members.find((m) => m.membershipId === managerAMembershipId);
     expect(manager).toBeDefined();
     expect(manager!.roleName).toBe("Sınırlı Rol");
     expect(manager!.linkedStaffName).toBe("Linked Staff");
@@ -131,7 +143,38 @@ describe("getTeamMembers (1, 3, 4, 5, 6)", () => {
 
   it("3. tenant isolation — tenantB members never appear in tenantA's list", async () => {
     const members = await getTeamMembers(ownerAClient, tenantA.id);
-    expect(members.some((m) => m.userId === outsiderB.id)).toBe(false);
+    const outsiderMembershipId = await membershipIdOf(tenantB.id, outsiderB.id);
+    expect(members.some((m) => m.membershipId === outsiderMembershipId)).toBe(false);
+  });
+
+  it("privacy — no row carries an auth user id, and no auth user id appears anywhere in the serialized result", async () => {
+    const members = await getTeamMembers(ownerAClient, tenantA.id);
+    for (const m of members) {
+      expect(Object.keys(m).sort()).toEqual(
+        ["canManage", "displayName", "isSelf", "linkedStaffName", "membershipId", "roleId", "roleName", "status"],
+      );
+    }
+    const blob = JSON.stringify(members);
+    for (const user of [ownerA, managerA, outsiderB]) {
+      expect(blob.includes(user.id)).toBe(false);
+      expect(blob.includes(user.email)).toBe(false);
+    }
+  });
+
+  it("includes SUSPENDED members (status suspended) and marks exactly the caller's own row isSelf", async () => {
+    const suspended = await createTestUser("tp-suspended-a");
+    createdUserIds.push(suspended.id);
+    const suspendedMembershipId = await addMembership(tenantA.id, suspended.id, managerRoleId);
+    await testDb`update tenant_memberships set status = 'suspended' where id = ${suspendedMembershipId}`;
+
+    const members = await getTeamMembers(ownerAClient, tenantA.id);
+    expect(members.find((m) => m.membershipId === suspendedMembershipId)).toMatchObject({ status: "suspended", isSelf: false });
+    expect(members.filter((m) => m.isSelf).map((m) => m.membershipId)).toEqual([ownerAMembershipId]);
+  });
+
+  it("a caller without staff.manage (or a member of another tenant) gets an error, never an empty list that looks like 'no members'", async () => {
+    const outsiderClient = await signInAs(outsiderB);
+    await expect(getTeamMembers(outsiderClient, tenantA.id)).rejects.toThrow("team members could not be loaded");
   });
 });
 
