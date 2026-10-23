@@ -2539,6 +2539,8 @@ export type Database = {
         Returns: Json
       }
       get_my_account_profile: { Args: never; Returns: Json }
+      get_customer_notification_health: { Args: { p_tenant_id: string }; Returns: Json }
+      get_customer_notification_settings: { Args: { p_tenant_id: string }; Returns: Json }
       get_my_appointments: { Args: never; Returns: Json }
       get_my_link_salon_context: {
         Args: { p_tenant_slug: string }
@@ -2955,6 +2957,10 @@ export type Database = {
           schema_name: string
           table_name: string
         }[]
+      }
+      set_customer_notification_setting: {
+        Args: { p_enabled: boolean; p_notification_type: string; p_tenant_id: string }
+        Returns: Json
       }
       set_online_booking_enabled: {
         Args: { p_enabled: boolean; p_tenant_id: string }

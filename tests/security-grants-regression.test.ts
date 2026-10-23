@@ -338,15 +338,27 @@ const FIN_1B1_AUTHENTICATED_FUNCTIONS = [
   "public.void_expense_payment",
 ];
 
+// Faz LAUNCH.1B (migration 20261023090000) is a schema ERA in the same sense: PROD carries it
+// only after the Owner releases it, DEV never will. Sentinel = the owner's settings RPC. Three
+// client-facing RPCs for `authenticated` ONLY (never anon, never service_role): read the four
+// customer-notification switches, set one, read the PII-free delivery health. Each re-checks
+// settings.manage inside. No service_role function is added (the worker RPCs are unchanged).
+const LAUNCH_1B_AUTHENTICATED_FUNCTIONS = [
+  "public.get_customer_notification_settings",
+  "public.set_customer_notification_setting",
+  "public.get_customer_notification_health",
+];
+
 // The fully locked-down finance ledgers: RLS on, zero policies, no privilege at
 // all for any API role. Checked only for the eras that exist.
 const FIN_1A_LOCKED_DOWN_TABLES = ["appointment_sales", "appointment_sale_items", "payments"];
 const FIN_1B1_LOCKED_DOWN_TABLES = ["expense_categories", "expenses", "expense_payments"];
 
-async function readFinanceEra(): Promise<{ fin1a: boolean; fin1b1: boolean }> {
-  const [row] = await testDb<{ fin1a: boolean; fin1b1: boolean }[]>`
+async function readFinanceEra(): Promise<{ fin1a: boolean; fin1b1: boolean; launch1b: boolean }> {
+  const [row] = await testDb<{ fin1a: boolean; fin1b1: boolean; launch1b: boolean }[]>`
     select to_regclass('public.appointment_sales') is not null as fin1a,
-           to_regclass('public.expenses') is not null as fin1b1`;
+           to_regclass('public.expenses') is not null as fin1b1,
+           to_regprocedure('public.get_customer_notification_settings(uuid)') is not null as launch1b`;
   return row!;
 }
 
@@ -686,6 +698,7 @@ describe("security grants regression", () => {
       ...AUTHENTICATED_FUNCTION_WHITELIST,
       ...(era.fin1a ? FIN_1A_AUTHENTICATED_FUNCTIONS : []),
       ...(era.fin1b1 ? FIN_1B1_AUTHENTICATED_FUNCTIONS : []),
+      ...(era.launch1b ? LAUNCH_1B_AUTHENTICATED_FUNCTIONS : []),
     ];
 
     const actual = new Set(
