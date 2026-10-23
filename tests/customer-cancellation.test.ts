@@ -10,6 +10,7 @@ import {
   createStaffMember,
   cleanupTenants,
   cleanupUsers,
+  grantTenantProvisioningApproval,
   type TestUser,
 } from "./helpers";
 
@@ -243,6 +244,8 @@ describe("policy defaults and settings.manage RLS", () => {
 describe("settings.manage via the REAL onboarding path (not createTestTenant)", () => {
   it("an owner from create_tenant_with_owner CAN update policy fields, and a fresh read confirms it actually persisted", async () => {
     const realOwner = await createTestUser("p2i4a-real-onboarding-owner");
+    // Faz LAUNCH.1A: the real create_tenant is owner-approval gated.
+    await grantTenantProvisioningApproval(realOwner.email);
     const realOwnerClient = await signInAs(realOwner);
     const slug = `test-p2i4a-real-${crypto.randomUUID().slice(0, 8)}`;
 
