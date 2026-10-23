@@ -84,6 +84,12 @@ export function SetupWizard(props: SetupWizardProps) {
     setStatus(props.initialStatus);
   }
 
+  // A step form seeds its fields from the workspace once. When a save changes the workspace (the refresh arrives a
+  // moment after the step switch), the form must be re-seeded, so each is keyed by the facts it was seeded from.
+  const profileKey = `${status.profile.name}|${status.profile.phone}|${status.profile.timezone}|${status.profile.currency}|${props.workspace.branch.address}`;
+  const hoursKey = props.workspace.staff.map((st) => `${st.id}:${st.hasHours ? 1 : 0}`).join(",");
+  const mappingKey = `${props.workspace.staff.map((st) => st.id).join(",")}|${props.workspace.services.map((sv) => sv.id).join(",")}|${props.workspace.pairs.join(",")}`;
+
   const progress = stepProgress(status);
 
   function applyResult(result: StepResult) {
@@ -136,11 +142,11 @@ export function SetupWizard(props: SetupWizardProps) {
               {isActive ? (
                 <div className="border-t p-4">
                   {notice ? <p className="mb-3 text-sm text-emerald-700 dark:text-emerald-400">{notice}</p> : null}
-                  {step.key === "profile" ? <ProfileStep {...props} status={status} onDone={applyResult} /> : null}
+                  {step.key === "profile" ? <ProfileStep key={profileKey} {...props} status={status} onDone={applyResult} /> : null}
                   {step.key === "services" ? <ServicesStep {...props} onDone={(r, msg) => (setNotice(msg), applyResult(r))} /> : null}
                   {step.key === "staff" ? <StaffStep {...props} onDone={(r, msg) => (setNotice(msg), applyResult(r))} /> : null}
-                  {step.key === "hours" ? <HoursStep {...props} onDone={applyResult} /> : null}
-                  {step.key === "mapping" ? <MappingStep {...props} onDone={applyResult} /> : null}
+                  {step.key === "hours" ? <HoursStep key={hoursKey} {...props} onDone={applyResult} /> : null}
+                  {step.key === "mapping" ? <MappingStep key={mappingKey} {...props} onDone={applyResult} /> : null}
                   {step.key === "booking" ? <BookingStep {...props} status={status} onChanged={() => router.refresh()} /> : null}
                   {step.key === "ready" ? <ReadyStep {...props} status={status} onGo={setActive} /> : null}
                 </div>

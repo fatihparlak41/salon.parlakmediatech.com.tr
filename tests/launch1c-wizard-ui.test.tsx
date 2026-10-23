@@ -246,6 +246,31 @@ describe("hours step", () => {
   });
 });
 
+describe("the workspace arrives AFTER the step switch (router.refresh)", () => {
+  it("the hours step re-seeds its staff selection when the refreshed workspace brings the new people", () => {
+    const status = statusFor(["profile", "services", "staff"], ["no_working_hours", "no_bookable_staff", "public_booking_disabled"]);
+    const empty = { ...WORKSPACE, staff: [], pairs: [] };
+    const view = renderWizard({ initialStatus: status, workspace: empty });
+    expect(screen.getByText("Önce personel ekleyin.")).toBeTruthy();
+    view.rerender(
+      <NextIntlClientProvider locale="tr" messages={trMessages}>
+        <SetupWizard
+          tenantId={TENANT_ID}
+          tenantSlug="ornek-salon"
+          bookingUrl="https://salon.example.test/book/ornek-salon"
+          dashboardHref="/app/ornek-salon"
+          initialStatus={status}
+          workspace={WORKSPACE}
+          firstSlotLabel={null}
+          can={{ profile: true, services: true, staff: true, hours: true, booking: true }}
+        />
+      </NextIntlClientProvider>,
+    );
+    expect((screen.getByRole("checkbox", { name: /Ayşe Demir/ }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("button", { name: "Saatleri uygula" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
 describe("mapping step", () => {
   it("'everyone does everything' checks the whole matrix and sends one assignment per person", async () => {
     vi.mocked(setStaffServicesAction).mockResolvedValue(ok({ status: statusFor(["profile", "services", "staff", "hours", "mapping"], ["public_booking_disabled"]) }));
