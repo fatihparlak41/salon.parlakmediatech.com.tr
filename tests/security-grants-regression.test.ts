@@ -338,15 +338,28 @@ const FIN_1B1_AUTHENTICATED_FUNCTIONS = [
   "public.void_expense_payment",
 ];
 
+// Faz LAUNCH.1C (migration 20261024090000) is a schema ERA too. Sentinel = the readiness read model. Six
+// client-facing RPCs for `authenticated` ONLY (never anon, never service_role); each re-checks the real permission
+// (settings.manage / services.manage / staff.manage / schedules.manage) for the given tenant inside.
+const LAUNCH_1C_AUTHENTICATED_FUNCTIONS = [
+  "public.get_onboarding_status",
+  "public.update_salon_profile",
+  "public.onboarding_add_services",
+  "public.onboarding_add_staff",
+  "public.onboarding_apply_weekly_hours",
+  "public.onboarding_set_staff_services",
+];
+
 // The fully locked-down finance ledgers: RLS on, zero policies, no privilege at
 // all for any API role. Checked only for the eras that exist.
 const FIN_1A_LOCKED_DOWN_TABLES = ["appointment_sales", "appointment_sale_items", "payments"];
 const FIN_1B1_LOCKED_DOWN_TABLES = ["expense_categories", "expenses", "expense_payments"];
 
-async function readFinanceEra(): Promise<{ fin1a: boolean; fin1b1: boolean }> {
-  const [row] = await testDb<{ fin1a: boolean; fin1b1: boolean }[]>`
+async function readFinanceEra(): Promise<{ fin1a: boolean; fin1b1: boolean; launch1c: boolean }> {
+  const [row] = await testDb<{ fin1a: boolean; fin1b1: boolean; launch1c: boolean }[]>`
     select to_regclass('public.appointment_sales') is not null as fin1a,
-           to_regclass('public.expenses') is not null as fin1b1`;
+           to_regclass('public.expenses') is not null as fin1b1,
+           to_regprocedure('public.get_onboarding_status(uuid)') is not null as launch1c`;
   return row!;
 }
 
@@ -686,6 +699,7 @@ describe("security grants regression", () => {
       ...AUTHENTICATED_FUNCTION_WHITELIST,
       ...(era.fin1a ? FIN_1A_AUTHENTICATED_FUNCTIONS : []),
       ...(era.fin1b1 ? FIN_1B1_AUTHENTICATED_FUNCTIONS : []),
+      ...(era.launch1c ? LAUNCH_1C_AUTHENTICATED_FUNCTIONS : []),
     ];
 
     const actual = new Set(
