@@ -8,6 +8,8 @@ import {
 } from "@/lib/auth/session";
 import { getMyAccountProfile } from "@/lib/modules/customer-account/queries";
 import { resolveHomeLanding } from "@/lib/modules/home/landing";
+import { getMyTenantProvisioningStatus } from "@/lib/modules/tenants/provisioning";
+import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -50,11 +52,18 @@ export default async function HomePage({ searchParams }: PageProps<"/[locale]">)
     redirect(landing.href);
   }
 
+  // Faz LAUNCH.1A — salon creation is owner-approval only. Only a signed-in
+  // user with no salon yet ever sees the create-salon call to action, so the
+  // (cheap, caller-only) approval check runs for exactly that case.
+  const canCreateSalon =
+    memberships.length === 0 ? await getMyTenantProvisioningStatus(await createClient()) : false;
+
   return (
     <SignedInHome
       fullName={profile?.fullName?.trim() || undefined}
       memberships={memberships}
       platformAdmin={platformAdmin}
+      canCreateSalon={canCreateSalon}
     />
   );
 }
@@ -86,10 +95,12 @@ async function SignedInHome({
   fullName,
   memberships,
   platformAdmin,
+  canCreateSalon,
 }: {
   fullName?: string;
   memberships: Awaited<ReturnType<typeof getUserMemberships>>;
   platformAdmin: boolean;
+  canCreateSalon: boolean;
 }) {
   const t = await getTranslations("Home.signedIn");
 
@@ -106,9 +117,13 @@ async function SignedInHome({
       {memberships.length === 0 ? (
         <div className="flex flex-col items-start gap-3">
           <p className="text-muted-foreground text-sm">{t("noSalons")}</p>
-          <Button render={<Link href="/onboarding" />} nativeButton={false}>
-            {t("createSalon")}
-          </Button>
+          {canCreateSalon ? (
+            <Button render={<Link href="/onboarding" />} nativeButton={false}>
+              {t("createSalon")}
+            </Button>
+          ) : (
+            <p className="text-muted-foreground text-sm">{t("createSalonPending")}</p>
+          )}
         </div>
       ) : (
         <div className="flex flex-col gap-3">
