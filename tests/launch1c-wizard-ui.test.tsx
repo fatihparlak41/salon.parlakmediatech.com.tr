@@ -99,7 +99,7 @@ function renderWizard(overrides: Partial<SetupWizardProps> = {}) {
   );
 }
 
-const stepButton = (label: string) => screen.getByRole("button", { name: new RegExp("^" + label + "\s*(Tamamlandı|Bekliyor)$") });
+const stepButton = (label: string) => screen.getByRole("button", { name: new RegExp("^" + label + "\\s*(Tamamlandı|Bekliyor)$") });
 
 beforeEach(() => {
   vi.mocked(addServicesAction).mockReset();

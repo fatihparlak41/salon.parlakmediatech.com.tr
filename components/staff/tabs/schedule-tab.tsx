@@ -98,15 +98,36 @@ export function ScheduleTab({
     null,
   );
 
+  // Faz LAUNCH.1C — a weekday with SEVERAL working blocks (a lunch break entered in the guided setup) cannot be shown
+  // by the one-block-per-day editor below. Such a day is displayed read-only and re-sent exactly as stored, so saving
+  // another day never silently drops the afternoon block.
+  const multiBlockDays = new Map<number, ScheduleRow[]>();
+  for (const row of schedule) {
+    const list = multiBlockDays.get(row.weekday) ?? [];
+    list.push(row);
+    multiBlockDays.set(row.weekday, list);
+  }
+  for (const [weekday, list] of [...multiBlockDays]) {
+    if (list.length < 2) multiBlockDays.delete(weekday);
+  }
+
   function saveSchedule() {
-    const rows = Object.entries(days)
-      .filter(([, d]) => d.enabled)
-      .map(([weekday, d]) => ({
-        weekday: Number(weekday),
-        branchId: branches.length > 1 ? d.branchId : (branches[0]?.id ?? null),
-        startTime: d.startTime,
-        endTime: d.endTime,
-      }));
+    const rows = [
+      ...Object.entries(days)
+        .filter(([weekday, d]) => d.enabled && !multiBlockDays.has(Number(weekday)))
+        .map(([weekday, d]) => ({
+          weekday: Number(weekday),
+          branchId: branches.length > 1 ? d.branchId : (branches[0]?.id ?? null),
+          startTime: d.startTime,
+          endTime: d.endTime,
+        })),
+      ...[...multiBlockDays.values()].flat().map((r) => ({
+        weekday: r.weekday,
+        branchId: r.branchId,
+        startTime: r.startTime,
+        endTime: r.endTime,
+      })),
+    ];
     startTransition(() => scheduleAction({ tenantSlug, tenantId, staffMemberId, rows }));
   }
 
@@ -120,6 +141,16 @@ export function ScheduleTab({
         <div className="mt-3 flex flex-col divide-y divide-border rounded-lg border">
           {DISPLAY_ORDER.map((weekday) => {
             const day = days[weekday]!;
+            const blocks = multiBlockDays.get(weekday);
+            if (blocks) {
+              return (
+                <div key={weekday} className="flex flex-wrap items-center gap-3 px-3 py-2.5" data-multi-block-day={weekday}>
+                  <span className="w-32 shrink-0 text-sm font-medium">{WEEKDAY_LABELS[weekday]}</span>
+                  <span className="text-sm">{blocks.map((b) => `${b.startTime.slice(0, 5)}–${b.endTime.slice(0, 5)}`).join(" · ")}</span>
+                  <span className="text-muted-foreground text-xs">Mola tanımlı; bu gün buradan değiştirilemez, olduğu gibi korunur.</span>
+                </div>
+              );
+            }
             return (
               <div key={weekday} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
                 <label className="flex w-32 shrink-0 items-center gap-2 text-sm font-medium">
