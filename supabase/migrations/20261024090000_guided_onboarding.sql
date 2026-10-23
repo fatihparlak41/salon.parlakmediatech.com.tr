@@ -225,9 +225,9 @@ begin
     'firstAvailableSlotAt', v_found_slot,
     'steps', jsonb_build_array(
       jsonb_build_object('key', 'profile', 'done', array_length(v_profile_missing, 1) is null),
-      jsonb_build_object('key', 'hours', 'done', v_staff_with_hours > 0),
       jsonb_build_object('key', 'services', 'done', v_services > 0),
       jsonb_build_object('key', 'staff', 'done', v_staff > 0),
+      jsonb_build_object('key', 'hours', 'done', v_staff_with_hours > 0),
       jsonb_build_object('key', 'mapping', 'done', v_paths > 0),
       jsonb_build_object('key', 'booking', 'done', v_online),
       jsonb_build_object('key', 'ready', 'done', array_length(v_blockers, 1) is null)

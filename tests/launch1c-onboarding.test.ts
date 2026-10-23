@@ -144,7 +144,7 @@ describe("NEW OWNER — an empty tenant is incomplete, and each step is derived 
     expect(s.onlineBookingEnabled).toBe(false);
     expect(s.hasAppointments).toBe(false);
     expect(s.firstAvailableSlotAt).toBeNull();
-    expect(s.steps.map((x) => x.key)).toEqual(["profile", "hours", "services", "staff", "mapping", "booking", "ready"]);
+    expect(s.steps.map((x) => x.key)).toEqual(["profile", "services", "staff", "hours", "mapping", "booking", "ready"]);
     expect(s.steps.every((x) => !x.done)).toBe(true);
   });
 

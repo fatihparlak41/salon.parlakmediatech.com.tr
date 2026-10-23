@@ -2956,6 +2956,30 @@ export type Database = {
           table_name: string
         }[]
       }
+      get_onboarding_status: {
+        Args: { p_tenant_id: string }
+        Returns: Json
+      }
+      update_salon_profile: {
+        Args: { p_address: string; p_currency: string; p_name: string; p_phone: string; p_tenant_id: string; p_timezone: string }
+        Returns: Json
+      }
+      onboarding_add_services: {
+        Args: { p_items: Json; p_tenant_id: string }
+        Returns: Json
+      }
+      onboarding_add_staff: {
+        Args: { p_items: Json; p_tenant_id: string }
+        Returns: Json
+      }
+      onboarding_apply_weekly_hours: {
+        Args: { p_days: Json; p_staff_ids: string[]; p_tenant_id: string }
+        Returns: Json
+      }
+      onboarding_set_staff_services: {
+        Args: { p_assignments: Json; p_tenant_id: string }
+        Returns: Json
+      }
       set_online_booking_enabled: {
         Args: { p_enabled: boolean; p_tenant_id: string }
         Returns: boolean
