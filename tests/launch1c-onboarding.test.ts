@@ -338,6 +338,15 @@ describe("BOOKING READINESS — every missing piece produces its own blocker", (
     expect(freed.hasAppointments).toBe(true);
   });
 
+  it("hours bound to a DIFFERENT branch give no slot at the branch the service is offered at (documents the branch rule of the shared predicate)", async () => {
+    const f = await fullSalon("r17");
+    const second = await createBranch(f.t.id, "Ikinci Sube");
+    await testDb`update staff_schedules set branch_id = ${second} where staff_member_id = ${f.staffId} and deleted_at is null`;
+    const s = await status(f.t.id, f.o.id);
+    expect(s.counts.bookablePaths).toBe(1);
+    expect(s.blockers).toEqual(["no_available_slot"]);
+  });
+
   it("a salon whose only branch was removed has no profile, no services and no bookable path", async () => {
     const f = await fullSalon("r14");
     await testDb`update branches set deleted_at = now() where tenant_id = ${f.t.id}`;
