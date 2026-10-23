@@ -14,6 +14,7 @@ import {
   createStaffMember,
   createTestTenant,
   createTestUser,
+  grantTenantProvisioningApproval,
   linkServiceBranch,
   linkStaffBranch,
   linkStaffService,
@@ -247,6 +248,8 @@ beforeAll(async () => {
   // --- a tenant that already has all four roles (created the normal way) ------------------------------------------
   {
     const owner = await newUser("complete-owner");
+    // Faz LAUNCH.1A: the real create_tenant is owner-approval gated.
+    await grantTenantProvisioningApproval(owner.email);
     const tenantId = await asAuthenticatedUser(owner.id, async (sql) => {
       const [row] = await sql<{ id: string }[]>`select public.create_tenant(${"Backfill Complete"}, ${`bf-complete-${TAG}`}) as id`;
       return row!.id;

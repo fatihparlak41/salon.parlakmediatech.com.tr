@@ -7,6 +7,7 @@ import {
   createRoleForTenant,
   createTestTenant,
   createTestUser,
+  grantTenantProvisioningApproval,
   signInAs,
   testDb,
   type TestTenant,
@@ -211,6 +212,8 @@ describe("tenant bootstrap", () => {
   it("create_tenant still succeeds — the trigger allows normal bootstrap with no special bypass", async () => {
     const owner = await createTestUser("mrc-bootstrap");
     createdUserIds.push(owner.id);
+    // Faz LAUNCH.1A: the real create_tenant is owner-approval gated.
+    await grantTenantProvisioningApproval(owner.email);
     const client = await signInAs(owner);
 
     const { data, error } = await client.rpc("create_tenant", {
