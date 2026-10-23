@@ -2,11 +2,17 @@ import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { Link } from "@/lib/i18n/navigation";
 import { getTenantAccess, hasPermission } from "@/lib/auth/session";
-import { getSelfServicePolicy, getOnlineBookingEnabled } from "@/lib/modules/settings/queries";
+import {
+  getSelfServicePolicy,
+  getOnlineBookingEnabled,
+  getCustomerNotificationSettings,
+  getCustomerNotificationHealth,
+} from "@/lib/modules/settings/queries";
 import { getOwnerManagedBranches } from "@/lib/modules/branches/queries";
 import { SelfServicePolicyForm } from "@/components/settings/self-service-policy-form";
 import { OnlineBookingToggle } from "@/components/settings/online-booking-toggle";
 import { BranchContactForm } from "@/components/settings/branch-contact-form";
+import { CustomerNotificationSettings } from "@/components/settings/customer-notification-settings";
 
 export default async function SettingsPage({
   params,
@@ -23,10 +29,12 @@ export default async function SettingsPage({
     redirect(`/app/${tenantSlug}`);
   }
 
-  const [policy, onlineBookingEnabled, branches] = await Promise.all([
+  const [policy, onlineBookingEnabled, branches, notificationSettings, notificationHealth] = await Promise.all([
     getSelfServicePolicy(access.tenant.id),
     getOnlineBookingEnabled(access.tenant.id),
     getOwnerManagedBranches(access.tenant.id),
+    getCustomerNotificationSettings(access.tenant.id),
+    getCustomerNotificationHealth(access.tenant.id),
   ]);
   const t = await getTranslations("Settings");
 
@@ -45,6 +53,12 @@ export default async function SettingsPage({
         tenantId={access.tenant.id}
         tenantSlug={tenantSlug}
         initialPolicy={policy}
+      />
+      <CustomerNotificationSettings
+        tenantId={access.tenant.id}
+        tenantSlug={tenantSlug}
+        initialSettings={notificationSettings}
+        health={notificationHealth}
       />
       {branches.length > 0 && <BranchContactForm tenantSlug={tenantSlug} branches={branches} />}
       {/* Faz ACCOUNT.1 — this page is salon configuration only. Device

@@ -37,3 +37,11 @@ export const selfServicePolicySchema = z
   );
 
 export type SelfServicePolicyInput = z.infer<typeof selfServicePolicySchema>;
+
+/** Faz LAUNCH.1B — one customer-notification switch. The type is a closed list. */
+export const customerNotificationSettingSchema = z.object({
+  tenantId: z.string().uuid(),
+  tenantSlug: z.string().trim().min(1),
+  type: z.enum(["appointment_confirmation", "appointment_update", "appointment_cancellation", "appointment_reminder_24h"]),
+  enabled: z.boolean(),
+});

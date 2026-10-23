@@ -53,3 +53,77 @@ export async function getOnlineBookingEnabled(tenantId: string): Promise<boolean
   if (error || data === null) return false;
   return data;
 }
+
+/** Faz LAUNCH.1B — the four customer-notification switches of one salon (Owner
+ * only: settings.manage is enforced INSIDE the RPC). Fails closed to "all off". */
+export type CustomerNotificationSettings = {
+  appointment_confirmation: boolean;
+  appointment_update: boolean;
+  appointment_cancellation: boolean;
+  appointment_reminder_24h: boolean;
+};
+
+export const CUSTOMER_NOTIFICATION_SETTING_KEYS = [
+  "appointment_confirmation",
+  "appointment_update",
+  "appointment_cancellation",
+  "appointment_reminder_24h",
+] as const;
+
+export type CustomerNotificationSettingKey = (typeof CUSTOMER_NOTIFICATION_SETTING_KEYS)[number];
+
+const ALL_OFF: CustomerNotificationSettings = {
+  appointment_confirmation: false,
+  appointment_update: false,
+  appointment_cancellation: false,
+  appointment_reminder_24h: false,
+};
+
+export function parseCustomerNotificationSettings(raw: unknown): CustomerNotificationSettings {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return ALL_OFF;
+  const record = raw as Record<string, unknown>;
+  return {
+    appointment_confirmation: record.appointment_confirmation === true,
+    appointment_update: record.appointment_update === true,
+    appointment_cancellation: record.appointment_cancellation === true,
+    appointment_reminder_24h: record.appointment_reminder_24h === true,
+  };
+}
+
+export async function getCustomerNotificationSettings(tenantId: string): Promise<CustomerNotificationSettings> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("get_customer_notification_settings", { p_tenant_id: tenantId });
+  if (error) return ALL_OFF;
+  return parseCustomerNotificationSettings(data);
+}
+
+export type CustomerNotificationHealth = {
+  windowDays: number;
+  sent: number;
+  failed: number;
+  uncertain: number;
+  waiting: number;
+  skippedNoRecipient: number;
+};
+
+export function parseCustomerNotificationHealth(raw: unknown): CustomerNotificationHealth | null {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+  const record = raw as Record<string, unknown>;
+  const num = (value: unknown) => (typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0);
+  return {
+    windowDays: num(record.windowDays) || 14,
+    sent: num(record.sent),
+    failed: num(record.failed),
+    uncertain: num(record.uncertain),
+    waiting: num(record.waiting),
+    skippedNoRecipient: num(record.skippedNoRecipient),
+  };
+}
+
+/** PII-free delivery summary of the last 14 days (counts by outcome). null = unavailable. */
+export async function getCustomerNotificationHealth(tenantId: string): Promise<CustomerNotificationHealth | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("get_customer_notification_health", { p_tenant_id: tenantId });
+  if (error) return null;
+  return parseCustomerNotificationHealth(data);
+}

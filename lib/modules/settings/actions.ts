@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireUser } from "@/lib/auth/session";
 import { fail, ok, type ActionResult } from "@/lib/errors";
-import { selfServicePolicySchema } from "./schemas";
+import { customerNotificationSettingSchema, selfServicePolicySchema } from "./schemas";
 import type { SelfServicePolicy } from "./queries";
 import { sendTestPush, type TestPushSubscription } from "@/lib/pwa/web-push-server";
 import {
@@ -504,4 +504,42 @@ export async function updateMyNotificationPreferenceAction(
   }
 
   return ok(preferences);
+}
+
+/**
+ * Faz LAUNCH.1B — one customer-notification switch (confirmation, change,
+ * cancellation, 24 h reminder) for one salon. The RPC is the whole authorization
+ * boundary (settings.manage, i.e. the Owner; no new permission) and writes the audit
+ * event; this action only validates the shape and maps the refusal. The input type is
+ * a closed enum, so no free text reaches the database.
+ */
+export async function updateCustomerNotificationSettingAction(
+  _prevState: ActionResult<{ type: string; enabled: boolean }> | null,
+  input: { tenantId: string; tenantSlug: string; type: string; enabled: boolean },
+): Promise<ActionResult<{ type: string; enabled: boolean }>> {
+  await requireUser();
+
+  const parsed = customerNotificationSettingSchema.safeParse(input);
+  if (!parsed.success) {
+    return fail("VALIDATION", "Geçersiz bildirim ayarı");
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("set_customer_notification_setting", {
+    p_tenant_id: parsed.data.tenantId,
+    p_notification_type: parsed.data.type,
+    p_enabled: parsed.data.enabled,
+  });
+
+  if (error) {
+    if (error.message.includes("settings.manage required")) {
+      return fail("UNAUTHORIZED", "Bu işlem için yetkiniz yok");
+    }
+    return fail("UNEXPECTED", "İşlem gerçekleştirilemedi, lütfen tekrar deneyin");
+  }
+
+  revalidatePath(`/app/${parsed.data.tenantSlug}/settings`);
+
+  const row = typeof data === "object" && data !== null && !Array.isArray(data) ? (data as Record<string, unknown>) : {};
+  return ok({ type: parsed.data.type, enabled: row.enabled === true });
 }
