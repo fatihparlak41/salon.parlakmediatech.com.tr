@@ -89,6 +89,8 @@ describe("parseDailyOverview", () => {
       raw({ cash: { supported: false, cashCollected: 2000, cashPaidOut: 1500, difference: 500 } }),
       raw({ expenses: { accruedTotal: 1, accruedCount: 1, paidOutTotal: 10, paidOutCount: 1, paidOutCash: 1, paidOutCard: 1, paidOutBankTransfer: 0, paidOutOther: 0 } }),
       raw({ staff: [{ displayName: 5 }] }),
+      raw({ staff: [{ displayName: 5, completedAppointments: 1, completedItems: 1, serviceAmount: 10 }] }), // a name that is not text
+      raw({ expenses: { accruedTotal: 3650, accruedCount: 3, paidOutTotal: 1951, paidOutCount: 3, paidOutCash: 1500, paidOutCard: 450, paidOutBankTransfer: 0, paidOutOther: 0 } }), // methods do not add up to the total
       raw({ staff: "none" }),
       raw({ staffServiceAmountTotal: "5100" }),
       raw({ outstanding: { amount: Number.NaN, count: 1, todayAmount: 0 } }),
@@ -107,7 +109,14 @@ describe("DailyOwnerOverview", () => {
     const { container } = view();
     const metric = (key: string) => container.querySelector(`[data-metric="${key}"]`) as HTMLElement;
     expect(within(metric("appointments")).getByText("Bugünkü randevular")).toBeTruthy();
-    expect(metric("appointments").textContent).toContain("9");
+    const value = (key: string) => metric(key).querySelector("span")!.textContent;
+    expect(value("appointments")).toBe("9");
+    expect(value("completed")).toBe("5");
+    expect(value("serviceAmount")).toBe("5.000,00 TRY");
+    expect(value("collected")).toBe("4.100,00 TRY");
+    expect(value("outstanding")).toBe("1.100,00 TRY");
+    expect(value("expense")).toBe("3.650,00 TRY");
+    expect(value("cashDifference")).toBe("500,00 TRY");
     expect(metric("completed").textContent).toContain("5");
     expect(within(metric("serviceAmount")).getByText("Tamamlanan işlem tutarı")).toBeTruthy();
     expect(metric("serviceAmount").textContent).toContain("5.000,00 TRY");

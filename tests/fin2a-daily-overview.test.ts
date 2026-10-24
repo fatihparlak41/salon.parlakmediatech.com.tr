@@ -223,7 +223,10 @@ describe("one realistic synthetic salon day, calculated by hand", () => {
     await testDb`update payments set voided_at = ${await at(DAY, "14:00")}::text::timestamptz where id = ${voided}`;
     // A5 14:00 Mehmet Cut 500, completed, NO checkout
     await appt(fx, DAY, "14:00", [{ staff: fx.mehmet, service: fx.cut }]);
-    // A6 confirmed (not done), A7 cancelled, A8 no-show, A9 scheduled
+    // A5b 14:30 Ayse Cut 500 + Mehmet Nails 600 = 1100 list value, completed, NO checkout (two items, two people)
+    await appt(fx, DAY, "14:30", [{ staff: fx.ayse, service: fx.cut }, { staff: fx.mehmet, service: fx.nails }]);
+    // A6 confirmed (not done), A7 cancelled, A8 + A10 no-show (two, so they cannot be mistaken for the one cancelled), A9 scheduled
+    await appt(fx, DAY, "16:30", [{ staff: fx.ayse, service: fx.nails }], "no_show");
     await appt(fx, DAY, "18:00", [{ staff: fx.mehmet, service: fx.cut }], "confirmed");
     await appt(fx, DAY, "15:00", [{ staff: fx.ayse, service: fx.cut }], "cancelled");
     await appt(fx, DAY, "16:00", [{ staff: fx.mehmet, service: fx.nails }], "no_show");
@@ -262,16 +265,21 @@ describe("one realistic synthetic salon day, calculated by hand", () => {
     await pay(otherFx, sx, 1500, "cash", await at(DAY, "10:30"));
     const x2 = await appt(otherFx, DAY, "11:00", [{ staff: otherFx.mehmet, service: otherFx.cut }]);
     await sale(otherFx, x2.id); // 500 completed, unpaid
-    await expense(otherFx, DAY, "rent", 7777);
+    const xe = await expense(otherFx, DAY, "rent", 7777);
+    await payExpense(otherFx, xe, 300, "cash", await at(DAY, "12:00")); // their cash out
+    const x2sale = await sale(otherFx, x2.id);
+    const xv = await pay(otherFx, x2sale, 20, "other", await at(DAY, "12:30")); // their voided payment
+    await asAuthenticatedUser(otherOwner.id, (sql) => sql`select public.void_appointment_payment(${xv}, 'x')`);
+    await testDb`update payments set voided_at = ${await at(DAY, "12:45")}::text::timestamptz where id = ${xv}`;
     result = await overview(tenant, owner.id);
   }, 240_000);
 
-  it("appointments by canonical status: 9 on the day, 5 completed, 1 confirmed, 1 scheduled, 1 cancelled, 1 no-show", () => {
-    expect(result.appointments).toEqual({ total: 9, scheduled: 1, confirmed: 1, inProgress: 0, completed: 5, cancelled: 1, noShow: 1 });
+  it("appointments by canonical status: 11 on the day, 6 completed, 1 confirmed, 1 scheduled, 1 cancelled, 2 no-show", () => {
+    expect(result.appointments).toEqual({ total: 11, scheduled: 1, confirmed: 1, inProgress: 0, completed: 6, cancelled: 1, noShow: 2 });
   });
 
-  it("completed work value: 500 + 1500 + (1100-100) + 1500 + 500 (no checkout, list price) = 5000", () => {
-    expect(result.services).toEqual({ completedAmount: 5000, completedWithCheckout: 4, completedWithoutCheckout: 1, withoutCheckoutAmount: 500, discountTotal: 100 });
+  it("completed work value: 500 + 1500 + (1100-100) + 1500 + 500 + 1100 (the last two without checkout, list price) = 6100", () => {
+    expect(result.services).toEqual({ completedAmount: 6100, completedWithCheckout: 4, completedWithoutCheckout: 2, withoutCheckoutAmount: 1600, discountTotal: 100 });
   });
 
   it("money received today by method: cash 500+600+500+400(old work) = 2000, card 1500+400 = 1900, transfer 200, other 0 (the voided 50 never counts) = 4100", () => {
@@ -292,13 +300,13 @@ describe("one realistic synthetic salon day, calculated by hand", () => {
     expect(result.cash).toEqual({ supported: true, cashCollected: 2000, cashPaidOut: 1500, difference: 500 });
   });
 
-  it("staff by ITEM with the ACTUAL performer: Ayse 500+1500(override)+500+1500 = 4000 in 4 visits, Mehmet 600+500 = 1100 in 2; the discount is not split", () => {
+  it("staff by ITEM with the ACTUAL performer: Ayse 500+1500(override)+500+1500+500 = 4500 in 5 visits, Mehmet 600+500+600 = 1700 in 3; the discount is not split", () => {
     expect(result.staff).toEqual([
-      { displayName: "Ayşe Demir", completedAppointments: 4, completedItems: 4, serviceAmount: 4000 },
-      { displayName: "Mehmet Kaya", completedAppointments: 2, completedItems: 2, serviceAmount: 1100 },
+      { displayName: "Ayşe Demir", completedAppointments: 5, completedItems: 5, serviceAmount: 4500 },
+      { displayName: "Mehmet Kaya", completedAppointments: 3, completedItems: 3, serviceAmount: 1700 },
     ]);
-    expect(result.staffServiceAmountTotal).toBe(5100);
-    // 5100 before discount - 100 discount = 5000 = completedAmount
+    expect(result.staffServiceAmountTotal).toBe(6200);
+    // 6200 before discount - 100 discount = 6100 = completedAmount
     expect(result.staffServiceAmountTotal - result.services.discountTotal).toBe(result.services.completedAmount);
   });
 
@@ -322,6 +330,10 @@ describe("one realistic synthetic salon day, calculated by hand", () => {
     expect(theirs.services.completedAmount).toBe(2000);
     expect(theirs.appointments.total).toBe(2);
     expect(theirs.outstanding).toMatchObject({ amount: 500, count: 1, todayAmount: 500 });
+    expect(theirs.payments).toMatchObject({ voidedCount: 1, voidedAmount: 20 });
+    expect(theirs.expenses).toMatchObject({ paidOutTotal: 300, paidOutCash: 300 });
+    expect(mine.payments).toMatchObject({ voidedCount: 1, voidedAmount: 50 });
+    expect(mine.expenses).toMatchObject({ paidOutTotal: 1950 });
     expect(theirs.staff.map((s) => s.displayName)).toEqual(["Ayşe Demir", "Mehmet Kaya"]);
   });
 
@@ -464,12 +476,12 @@ describe("invariants", () => {
   it("a cancelled appointment contributes no completed value; an unfinished one neither; an unpaid completed one adds value but no collection", async () => {
     const o = await overview(tenant, owner.id);
     expect(o.appointments.cancelled).toBe(1);
-    expect(o.services.completedAmount).toBe(5000); // none of 500 cancelled / 600 no-show / 500 confirmed / 500 scheduled
+    expect(o.services.completedAmount).toBe(6100); // none of 500 cancelled / 600+600 no-show / 500 confirmed / 500 scheduled
   });
 
   it("a completed appointment without a checkout carries value but is never reported as outstanding", async () => {
     const o = await overview(tenant, owner.id);
-    expect(o.services.withoutCheckoutAmount).toBe(500);
+    expect(o.services.withoutCheckoutAmount).toBe(1600);
     expect(o.outstanding.amount).toBe(1100);
   });
 
@@ -487,7 +499,7 @@ describe("invariants", () => {
     const ayse = o.staff.find((s) => s.displayName === "Ayşe Demir")!;
     const mehmet = o.staff.find((s) => s.displayName === "Mehmet Kaya")!;
     expect(ayse.serviceAmount + mehmet.serviceAmount).toBe(o.staffServiceAmountTotal);
-    expect(mehmet.serviceAmount).toBe(600 + 500); // his nails + his cut; not the 1100 appointment
+    expect(mehmet.serviceAmount).toBe(600 + 500 + 600); // his own items only, never the 1100 appointments
   });
 
   it("voiding a payment moves it out of the collection (the model has void, not refund)", async () => {
@@ -535,6 +547,19 @@ describe("invariants", () => {
       expect(during.services.completedAmount).toBe(before.services.completedAmount);
     } finally {
       await testDb`update appointment_sales set status = 'open' where tenant_id = ${other.id} and total_amount = 500 and status = 'voided'`;
+    }
+  });
+
+  it("a currency mismatch in ONE salon is flagged for that salon only", async () => {
+    // an expense is created in EUR (the salon's currency at that moment), then the salon goes back to TRY
+    await testDb`update tenants set currency = 'EUR' where id = ${other.id}`;
+    const eur = await expense(otherFx, DAY, "supplies", 10);
+    await testDb`update tenants set currency = 'TRY' where id = ${other.id}`;
+    try {
+      expect((await overview(other, otherOwner.id)).currencyMixed).toBe(true);
+      expect((await overview(tenant, owner.id)).currencyMixed).toBe(false);
+    } finally {
+      await asAuthenticatedUser(otherOwner.id, (sql) => sql`select public.cancel_expense(${eur}, 'test')`);
     }
   });
 
