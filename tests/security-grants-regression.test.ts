@@ -338,15 +338,21 @@ const FIN_1B1_AUTHENTICATED_FUNCTIONS = [
   "public.void_expense_payment",
 ];
 
+// Faz CUST.1A (migration 20261026090000) is a schema ERA too. Sentinel = the customer history read model. Three client-facing
+// RPCs for `authenticated` ONLY (never anon, never service_role): the customer history, the import preview and the import
+// commit; each re-checks its own permissions for the given tenant/customer inside.
+const CUST_1A_AUTHENTICATED_FUNCTIONS = ["public.get_customer_history", "public.preview_customer_import", "public.commit_customer_import"];
+
 // The fully locked-down finance ledgers: RLS on, zero policies, no privilege at
 // all for any API role. Checked only for the eras that exist.
 const FIN_1A_LOCKED_DOWN_TABLES = ["appointment_sales", "appointment_sale_items", "payments"];
 const FIN_1B1_LOCKED_DOWN_TABLES = ["expense_categories", "expenses", "expense_payments"];
 
-async function readFinanceEra(): Promise<{ fin1a: boolean; fin1b1: boolean }> {
-  const [row] = await testDb<{ fin1a: boolean; fin1b1: boolean }[]>`
+async function readFinanceEra(): Promise<{ fin1a: boolean; fin1b1: boolean; cust1a: boolean }> {
+  const [row] = await testDb<{ fin1a: boolean; fin1b1: boolean; cust1a: boolean }[]>`
     select to_regclass('public.appointment_sales') is not null as fin1a,
-           to_regclass('public.expenses') is not null as fin1b1`;
+           to_regclass('public.expenses') is not null as fin1b1,
+           to_regprocedure('public.get_customer_history(uuid,integer)') is not null as cust1a`;
   return row!;
 }
 
@@ -686,6 +692,7 @@ describe("security grants regression", () => {
       ...AUTHENTICATED_FUNCTION_WHITELIST,
       ...(era.fin1a ? FIN_1A_AUTHENTICATED_FUNCTIONS : []),
       ...(era.fin1b1 ? FIN_1B1_AUTHENTICATED_FUNCTIONS : []),
+      ...(era.cust1a ? CUST_1A_AUTHENTICATED_FUNCTIONS : []),
     ];
 
     const actual = new Set(

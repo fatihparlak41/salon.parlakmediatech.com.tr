@@ -1,7 +1,6 @@
 "use client";
 
 import { startTransition, useActionState, useEffect, useState } from "react";
-import { CalendarClock } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -26,6 +25,7 @@ import {
   type UpdateCustomerStatusInput,
 } from "@/lib/modules/customers/actions";
 import { AccountLinkSection } from "@/components/customers/account-link-section";
+import { CustomerHistoryTab } from "@/components/customers/customer-history";
 
 async function loadCustomer(customerId: string): Promise<CustomerRow | null> {
   const supabase = createClient();
@@ -147,10 +147,7 @@ function CustomerDetailSheetBody({
           </TabsContent>
 
           <TabsContent value="appointments" className="pt-4">
-            <div className="border-border flex flex-col items-center gap-2 rounded-xl border border-dashed px-6 py-10 text-center">
-              <CalendarClock className="text-muted-foreground size-6" />
-              <p className="text-muted-foreground text-sm">Randevu geçmişi yakında burada görünecek.</p>
-            </div>
+            <CustomerHistoryTab customerId={customer.id} />
           </TabsContent>
         </Tabs>
       </div>

@@ -5,6 +5,7 @@ import { Plus, Search, Contact } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { CustomerRow } from "@/lib/modules/customers/queries";
 import { CUSTOMERS_PAGE_SIZE } from "@/lib/modules/customers/constants";
+import { Link } from "@/lib/i18n/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -59,6 +60,7 @@ export function CustomersPageClient({
   tenantSlug,
   canManage,
   canLinkAccount,
+  canImport = false,
   initialCustomers,
   initialCounts,
   labels,
@@ -67,6 +69,7 @@ export function CustomersPageClient({
   tenantSlug: string;
   canManage: boolean;
   canLinkAccount: boolean;
+  canImport?: boolean;
   initialCustomers: CustomerRow[];
   initialCounts: { active: number; archived: number };
   labels: Labels;
@@ -134,6 +137,14 @@ export function CustomersPageClient({
           <h1 className="text-2xl font-semibold tracking-tight">{labels.title}</h1>
           <p className="text-muted-foreground mt-1 text-sm">{labels.description}</p>
         </div>
+        {canImport && (
+          <Link
+            href={`/app/${tenantSlug}/customers/import`}
+            className="border-border bg-background hover:bg-muted inline-flex h-8 shrink-0 items-center rounded-lg border px-2.5 text-sm font-medium"
+          >
+            Müşteri listesini içe aktar
+          </Link>
+        )}
         {canManage && !isEmptyOverall && (
           <Button onClick={() => setCreateOpen(true)} className="shrink-0">
             <Plus />
