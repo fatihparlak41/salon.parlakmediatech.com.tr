@@ -338,15 +338,20 @@ const FIN_1B1_AUTHENTICATED_FUNCTIONS = [
   "public.void_expense_payment",
 ];
 
+// Faz FIN.2A (migration 20261025090000) is a schema ERA too. Sentinel = the daily Owner overview. One client-facing
+// read RPC for `authenticated` ONLY (never anon, never service_role); it re-checks finance.view for the given tenant.
+const FIN_2A_AUTHENTICATED_FUNCTIONS = ["public.get_daily_owner_overview"];
+
 // The fully locked-down finance ledgers: RLS on, zero policies, no privilege at
 // all for any API role. Checked only for the eras that exist.
 const FIN_1A_LOCKED_DOWN_TABLES = ["appointment_sales", "appointment_sale_items", "payments"];
 const FIN_1B1_LOCKED_DOWN_TABLES = ["expense_categories", "expenses", "expense_payments"];
 
-async function readFinanceEra(): Promise<{ fin1a: boolean; fin1b1: boolean }> {
-  const [row] = await testDb<{ fin1a: boolean; fin1b1: boolean }[]>`
+async function readFinanceEra(): Promise<{ fin1a: boolean; fin1b1: boolean; fin2a: boolean }> {
+  const [row] = await testDb<{ fin1a: boolean; fin1b1: boolean; fin2a: boolean }[]>`
     select to_regclass('public.appointment_sales') is not null as fin1a,
-           to_regclass('public.expenses') is not null as fin1b1`;
+           to_regclass('public.expenses') is not null as fin1b1,
+           to_regprocedure('public.get_daily_owner_overview(uuid,date)') is not null as fin2a`;
   return row!;
 }
 
@@ -686,6 +691,7 @@ describe("security grants regression", () => {
       ...AUTHENTICATED_FUNCTION_WHITELIST,
       ...(era.fin1a ? FIN_1A_AUTHENTICATED_FUNCTIONS : []),
       ...(era.fin1b1 ? FIN_1B1_AUTHENTICATED_FUNCTIONS : []),
+      ...(era.fin2a ? FIN_2A_AUTHENTICATED_FUNCTIONS : []),
     ];
 
     const actual = new Set(

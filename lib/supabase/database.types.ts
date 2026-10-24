@@ -2956,6 +2956,10 @@ export type Database = {
           table_name: string
         }[]
       }
+      get_daily_owner_overview: {
+        Args: { p_date?: string; p_tenant_id: string }
+        Returns: Json
+      }
       set_online_booking_enabled: {
         Args: { p_enabled: boolean; p_tenant_id: string }
         Returns: boolean

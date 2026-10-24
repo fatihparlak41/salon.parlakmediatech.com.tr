@@ -32,6 +32,9 @@ import {
   type TodayScheduleLabels,
 } from "@/components/dashboard/today-schedule";
 import { PersonalDashboard } from "@/components/dashboard/personal-dashboard";
+import { DailyOwnerOverview } from "@/components/dashboard/daily-owner-overview";
+import { getDailyOwnerOverview } from "@/lib/modules/finance-daily/queries";
+import type { DailyOverview } from "@/lib/modules/finance-daily/model";
 import {
   TodayKpiCards,
   QuickActions,
@@ -198,7 +201,7 @@ export default async function TenantAppPage({
 
   // Step 2 (salon-wide dashboard): every section's own read, each only when
   // the caller may see that section — all of them independent of each other.
-  const [todayAppointments, activeStaff, monthSummary, hasActiveService] =
+  const [todayAppointments, activeStaff, monthSummary, hasActiveService, dailyOverview] =
     await Promise.all([
       canViewAppointments
         ? getTodayAppointments(supabase, tenantId, tenantTimezone)
@@ -212,6 +215,9 @@ export default async function TenantAppPage({
       canManageStaff
         ? getHasActiveService(supabase, tenantId)
         : Promise.resolve<boolean | null>(null),
+      // Faz FIN.2A — the one canonical daily finance read model, read in parallel with the rest. Only a caller who
+      // holds finance.view is asked (the database re-checks); everyone else gets no finance block at all.
+      canViewFinance ? getDailyOwnerOverview(tenantId) : Promise.resolve<DailyOverview | null>(null),
     ]);
   const kpis = computeTodayKpis(todayAppointments);
   const { inProgress, next } = selectNextAppointment(
@@ -301,6 +307,8 @@ export default async function TenantAppPage({
           <p className="mt-2 text-sm">{summarySentence}</p>
         )}
       </div>
+
+      {dailyOverview && <DailyOwnerOverview overview={dailyOverview} tenantSlug={tenantSlug} />}
 
       {canViewAppointments && (
         <TodayKpiCards
