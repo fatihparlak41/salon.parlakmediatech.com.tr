@@ -337,6 +337,25 @@ describe("one realistic synthetic salon day, calculated by hand", () => {
     expect(theirs.staff.map((s) => s.displayName)).toEqual(["Ayşe Demir", "Mehmet Kaya"]);
   });
 
+  it("even a corrupt item of ANOTHER salon that points at one of MY people never counts for me (the appointment's own salon decides)", async () => {
+    const before = await overview(tenant, owner.id);
+    const [foreign] = await testDb<{ id: string }[]>`
+      select ai.id from appointment_items ai join appointments a on a.id = ai.appointment_id
+      where a.tenant_id = ${other.id} and a.status = 'completed' order by ai.id limit 1`;
+    const [original] = await testDb<{ staff_member_id: string; actual_staff_member_id: string | null }[]>`select staff_member_id, actual_staff_member_id from appointment_items where id = ${foreign!.id}`;
+    const moved = await testDb`update appointment_items set staff_member_id = ${fx.mehmet}, actual_staff_member_id = ${fx.mehmet} where id = ${foreign!.id}`.then(
+      () => true,
+      () => false, // a database constraint refuses the corrupt link: then nothing can leak at all
+    );
+    try {
+      expect(await overview(tenant, owner.id)).toEqual(before);
+    } finally {
+      if (moved) {
+        await testDb`update appointment_items set staff_member_id = ${original!.staff_member_id}, actual_staff_member_id = ${original!.actual_staff_member_id} where id = ${foreign!.id}`;
+      }
+    }
+  });
+
   it("another day shows none of it (the day before has its own completed work and the 800 cash)", async () => {
     const prev = await overview(tenant, owner.id, PREV);
     expect(prev.appointments).toMatchObject({ total: 4, completed: 4 });
