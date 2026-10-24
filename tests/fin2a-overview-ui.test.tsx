@@ -5,7 +5,7 @@
  * cash difference profit, and refuse a malformed or self-contradictory answer instead of showing zeros.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import trMessages from "@/messages/tr.json";
 import { DailyOwnerOverview } from "@/components/dashboard/daily-owner-overview";
