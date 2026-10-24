@@ -164,3 +164,9 @@ no grant on an existing object, no data.
   per day, so it now displays such a day read-only and saves it back unchanged (`tests/launch1c-schedule-tab.test.tsx`).
 - Release order: migration first, application second. Rollback: `LAUNCH-1C-ROLLBACK.sql` (reference; drops the eight
   functions and restores the previous function catalog exactly, proven on a scratch database).
+- **Booking engine vs onboarding readiness.** The status carries both `bookingEngineReady` (a real slot can be produced:
+  no `tenant_inactive`, `no_working_hours`, `no_services`, `no_staff`, `no_bookable_staff`, `no_available_slot`) and `ready`
+  (the engine PLUS a complete profile with a salon phone and the public switch). The slot probe never looks at the phone, the
+  switch or the profile. Probe candidates sit on the same 15-minute grid, counted from midnight, as the public slot picker.
+  This function is the authoritative readiness definition; the older panel "Attention" card is known P1 tech debt and no
+  second definition may be added.

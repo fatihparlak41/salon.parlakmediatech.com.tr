@@ -48,6 +48,7 @@ declare
   v_end_utc timestamptz;
   v_cand timestamp;
   v_active boolean;
+  v_engine text[];
 begin
   select t.id, t.name, t.slug, t.status, t.timezone, t.currency, t.deleted_at
   into v_tenant
@@ -151,7 +152,9 @@ begin
             and (ss2.branch_id is null or ss2.branch_id = v_path.branch_id)
           order by ss2.start_time
         loop
-          v_min := (extract(epoch from v_row.start_time) / 60)::integer;
+          -- candidates sit on the same 15-minute grid, counted from midnight, that the public slot picker offers; a
+          -- block that starts at 09:10 therefore first offers 09:15, exactly as the customer would see it
+          v_min := (ceil(extract(epoch from v_row.start_time) / 60 / 15) * 15)::integer;
           v_end_min := (extract(epoch from v_row.end_time) / 60)::integer;
           while v_min + v_dur <= v_end_min loop
             v_cand := v_date::timestamp + (v_min || ' minutes')::interval;
@@ -203,9 +206,19 @@ begin
     v_blockers := array_append(v_blockers, 'no_available_slot'::text);
   end if;
 
+  -- BOOKING ENGINE readiness vs ONBOARDING (commercial) readiness. The engine can produce a real slot without a salon
+  -- phone, a public switch or a confirmed profile; the onboarding as a whole ("ready") additionally needs the profile
+  -- and contact point (salon_profile_missing) and the public switch. The slot probe above never looks at the phone.
+  -- This function is the authoritative readiness definition: no second one may be added elsewhere.
+  select coalesce(array_agg(t.b order by t.o), array[]::text[]) into v_engine
+  from unnest(v_blockers) with ordinality as t(b, o)
+  where t.b in ('tenant_inactive', 'no_working_hours', 'no_services', 'no_staff', 'no_bookable_staff', 'no_available_slot');
+
   return jsonb_build_object(
     'ready', array_length(v_blockers, 1) is null,
     'blockers', to_jsonb(v_blockers),
+    'bookingEngineReady', array_length(v_engine, 1) is null,
+    'bookingEngineBlockers', to_jsonb(v_engine),
     'tenantSlug', v_tenant.slug,
     'profile', jsonb_build_object(
       'name', v_tenant.name,

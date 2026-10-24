@@ -30,6 +30,8 @@ const SERVICE = "33333333-3333-4333-8333-333333333333";
 const STATUS = {
   ready: false,
   blockers: ["no_services"],
+  bookingEngineReady: false,
+  bookingEngineBlockers: ["no_services"],
   tenantSlug: "ornek",
   profile: { name: "Ornek", timezone: "Europe/Istanbul", currency: "TRY", phone: "0532", missing: [] },
   counts: { services: 0, staff: 0, staffWithHours: 0, bookablePaths: 0 },

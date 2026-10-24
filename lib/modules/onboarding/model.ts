@@ -26,6 +26,9 @@ export type OnboardingBlocker = (typeof ONBOARDING_BLOCKERS)[number];
 export type OnboardingStatus = {
   ready: boolean;
   blockers: OnboardingBlocker[];
+  /** Can the booking engine produce a real slot? Independent of the salon phone, the public switch and the profile. */
+  bookingEngineReady: boolean;
+  bookingEngineBlockers: OnboardingBlocker[];
   tenantSlug: string;
   profile: { name: string; timezone: string; currency: string; phone: string | null; missing: string[] };
   counts: { services: number; staff: number; staffWithHours: number; bookablePaths: number };
@@ -56,6 +59,14 @@ export function parseOnboardingStatus(raw: unknown): OnboardingStatus | null {
   // An answer that says "ready" while listing blockers (or the reverse) is internally inconsistent: refuse it.
   if (ready !== (blockers.length === 0)) return null;
 
+  // The booking engine's own readiness (no phone / public switch / profile in it) must agree with the full answer:
+  // its blockers are a subset of the blockers, and it is ready exactly when it lists none.
+  const { bookingEngineReady, bookingEngineBlockers } = raw;
+  if (typeof bookingEngineReady !== "boolean" || !Array.isArray(bookingEngineBlockers)) return null;
+  if (!bookingEngineBlockers.every((b) => typeof b === "string" && known.has(b) && blockers.includes(b))) return null;
+  if (bookingEngineReady !== (bookingEngineBlockers.length === 0)) return null;
+  // (ready => no blockers => no engine blockers => engine ready, so the three checks above already imply it)
+
   const services = count(counts.services);
   const staff = count(counts.staff);
   const staffWithHours = count(counts.staffWithHours);
@@ -83,6 +94,8 @@ export function parseOnboardingStatus(raw: unknown): OnboardingStatus | null {
   return {
     ready,
     blockers: blockers as OnboardingBlocker[],
+    bookingEngineReady,
+    bookingEngineBlockers: bookingEngineBlockers as OnboardingBlocker[],
     tenantSlug,
     profile: {
       name: profile.name,

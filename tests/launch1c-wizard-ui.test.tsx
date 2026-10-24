@@ -54,6 +54,8 @@ function statusFor(done: string[], blockers: string[] = [], extra: Record<string
   const parsed = parseOnboardingStatus({
     ready: blockers.length === 0,
     blockers,
+    bookingEngineReady: blockers.every((b) => ["salon_profile_missing", "public_booking_disabled"].includes(b)),
+    bookingEngineBlockers: blockers.filter((b) => !["salon_profile_missing", "public_booking_disabled"].includes(b)),
     tenantSlug: "ornek-salon",
     profile: { name: "Örnek Salon", timezone: "Europe/Istanbul", currency: "TRY", phone: done.includes("profile") ? "05320000000" : null, missing: [] },
     counts: { services: done.includes("services") ? 2 : 0, staff: done.includes("staff") ? 2 : 0, staffWithHours: done.includes("hours") ? 2 : 0, bookablePaths: done.includes("mapping") ? 4 : 0 },

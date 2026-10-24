@@ -32,6 +32,8 @@ type Status = {
   blockers: string[];
   tenantSlug: string;
   profile: { name: string; timezone: string; currency: string; phone: string | null; missing: string[] };
+  bookingEngineReady: boolean;
+  bookingEngineBlockers: string[];
   counts: { services: number; staff: number; staffWithHours: number; bookablePaths: number };
   onlineBookingEnabled: boolean;
   hasAppointments: boolean;
@@ -345,6 +347,81 @@ describe("BOOKING READINESS — every missing piece produces its own blocker", (
     const s = await status(f.t.id, f.o.id);
     expect(s.counts.bookablePaths).toBe(1);
     expect(s.blockers).toEqual(["no_available_slot"]);
+  });
+
+  it("BOOKING ENGINE vs ONBOARDING: without a salon phone the engine still produces a slot; only the onboarding is incomplete", async () => {
+    const f = await fullSalon("e1");
+    await testDb`update branches set phone = null where tenant_id = ${f.t.id}`;
+    const s = await status(f.t.id, f.o.id);
+    expect(s.bookingEngineReady).toBe(true);
+    expect(s.bookingEngineBlockers).toEqual([]);
+    expect(s.firstAvailableSlotAt).not.toBeNull();
+    expect(s.ready).toBe(false);
+    expect(s.blockers).toEqual(["salon_profile_missing"]);
+  });
+
+  it("BOOKING ENGINE: the public switch is not part of it; a missing slot, hours or service is", async () => {
+    const f = await fullSalon("e2");
+    await rpc.booking(f.o.id, f.t.id, false);
+    const off = await status(f.t.id, f.o.id);
+    expect(off.bookingEngineReady).toBe(true);
+    expect(off.blockers).toEqual(["public_booking_disabled"]);
+    await testDb`update services set duration_minutes = 600 where id = ${f.serviceId}`;
+    const noSlot = await status(f.t.id, f.o.id);
+    expect(noSlot.bookingEngineReady).toBe(false);
+    expect(noSlot.bookingEngineBlockers).toEqual(["no_available_slot"]);
+    expect(noSlot.blockers).toEqual(["public_booking_disabled", "no_available_slot"]);
+  });
+
+  it("the probe offers the SAME 15-minute grid as the public picker: a block 09:10-09:25 holds no 15-minute slot, 09:10-09:50 first offers 09:15", async () => {
+    const f = await fullSalon("e3");
+    await testDb`update services set duration_minutes = 15 where id = ${f.serviceId}`;
+    await testDb`update staff_schedules set start_time = '09:10', end_time = '09:25' where staff_member_id = ${f.staffId} and deleted_at is null`;
+    const tight = await status(f.t.id, f.o.id);
+    expect(tight.blockers).toEqual(["no_available_slot"]);
+    await testDb`update staff_schedules set end_time = '09:50' where staff_member_id = ${f.staffId} and deleted_at is null`;
+    const wide = await status(f.t.id, f.o.id);
+    expect(wide.ready).toBe(true);
+    const local = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Istanbul", dateStyle: "short", timeStyle: "short" }).format(new Date(wide.firstAvailableSlotAt!));
+    const [date, time] = local.split(" ") as [string, string];
+    expect(["09:15", "09:30"]).toContain(time); // 09:15 unless today's 09:15 has already passed
+    const [row] = await asAuthenticatedUser(f.o.id, (sql) =>
+      sql<{ slots: string[] }[]>`select public.get_public_availability_slots(${f.t.slug}, ${f.t.branchId}, ${f.serviceId}, ${date}::date) as slots`,
+    );
+    expect(row!.slots).toContain(time);
+  });
+
+  it("a slot that has already passed today is not a slot: hours that ended this morning and every later day blocked give no_available_slot", async () => {
+    const f = await fullSalon("e5");
+    const [{ minutes }] = await testDb<{ minutes: number }[]>`select (extract(epoch from (now() at time zone 'Europe/Istanbul')::time) / 60)::int as minutes`;
+    if (minutes < 60) return; // within the first hour after midnight no "earlier today" window exists
+    await rpc.hours(f.o.id, f.t.id, [f.staffId], [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, start: "00:00", end: "00:30" })));
+    await testDb`update services set duration_minutes = 15 where id = ${f.serviceId}`;
+    const [{ today }] = await testDb<{ today: string }[]>`select (now() at time zone 'Europe/Istanbul')::date::text as today`;
+    for (let i = 1; i <= 13; i++) {
+      const [{ d }] = await testDb<{ d: string }[]>`select (${today}::date + ${i}::int)::text as d`;
+      await createScheduleException(f.t.id, f.staffId, d, "unavailable");
+    }
+    const s = await status(f.t.id, f.o.id);
+    expect(s.counts.bookablePaths).toBe(1);
+    expect(s.blockers).toEqual(["no_available_slot"]);
+    expect(s.bookingEngineReady).toBe(false);
+  });
+
+  it("a schedule row stamped with ANOTHER salon never makes this salon ready (and is not rewritten by an hours apply)", async () => {
+    const f = await fullSalon("e4");
+    await testDb`update staff_schedules set start_time = '09:00', end_time = '09:30' where staff_member_id = ${f.staffId} and deleted_at is null`;
+    await testDb`update services set duration_minutes = 60 where id = ${f.serviceId}`;
+    for (let weekday = 0; weekday <= 6; weekday++) {
+      await testDb`insert into staff_schedules (tenant_id, staff_member_id, weekday, start_time, end_time) values (${salon.id}, ${f.staffId}, ${weekday}, '10:00', '18:00')`;
+    }
+    const s = await status(f.t.id, f.o.id);
+    expect(s.counts.staffWithHours).toBe(1);
+    expect(s.blockers).toEqual(["no_available_slot"]);
+
+    await rpc.hours(f.o.id, f.t.id, [f.staffId], WEEK);
+    const [foreign] = await testDb<{ n: string }[]>`select count(*)::text as n from staff_schedules where tenant_id = ${salon.id} and staff_member_id = ${f.staffId} and deleted_at is null`;
+    expect(foreign!.n).toBe("7");
   });
 
   it("a salon whose only branch was removed has no profile, no services and no bookable path", async () => {
@@ -866,7 +943,7 @@ describe("PRIVACY — the status carries salon facts only", () => {
       expect(serialized).not.toContain(secret);
     }
     expect(Object.keys(s).sort()).toEqual(
-      ["blockers", "counts", "firstAvailableSlotAt", "hasAppointments", "onlineBookingEnabled", "profile", "ready", "steps", "tenantSlug"].sort(),
+      ["blockers", "bookingEngineBlockers", "bookingEngineReady", "counts", "firstAvailableSlotAt", "hasAppointments", "onlineBookingEnabled", "profile", "ready", "steps", "tenantSlug"].sort(),
     );
     expect(Object.keys(s.profile).sort()).toEqual(["currency", "missing", "name", "phone", "timezone"]);
   });

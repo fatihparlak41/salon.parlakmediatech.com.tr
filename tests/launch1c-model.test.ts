@@ -23,6 +23,8 @@ function statusJson(overrides: Record<string, unknown> = {}) {
   return {
     ready: false,
     blockers: ["no_services"],
+    bookingEngineReady: false,
+    bookingEngineBlockers: ["no_services"],
     tenantSlug: "ornek-salon",
     profile: { name: "Ornek", timezone: "Europe/Istanbul", currency: "TRY", phone: "0532", missing: [] },
     counts: { services: 0, staff: 1, staffWithHours: 1, bookablePaths: 0 },
@@ -78,7 +80,38 @@ describe("parseOnboardingStatus", () => {
   it("a self-contradictory answer is refused: ready with blockers, or not ready without any", () => {
     expect(parseOnboardingStatus(statusJson({ ready: true, blockers: ["no_services"] }))).toBeNull();
     expect(parseOnboardingStatus(statusJson({ ready: false, blockers: [] }))).toBeNull();
-    expect(parseOnboardingStatus(statusJson({ ready: true, blockers: [] }))).not.toBeNull();
+    expect(parseOnboardingStatus(statusJson({ ready: true, blockers: [], bookingEngineReady: true, bookingEngineBlockers: [] }))).not.toBeNull();
+  });
+});
+
+describe("booking engine readiness is consistent with the full answer", () => {
+  it("refuses an engine answer that contradicts itself or the blockers", () => {
+    for (const bad of [
+      statusJson({ bookingEngineReady: true }), // says ready but lists a blocker
+      statusJson({ bookingEngineReady: false, bookingEngineBlockers: [] }),
+      statusJson({ bookingEngineBlockers: ["no_staff"] }), // not among the blockers
+      statusJson({ bookingEngineReady: "yes" }),
+      statusJson({ bookingEngineBlockers: "no_services" }),
+      statusJson({ ready: true, blockers: [], bookingEngineReady: false, bookingEngineBlockers: [] }),
+      (() => {
+        const j = statusJson();
+        delete (j as Record<string, unknown>).bookingEngineReady;
+        return j;
+      })(),
+    ]) {
+      expect(parseOnboardingStatus(bad), JSON.stringify(bad)).toBeNull();
+    }
+  });
+
+  it("a 'ready' flag that disagrees with the blockers is refused even when the engine answer is internally fine; an unknown code is refused wherever it appears", () => {
+    expect(parseOnboardingStatus(statusJson({ ready: true, blockers: ["salon_profile_missing"], bookingEngineReady: true, bookingEngineBlockers: [] }))).toBeNull();
+    expect(parseOnboardingStatus(statusJson({ ready: false, blockers: ["something_new"], bookingEngineReady: true, bookingEngineBlockers: [] }))).toBeNull();
+  });
+
+  it("the engine can be ready while the onboarding is not (profile / public switch only)", () => {
+    const parsed = parseOnboardingStatus(statusJson({ blockers: ["salon_profile_missing"], bookingEngineReady: true, bookingEngineBlockers: [] }))!;
+    expect(parsed.ready).toBe(false);
+    expect(parsed.bookingEngineReady).toBe(true);
   });
 });
 
@@ -88,7 +121,7 @@ describe("step helpers", () => {
   it("opens on the first step that is not done, and on 'ready' when everything is", () => {
     expect(currentStepKey(status)).toBe("services");
     const allDone = parseOnboardingStatus(
-      statusJson({ ready: true, blockers: [], steps: status.steps.map((s) => ({ ...s, done: true })) }),
+      statusJson({ ready: true, blockers: [], bookingEngineReady: true, bookingEngineBlockers: [], steps: status.steps.map((s) => ({ ...s, done: true })) }),
     ) as OnboardingStatus;
     expect(currentStepKey(allDone)).toBe("ready");
   });
