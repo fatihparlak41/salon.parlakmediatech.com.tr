@@ -127,12 +127,14 @@ async function appt(
   return { id, itemIds };
 }
 
-async function sale(fx: Fx, appointmentId: string, discount = 0): Promise<string> {
+/** optional sale-level discount and an edited unit price for the FIRST item */
+async function sale(fx: Fx, appointmentId: string, discount = 0, unit?: number): Promise<string> {
   const [s] = await asAuthenticatedUser(fx.ownerId, (sql) => sql<{ id: string }[]>`select * from public.get_or_create_appointment_sale(${appointmentId})`);
-  if (discount > 0) {
-    const items = await testDb<{ id: string; unit_price: string }[]>`select id, unit_price::text from appointment_sale_items where sale_id = ${s!.id}`;
+  if (discount > 0 || unit !== undefined) {
+    const items = await testDb<{ id: string; unit_price: string }[]>`select id, unit_price::text from appointment_sale_items where sale_id = ${s!.id} order by id`;
+    const priced = items.map((i, k) => ({ sale_item_id: i.id, unit_price: k === 0 && unit !== undefined ? unit : Number(i.unit_price) }));
     await asAuthenticatedUser(fx.ownerId, (sql) =>
-      sql`select * from public.update_appointment_sale_pricing(${s!.id}, ${sql.json(items.map((i) => ({ sale_item_id: i.id, unit_price: Number(i.unit_price) })) as never)}, ${discount}, 'test')`,
+      sql`select * from public.update_appointment_sale_pricing(${s!.id}, ${sql.json(priced as never)}, ${discount}, 'test')`,
     );
   }
   return s!.id;
@@ -152,10 +154,11 @@ async function expense(fx: Fx, day: string, category: string, amount: number): P
   return e!.r.expenseId;
 }
 
-async function payExpense(fx: Fx, expenseId: string, amount: number, method: "cash" | "card" | "bank_transfer" | "other", paidAtIso: string) {
-  await asAuthenticatedUser(fx.ownerId, (sql) =>
-    sql`select public.record_expense_payment(${expenseId}, ${amount}, ${method}, ${paidAtIso}::text::timestamptz, null, ${crypto.randomUUID()})`,
+async function payExpense(fx: Fx, expenseId: string, amount: number, method: "cash" | "card" | "bank_transfer" | "other", paidAtIso: string): Promise<string> {
+  const [r] = await asAuthenticatedUser(fx.ownerId, (sql) =>
+    sql<{ r: { paymentId: string } }[]>`select (public.record_expense_payment(${expenseId}, ${amount}, ${method}, ${paidAtIso}::text::timestamptz, null, ${crypto.randomUUID()})) as r`,
   );
+  return r!.r.paymentId;
 }
 
 let fx: Fx;
@@ -233,13 +236,22 @@ describe("one realistic synthetic salon day, calculated by hand", () => {
     const sp2 = await sale(fx, p2.id, 100); // total 400
     await pay(fx, sp2, 400, "cash", await at(DAY, "09:00")); // received TODAY for yesterday's work
     const p3 = await appt(fx, PREV, "12:00", [{ staff: fx.mehmet, service: fx.nails }]);
-    await sale(fx, p3.id, 300); // total 300, nothing paid
+    await sale(fx, p3.id, 150, 450); // unit price edited 600 -> 450, discount 150: total 300, nothing paid
+    const p4 = await appt(fx, PREV, "13:00", [{ staff: fx.ayse, service: fx.cut }, { staff: fx.mehmet, service: fx.nails }]);
+    // both items by the SAME person, back to back (the RPC cannot book one person twice at one instant)
+    await testDb`update appointment_items set staff_member_id = ${fx.ayse}, actual_staff_member_id = ${fx.ayse},
+                 scheduled_start_at = scheduled_start_at + interval '30 minutes', scheduled_end_at = scheduled_end_at + interval '30 minutes'
+                 where id = ${p4.itemIds[1]!}`;
+    const sp4 = await sale(fx, p4.id); // 500 + 600 = 1100, two items by the same person
+    await pay(fx, sp4, 1100, "cash", await at(PREV, "13:30"));
     // --- expenses ---
     const e1 = await expense(fx, DAY, "rent", 3000);
     await payExpense(fx, e1, 1000, "cash", await at(DAY, "09:30"));
     const e2 = await expense(fx, DAY, "supplies", 450);
     await payExpense(fx, e2, 450, "card", await at(DAY, "15:00"));
-    await expense(fx, DAY, "cleaning", 200);
+    const e3 = await expense(fx, DAY, "cleaning", 200);
+    const e3p = await payExpense(fx, e3, 80, "cash", await at(DAY, "16:00"));
+    await asAuthenticatedUser(owner.id, (sql) => sql`select public.void_expense_payment(${e3p}, 'yanlis')`); // voided: never paid out
     const e4 = await expense(fx, PREV, "supplies", 500);
     await payExpense(fx, e4, 500, "cash", await at(DAY, "17:00")); // yesterday's obligation paid today
     const e5 = await expense(fx, DAY, "rent", 9999);
@@ -248,6 +260,8 @@ describe("one realistic synthetic salon day, calculated by hand", () => {
     const x = await appt(otherFx, DAY, "10:00", [{ staff: otherFx.ayse, service: otherFx.color }]);
     const sx = await sale(otherFx, x.id);
     await pay(otherFx, sx, 1500, "cash", await at(DAY, "10:30"));
+    const x2 = await appt(otherFx, DAY, "11:00", [{ staff: otherFx.mehmet, service: otherFx.cut }]);
+    await sale(otherFx, x2.id); // 500 completed, unpaid
     await expense(otherFx, DAY, "rent", 7777);
     result = await overview(tenant, owner.id);
   }, 240_000);
@@ -305,16 +319,24 @@ describe("one realistic synthetic salon day, calculated by hand", () => {
     const theirs = await overview(other, otherOwner.id);
     expect(theirs.payments.totalCollected).toBe(1500);
     expect(theirs.expenses.accruedTotal).toBe(7777);
-    expect(theirs.services.completedAmount).toBe(1500);
-    expect(theirs.appointments.total).toBe(1);
-    expect(theirs.staff.map((s) => s.displayName)).toEqual(["Ayşe Demir"]);
+    expect(theirs.services.completedAmount).toBe(2000);
+    expect(theirs.appointments.total).toBe(2);
+    expect(theirs.outstanding).toMatchObject({ amount: 500, count: 1, todayAmount: 500 });
+    expect(theirs.staff.map((s) => s.displayName)).toEqual(["Ayşe Demir", "Mehmet Kaya"]);
   });
 
   it("another day shows none of it (the day before has its own completed work and the 800 cash)", async () => {
     const prev = await overview(tenant, owner.id, PREV);
-    expect(prev.appointments).toMatchObject({ total: 3, completed: 3 });
-    expect(prev.services.completedAmount).toBe(800 + 400 + 300);
-    expect(prev.payments).toMatchObject({ totalCollected: 800, cash: 800 });
+    expect(prev.appointments).toMatchObject({ total: 4, completed: 4 });
+    expect(prev.services).toMatchObject({ completedAmount: 800 + 400 + 300 + 1100, discountTotal: 700 + 100 + 150 });
+    expect(prev.payments).toMatchObject({ totalCollected: 800 + 1100, cash: 800 + 1100 });
+    // item-level attribution: Mehmet's manicure was charged 450 (edited), not the 600 list price; one appointment with two
+    // items by the same person counts as ONE visit with two items
+    expect(prev.staff).toEqual([
+      { displayName: "Ayşe Demir", completedAppointments: 2, completedItems: 3, serviceAmount: 1500 + 500 + 600 },
+      { displayName: "Mehmet Kaya", completedAppointments: 2, completedItems: 2, serviceAmount: 500 + 450 },
+    ]);
+    expect(prev.staffServiceAmountTotal - prev.services.discountTotal).toBe(prev.services.completedAmount);
     const empty = await overview(tenant, owner.id, "2026-10-11");
     expect(empty.appointments.total).toBe(0);
     expect(empty.payments.totalCollected).toBe(0);
@@ -425,10 +447,16 @@ describe("tenant-local day boundaries", () => {
     expect((await overview(tzTenant, tzOwner.id, "2027-01-13")).expenses).toMatchObject({ accruedTotal: 0, paidOutTotal: 30 });
   });
 
-  it("with no date given the day is the tenant's local today (never the server's UTC date)", async () => {
-    const [{ today }] = await testDb<{ today: string }[]>`select (now() at time zone ${TZ})::date::text as today`;
-    const o = await overview(tzTenant, tzOwner.id, null);
-    expect(o.date).toBe(today);
+  it("with no date given the day is the tenant's local today, never the server's UTC date (checked in three zones so the UTC date differs from the local one at any hour)", async () => {
+    try {
+      for (const zone of [TZ, "Pacific/Kiritimati", "Etc/GMT+12"]) {
+        await setTz(zone);
+        const [{ today }] = await testDb<{ today: string }[]>`select (now() at time zone ${zone})::date::text as today`;
+        expect((await overview(tzTenant, tzOwner.id, null)).date, zone).toBe(today);
+      }
+    } finally {
+      await setTz(TZ);
+    }
   });
 });
 
@@ -483,6 +511,33 @@ describe("invariants", () => {
     expect(dated.payments.totalCollected).toBe(before.payments.totalCollected);
   });
 
+  it("a payment received yesterday but cancelled today is listed as cancelled TODAY (by when it was voided), never as collected on either day", async () => {
+    const [s4] = await testDb<{ id: string }[]>`select s.id from appointment_sales s join appointments a on a.id = s.appointment_id where a.tenant_id = ${tenant.id} and s.total_amount = 1500 and a.scheduled_start_at >= ${await at(DAY, "13:00")}::text::timestamptz and a.scheduled_start_at < ${await at(DAY, "14:00")}::text::timestamptz`;
+    const before = await overview(tenant, owner.id);
+    const beforePrev = await overview(tenant, owner.id, PREV);
+    const id = await pay(fx, s4!.id, 11, "other", await at(PREV, "12:00"));
+    await asAuthenticatedUser(owner.id, (sql) => sql`select public.void_appointment_payment(${id}, 'geri')`);
+    await testDb`update payments set voided_at = ${await at(DAY, "15:00")}::text::timestamptz where id = ${id}`;
+    const after = await overview(tenant, owner.id);
+    expect(after.payments.voidedCount).toBe(before.payments.voidedCount + 1);
+    expect(after.payments.voidedAmount).toBe(before.payments.voidedAmount + 11);
+    expect((await overview(tenant, owner.id, PREV)).payments).toEqual(beforePrev.payments);
+  });
+
+  it("a voided checkout (a reserved state) is neither a checkout nor an outstanding balance", async () => {
+    const before = await overview(other, otherOwner.id);
+    expect(before.outstanding.amount).toBe(500);
+    await testDb`update appointment_sales set status = 'voided' where tenant_id = ${other.id} and total_amount = 500`;
+    try {
+      const during = await overview(other, otherOwner.id);
+      expect(during.outstanding).toMatchObject({ amount: 0, count: 0, todayAmount: 0 });
+      expect(during.services.completedWithoutCheckout).toBe(before.services.completedWithoutCheckout + 1);
+      expect(during.services.completedAmount).toBe(before.services.completedAmount);
+    } finally {
+      await testDb`update appointment_sales set status = 'open' where tenant_id = ${other.id} and total_amount = 500 and status = 'voided'`;
+    }
+  });
+
   it("a sale in another currency than the tenant's is flagged, not silently mixed", async () => {
     const o = await overview(other, otherOwner.id);
     expect(o.currencyMixed).toBe(false);
@@ -526,6 +581,7 @@ describe("authorization", () => {
 
   it("an absurd date is refused, and the read writes nothing (row counts and audit unchanged)", async () => {
     expect(await attemptAs(owner.id, (sql) => sql`select public.get_daily_owner_overview(${tenant.id}, '1999-01-01'::date)`)).toMatchObject({ ok: false, code: "FN004" });
+    expect(await attemptAs(owner.id, (sql) => sql`select public.get_daily_owner_overview(${tenant.id}, '2101-01-01'::date)`)).toMatchObject({ ok: false, code: "FN004" });
     const snap = async () => ({
       payments: await testDb`select count(*)::int as n from payments where tenant_id = ${tenant.id}`,
       expenses: await testDb`select count(*)::int as n from expenses where tenant_id = ${tenant.id}`,
