@@ -361,6 +361,14 @@ describe("CANONICAL PHONE — one central rule for Türkiye / KKTC forms (previo
     await testDb`delete from customers where id = ${id}`;
   });
 
+  it("a staff member (no access to the private schema) can still write a customer: the canonical value is computed with the writer's own privileges", async () => {
+    const out = await asAuthenticatedUser(owner.id, (sql) =>
+      sql<{ phone_normalized: string }[]>`insert into customers (tenant_id, full_name, phone) values (${tenant.id}, 'Sentetik Yazma', '0533 000 11 22') returning phone_normalized`,
+    );
+    expect(out[0]!.phone_normalized).toBe("+905330001122");
+    await testDb`delete from customers where tenant_id = ${tenant.id} and full_name = 'Sentetik Yazma'`;
+  });
+
   it("staff search keeps finding a number typed the way people type it, including a partial 0-prefixed one", async () => {
     const find = (q: string) => asAuthenticatedUser(owner.id, (sql) => sql<{ full_name: string }[]>`select full_name from public.search_customers(${tenant.id}, ${q}, 'all', 30, 0)`).then((r) => r.map((x) => x.full_name));
     expect(await find("0533 111")).toContain("Sentetik Musteri Bir");

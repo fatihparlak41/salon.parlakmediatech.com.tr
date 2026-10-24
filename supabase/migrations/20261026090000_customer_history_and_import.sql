@@ -52,7 +52,9 @@ as $function$
     when v ~ '^5[0-9]{9}$' then '+90' || v
     else v
   end
-  from (select private.strip_phone(p_phone) as v) s;
+  -- self-contained on purpose: the generated column customers.phone_normalized runs this with the WRITER's privileges (staff
+  -- insert customers directly) and the writer has no USAGE on schema private, so it must not name another private function
+  from (select nullif(regexp_replace(coalesce(p_phone, ''), '[^0-9+]', '', 'g'), '') as v) s;
 $function$;
 
 -- Refresh the stored canonical value of existing customers whose value changes. The audit and updated_at triggers are
