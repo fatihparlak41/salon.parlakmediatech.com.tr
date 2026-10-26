@@ -88,6 +88,9 @@ export default async function TenantAppLayout({
     ...(canViewFinance
       ? [{ href: "/finance/expenses", label: t("expenses"), icon: <Receipt className="size-4" /> }]
       : []),
+    ...(canViewFinance
+      ? [{ href: "/finance/commission", label: t("commission"), icon: <Receipt className="size-4" /> }]
+      : []),
     ...(canViewReports
       ? [{ href: "/reports/staff", label: t("reports"), icon: <ChartColumn className="size-4" /> }]
       : []),

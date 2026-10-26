@@ -338,15 +338,20 @@ const FIN_1B1_AUTHENTICATED_FUNCTIONS = [
   "public.void_expense_payment",
 ];
 
+// Faz COMM.1A (migration 20261027090000) is a schema ERA too. Sentinel = the commission summary. Four client-facing RPCs for
+// `authenticated` ONLY (never anon, never service_role); each re-checks finance.view / finance.manage for the given tenant inside.
+const COMM_1A_AUTHENTICATED_FUNCTIONS = ["public.get_staff_commission", "public.get_staff_commission_detail", "public.list_commission_rules", "public.set_commission_rule"];
+
 // The fully locked-down finance ledgers: RLS on, zero policies, no privilege at
 // all for any API role. Checked only for the eras that exist.
 const FIN_1A_LOCKED_DOWN_TABLES = ["appointment_sales", "appointment_sale_items", "payments"];
 const FIN_1B1_LOCKED_DOWN_TABLES = ["expense_categories", "expenses", "expense_payments"];
 
-async function readFinanceEra(): Promise<{ fin1a: boolean; fin1b1: boolean }> {
-  const [row] = await testDb<{ fin1a: boolean; fin1b1: boolean }[]>`
+async function readFinanceEra(): Promise<{ fin1a: boolean; fin1b1: boolean; comm1a: boolean }> {
+  const [row] = await testDb<{ fin1a: boolean; fin1b1: boolean; comm1a: boolean }[]>`
     select to_regclass('public.appointment_sales') is not null as fin1a,
-           to_regclass('public.expenses') is not null as fin1b1`;
+           to_regclass('public.expenses') is not null as fin1b1,
+           to_regprocedure('public.get_staff_commission(uuid,date,date)') is not null as comm1a`;
   return row!;
 }
 
@@ -686,6 +691,7 @@ describe("security grants regression", () => {
       ...AUTHENTICATED_FUNCTION_WHITELIST,
       ...(era.fin1a ? FIN_1A_AUTHENTICATED_FUNCTIONS : []),
       ...(era.fin1b1 ? FIN_1B1_AUTHENTICATED_FUNCTIONS : []),
+      ...(era.comm1a ? COMM_1A_AUTHENTICATED_FUNCTIONS : []),
     ];
 
     const actual = new Set(
@@ -702,7 +708,7 @@ describe("security grants regression", () => {
 
   it("the finance ledger tables that exist on this schema are fully locked down (RLS on, zero policies, no API-role privilege)", async () => {
     const era = await readFinanceEra();
-    const tables = [...(era.fin1a ? FIN_1A_LOCKED_DOWN_TABLES : []), ...(era.fin1b1 ? FIN_1B1_LOCKED_DOWN_TABLES : [])];
+    const tables = [...(era.fin1a ? FIN_1A_LOCKED_DOWN_TABLES : []), ...(era.fin1b1 ? FIN_1B1_LOCKED_DOWN_TABLES : []), ...(era.comm1a ? ["staff_commission_rules"] : [])];
 
     const rls = await testDb<RlsStatusRow[]>`select * from security_audit_rls_status()`;
     const grants = await testDb<TableGrantRow[]>`select * from security_audit_table_grants()`;

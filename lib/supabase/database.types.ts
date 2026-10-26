@@ -2956,6 +2956,22 @@ export type Database = {
           table_name: string
         }[]
       }
+      get_staff_commission: {
+        Args: { p_from?: string; p_tenant_id: string; p_to?: string }
+        Returns: Json
+      }
+      get_staff_commission_detail: {
+        Args: { p_from?: string; p_limit?: number; p_staff_id: string; p_tenant_id: string; p_to?: string }
+        Returns: Json
+      }
+      list_commission_rules: {
+        Args: { p_tenant_id: string }
+        Returns: Json
+      }
+      set_commission_rule: {
+        Args: { p_effective_from?: string; p_kind: string; p_service_id: string; p_staff_id: string; p_tenant_id: string; p_value?: number }
+        Returns: Json
+      }
       set_online_booking_enabled: {
         Args: { p_enabled: boolean; p_tenant_id: string }
         Returns: boolean
