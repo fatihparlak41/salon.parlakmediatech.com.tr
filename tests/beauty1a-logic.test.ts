@@ -117,6 +117,11 @@ describe("experience columns and validation", () => {
     expect(validateExperience({ publicDetails: "x".repeat(1001) })).not.toBeNull();
   });
 
+  it("every form field lands in its own input field", () => {
+    const f = { pricingMode: "fixed", bookingMode: "inquiry", pricePublic: true, displayMin: "5", displayMax: "6", summary: "s1", details: "d2", preparation: "p3", aftercare: "a4", important: "i5", badge: "b6" } as const;
+    expect(experienceFormToInput(f)).toEqual({ pricingMode: "fixed", bookingMode: "inquiry", pricePublic: true, displayDurationMin: 5, displayDurationMax: 6, publicSummary: "s1", publicDetails: "d2", preparationNote: "p3", aftercareNote: "a4", importantNote: "i5", badgeLabel: "b6" });
+  });
+
   it("the form maps to the action input and back without loss; inquiry in the form is inquiry everywhere", () => {
     const f = { ...emptyExperienceForm(), pricingMode: "inquiry" as const, bookingMode: "direct" as const, pricePublic: true, displayMin: "30", displayMax: "40", summary: "s", preparation: "p" };
     expect(experienceFormToInput(f)).toMatchObject({ pricingMode: "inquiry", bookingMode: "inquiry", pricePublic: false, displayDurationMin: 30, displayDurationMax: 40, publicSummary: "s", preparationNote: "p" });
@@ -144,6 +149,12 @@ describe("service Server Actions", () => {
   it("create: an inquiry service is stored with price 0, inquiry booking and no public price even if the form said otherwise", async () => {
     await createServiceAction(null, { tenantId: T, tenantSlug: "x", name: "Gelin Makyajı", durationMinutes: 60, price: "5000", branchIds: [], pricingMode: "inquiry", bookingMode: "direct", pricePublic: true });
     expect(calls[0]!.payload).toMatchObject({ price: 0, pricing_mode: "inquiry", booking_mode: "inquiry", price_public: false });
+  });
+
+  it("create: a backwards display range is refused before the database", async () => {
+    const r = await createServiceAction(null, { tenantId: T, tenantSlug: "x", name: "A", durationMinutes: 30, price: "1", branchIds: [], displayDurationMin: 40, displayDurationMax: 30 });
+    expect(r.success).toBe(false);
+    expect(calls).toHaveLength(0);
   });
 
   it("create: no experience fields at all -> the insert carries none of them (existing callers are untouched)", async () => {

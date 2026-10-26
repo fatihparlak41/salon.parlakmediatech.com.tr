@@ -235,6 +235,47 @@ describe("FIXED vs INQUIRY pricing and the public payload", () => {
   });
 });
 
+describe("public listing boundaries", () => {
+  it("an inquiry-priced service never shows a price even if the public-price flag is set on it", async () => {
+    const id = emel.svc["Nedime Makyajı"]!;
+    await testDb`update services set price_public = true, price = 777 where id = ${id}`;
+    try {
+      expect((await publicSvc(emel, "Nedime Makyajı")).price).toBeNull();
+    } finally {
+      await testDb`update services set price_public = false, price = 0 where id = ${id}`;
+    }
+  });
+
+  it("inactive and deleted services are not listed", async () => {
+    const id = emel.svc["Nem Bakımı"]!;
+    await testDb`update services set status = 'inactive' where id = ${id}`;
+    expect((await context(emel)).branches[0]!.services.some((s) => s.name === "Nem Bakımı")).toBe(false);
+    await testDb`update services set status = 'active', deleted_at = now() where id = ${id}`;
+    expect((await context(emel)).branches[0]!.services.some((s) => s.name === "Nem Bakımı")).toBe(false);
+    await testDb`update services set deleted_at = null where id = ${id}`;
+    expect((await context(emel)).branches[0]!.services.some((s) => s.name === "Nem Bakımı")).toBe(true);
+  });
+
+  it("another salon's service wearing this salon's branch link is neither listed nor made eligible (tenant predicates)", async () => {
+    const foreignSvc = other.svc["Kas Laminasyonu"]!;
+    const lonely = await salon("tenantlink", await user("tenantlink-owner"), ["Yerel Kisi"], [{ name: "Yerel Hizmet", price: 10 }]);
+    await testDb.begin(async (tx) => {
+      await tx`set local session_replication_role = replica`;
+      await tx`insert into service_branches (service_id, branch_id) values (${foreignSvc}, ${lonely.branch})`;
+      await tx`insert into staff_services (staff_member_id, service_id) values (${lonely.staff["Yerel Kisi"]!}, ${foreignSvc})`;
+    });
+    try {
+      const names = (await context(lonely)).branches[0]!.services.map((s) => s.name);
+      expect(names).toEqual(["Yerel Hizmet"]);
+      const people = await asDatabaseRole("anon", null, (sql) => sql<{ r: unknown[] }[]>`select public.get_public_eligible_staff(${lonely.t.slug}, ${lonely.branch}, ${foreignSvc}) as r`);
+      expect(people[0]!.r).toEqual([]);
+    } finally {
+      await testDb`delete from staff_services where service_id = ${foreignSvc}`;
+      await testDb`delete from service_branches where service_id = ${foreignSvc} and branch_id = ${lonely.branch}`;
+    }
+  });
+});
+
 describe("INQUIRY / not-bookable services never enter slot booking", () => {
   it("no eligible staff and no slots for any inquiry-booked service; a direct service has both", async () => {
     const day = safeMorningStart(5).toISOString().slice(0, 10);
@@ -262,6 +303,14 @@ describe("INQUIRY / not-bookable services never enter slot booking", () => {
     ).rejects.toMatchObject({ code: "BK003" });
     const [n] = await testDb<{ n: string }[]>`select count(*)::text as n from appointment_items where service_id = ${inquiryId}`;
     expect(n!.n).toBe("0");
+  });
+
+  it("a fixed-price service that is contact-only (duration not confirmed) is equally unbookable, internally and publicly", async () => {
+    const id = emel.svc["Gece / Günlük Makyaj"]!;
+    const [customer] = await testDb<{ id: string }[]>`insert into customers (tenant_id, full_name) values (${emel.t.id}, 'Sentetik Musteri') returning id`;
+    const start = safeMorningStart(10).toISOString();
+    expect(await attemptAs(owner.id, (sql) => sql`select public.create_appointment(${emel.t.id}, ${emel.branch}, ${customer!.id}, ${sql.json([{ service_id: id, staff_member_id: emel.staff["Emel Kaynakkan"], scheduled_start_at: start, sequence: 1 }] as never)}, null)`)).toMatchObject({ ok: false, code: "BK003" });
+    expect((await publicSvc(emel, "Gece / Günlük Makyaj")).price).toBe(5000);
   });
 
   it("the database refuses an inconsistent mode: inquiry pricing with direct booking, a backwards display range, blank or oversized copy", async () => {
@@ -383,6 +432,75 @@ describe("AUTHORIZATION: the new fields follow services.manage and nothing broad
   it("the inquiry guard function is executable by no API role", async () => {
     const [r] = await testDb<{ a: boolean; b: boolean; c: boolean }[]>`select has_function_privilege('authenticated', 'private.guard_inquiry_service_item()', 'execute') as a, has_function_privilege('anon', 'private.guard_inquiry_service_item()', 'execute') as b, has_function_privilege('service_role', 'private.guard_inquiry_service_item()', 'execute') as c`;
     expect(r).toEqual({ a: false, b: false, c: false });
+  });
+});
+
+describe("closeout: defaults, limits, eligibility boundaries, listing rules", () => {
+  it("a service created the old way gets the old behaviour by default: fixed, direct, price hidden, no copy", async () => {
+    const s = await createService(emel.t.id, "Varsayilan Hizmet", 20, 100);
+    const [r] = await testDb`select pricing_mode, booking_mode, price_public, display_duration_min, display_duration_max, public_summary, public_details, preparation_note, aftercare_note, important_note, badge_label from services where id = ${s.id}`;
+    expect(r).toEqual({ pricing_mode: "fixed", booking_mode: "direct", price_public: false, display_duration_min: null, display_duration_max: null, public_summary: null, public_details: null, preparation_note: null, aftercare_note: null, important_note: null, badge_label: null });
+  });
+
+  it("limits: details 1000 / important 200 / aftercare 300 are the maximum and blank is refused; unknown booking mode and a zero display minimum are refused", async () => {
+    const id = emel.svc["Kaş Alımı"]!;
+    await testDb`update services set public_details = ${"x".repeat(1000)}, important_note = ${"y".repeat(200)}, aftercare_note = ${"z".repeat(300)} where id = ${id}`;
+    await testDb`update services set public_details = null, important_note = null, aftercare_note = null where id = ${id}`;
+    const bad = [
+      testDb`update services set public_details = ${"x".repeat(1001)} where id = ${id}`,
+      testDb`update services set important_note = ${"y".repeat(201)} where id = ${id}`,
+      testDb`update services set aftercare_note = ${"z".repeat(301)} where id = ${id}`,
+      testDb`update services set aftercare_note = '  ' where id = ${id}`,
+      testDb`update services set booking_mode = 'maybe' where id = ${id}`,
+      testDb`update services set display_duration_min = 0 where id = ${id}`,
+    ];
+    for (const q of bad) await expect(q).rejects.toMatchObject({ code: "23514" });
+  });
+
+  it("public eligibility needs an active, undeleted service that is linked to the branch", async () => {
+    const id = duo.svc["Cilt Bakimi"]!;
+    expect((await eligible(duo, "Cilt Bakimi")).length).toBe(2);
+    await testDb`update services set status = 'inactive' where id = ${id}`;
+    expect(await eligible(duo, "Cilt Bakimi")).toEqual([]);
+    await testDb`update services set status = 'active', deleted_at = now() where id = ${id}`;
+    expect(await eligible(duo, "Cilt Bakimi")).toEqual([]);
+    await testDb`update services set deleted_at = null where id = ${id}`;
+    await testDb`delete from service_branches where service_id = ${id}`;
+    expect(await eligible(duo, "Cilt Bakimi")).toEqual([]);
+    await linkServiceBranch(id, duo.branch);
+    expect((await eligible(duo, "Cilt Bakimi")).length).toBe(2);
+  });
+
+  it("the aftercare note is published when the salon wrote one", async () => {
+    const id = emel.svc["Kaş Alımı"]!;
+    await testDb`update services set aftercare_note = 'Sonrası notu' where id = ${id}`;
+    try {
+      expect((await publicSvc(emel, "Kaş Alımı")).aftercareNote).toBe("Sonrası notu");
+    } finally {
+      await testDb`update services set aftercare_note = null where id = ${id}`;
+    }
+  });
+
+  it("an unbookable or deleted salon publishes nothing", async () => {
+    await testDb`update tenant_features set enabled = false where tenant_id = ${duo.t.id}`;
+    expect((await asDatabaseRole("anon", null, (sql) => sql<{ c: PublicCtx }[]>`select public.get_public_booking_context(${duo.t.slug}) as c`))[0]!.c).toEqual({ bookable: false });
+    await testDb`update tenant_features set enabled = true where tenant_id = ${duo.t.id}`;
+    await testDb`update tenants set deleted_at = now() where id = ${duo.t.id}`;
+    try {
+      expect((await asDatabaseRole("anon", null, (sql) => sql<{ c: PublicCtx }[]>`select public.get_public_booking_context(${duo.t.slug}) as c`))[0]!.c).toEqual({ bookable: false });
+    } finally {
+      await testDb`update tenants set deleted_at = null where id = ${duo.t.id}`;
+    }
+    expect((await context(duo)).bookable).toBe(true);
+  });
+
+  it("services are listed by display order, then by name", async () => {
+    const names = async () => (await context(hair)).branches[0]!.services.map((s) => s.name);
+    await testDb`update services set display_order = 0 where tenant_id = ${hair.t.id}`;
+    expect(await names()).toEqual(["Boya", "Sac Kesimi"]);
+    await testDb`update services set display_order = 1 where id = ${hair.svc["Boya"]!}`;
+    expect(await names()).toEqual(["Sac Kesimi", "Boya"]);
+    await testDb`update services set display_order = 0 where tenant_id = ${hair.t.id}`;
   });
 });
 

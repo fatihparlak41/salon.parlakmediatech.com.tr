@@ -45,6 +45,7 @@ const services: PublicBookingService[] = [
   svc({ id: "s-gelin", name: "Gelin / Nişan / Kına Makyajı", pricingMode: "inquiry", bookingMode: "inquiry" }),
   svc({ id: "s-gece", name: "Gece / Günlük Makyaj", price: 5000, bookingMode: "inquiry" }),
   svc({ id: "s-hair", name: "Saç Kesimi" }),
+  svc({ id: "s-bakim", name: "Cilt Bakım Seti", price: 100, aftercareNote: "Güneşten korunun." }),
 ];
 
 function branch(over: Partial<PublicBookingBranch> = {}): PublicBookingBranch {
@@ -214,6 +215,43 @@ describe("progressive information and the unchanged simple flow", () => {
     fireEvent.click(card("Saç Kesimi"));
     expect(await screen.findByText("chooseStaffTitle")).toBeTruthy();
     expect(screen.queryByTestId("service-info")).toBeNull();
+  });
+});
+
+describe("stale state and panel contents", () => {
+  it("the staff fetch always asks for the service just chosen, even after a previous choice", async () => {
+    fetchEligible.mockResolvedValue([{ id: "a", fullName: "A" }, { id: "b", fullName: "B" }]);
+    renderWizard();
+    fireEvent.click(card("Kaş Alımı"));
+    await screen.findByText("chooseStaffTitle");
+    fireEvent.click(screen.getByText("back"));
+    fireEvent.click(await screen.findByText("Saç Kesimi"));
+    await waitFor(() => expect(fetchEligible).toHaveBeenCalledTimes(2));
+    expect(fetchEligible.mock.calls[0]![2]).toBe("s-alim");
+    expect(fetchEligible.mock.calls[1]![2]).toBe("s-hair");
+  });
+
+  it("the no-staff notice of one service does not follow the customer to another", async () => {
+    fetchEligible.mockResolvedValue([]);
+    renderWizard();
+    fireEvent.click(card("Kaş Alımı"));
+    expect(await screen.findByText("noEligibleStaff")).toBeTruthy();
+    fireEvent.click(card("Gelin / Nişan / Kına Makyajı"));
+    await screen.findByTestId("service-info");
+    expect(screen.queryByText("noEligibleStaff")).toBeNull();
+  });
+
+  it("the panel shows the aftercare note when written, and no empty information box when nothing is written", async () => {
+    renderWizard();
+    fireEvent.click(card("Cilt Bakım Seti"));
+    const panel = await screen.findByTestId("service-info");
+    expect(within(panel).getByText("Güneşten korunun.")).toBeTruthy();
+    expect(within(panel).getByText("afterAppointment")).toBeTruthy();
+    cleanup();
+    renderWizard();
+    fireEvent.click(card("Gelin / Nişan / Kına Makyajı"));
+    const bare = await screen.findByTestId("service-info");
+    expect(within(bare).queryByTestId("service-info-box")).toBeNull();
   });
 });
 

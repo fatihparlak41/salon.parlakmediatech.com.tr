@@ -113,7 +113,7 @@ export function ServiceInfoPanel({
         {service.summary && <p className="text-muted-foreground text-sm">{service.summary}</p>}
       </div>
       {hasServiceInfo(service) && (
-        <div className="flex flex-col gap-3 rounded-xl border p-4">
+        <div className="flex flex-col gap-3 rounded-xl border p-4" data-testid="service-info-box">
           {service.details && <Note title={labels.aboutService} text={service.details} />}
           {service.preparationNote && <Note title={labels.beforeAppointment} text={service.preparationNote} />}
           {service.importantNote && <Note title={labels.importantInfo} text={service.importantNote} />}
