@@ -74,7 +74,7 @@ describe("the claim payload (real function): at most two distinct notes in booki
   let tenantId: string;
   let slug: string;
   let owner: TestUser;
-  let svc: string[] = [];
+  const svc: string[] = [];
   let staffId: string;
   let foreignSvc: string;
 
