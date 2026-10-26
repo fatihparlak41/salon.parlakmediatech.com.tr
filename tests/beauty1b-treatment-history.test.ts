@@ -536,10 +536,17 @@ describe("AUTHORIZATION and PRIVACY", () => {
     item = v.itemIds[0]!;
   });
 
-  it("Owner, Yönetici and Resepsiyon read the history; a custom view-only role reads it WITHOUT the value; Personel and a customer-only role are refused", async () => {
+  it("RC.1A: Owner, Yönetici and Resepsiyon read the history; the VALUE (a finance fact) is shown only with finance.view; Personel and a customer-only role are refused", async () => {
     expect((await history(emel, owner.id, cust)).items[0]!.value).toBe("2000.00");
-    expect((await history(emel, manager.id, cust)).items[0]!.value).toBe("2000.00");
-    expect((await history(emel, receptionist.id, cust)).items[0]!.value).toBe("2000.00");
+    for (const u of [manager, receptionist]) {
+      const h = await history(emel, u.id, cust);
+      expect(h.items, u.email).toHaveLength(1); // the history itself is theirs to read
+      expect(h.canSeeValue, u.email).toBe(false);
+      expect(h.items[0]!.value, u.email).toBeNull();
+    }
+    const financeReader = await user("finance-reader");
+    await addMembership(emel.t.id, financeReader.id, await createCustomRole(emel.t.id, "Gecmis ve Finans", ["customers.view", "appointments.view", "finance.view"]));
+    expect((await history(emel, financeReader.id, cust)).items[0]!.value).toBe("2000.00");
     const vo = await history(emel, viewOnly.id, cust);
     expect(vo.canSeeValue).toBe(false);
     expect(vo.items[0]!.value).toBeNull();
