@@ -982,5 +982,39 @@
     "description": "Beklenmeyen bir hata oluştu. Sorun devam ederse lütfen tekrar deneyin.",
     "retry": "Tekrar dene",
     "digest": "Hata referansı"
+  },
+  "DailyOverview": {
+    "title": "Bugün — kasa ve işlem özeti",
+    "appointments": "Bugünkü randevular",
+    "appointmentsNote": "{scheduled} bekliyor · {cancelled} iptal · {noShow} gelmedi",
+    "completed": "Tamamlanan işlemler",
+    "serviceAmount": "Tamamlanan işlem tutarı",
+    "serviceAmountNote": "Hizmet bedeli; alınan para değildir",
+    "serviceAmountNoCheckout": "{count} işlemin ödeme kaydı açılmadı ({amount}, liste fiyatı)",
+    "collected": "Tahsil edilen",
+    "collectedNote": "{count} ödeme kaydı, bugün alınanlar",
+    "outstanding": "Bekleyen tahsilat",
+    "outstandingNote": "{count} hesapta; bugünün işlemlerinden {today}",
+    "expense": "Bugünkü gider",
+    "expenseNote": "Bugün ödenen: {paid}",
+    "cashDifference": "Günlük nakit farkı",
+    "cashDifferenceNote": "Nakit tahsilat {cash} − nakit ödeme {out}",
+    "methodsTitle": "Ödeme yöntemlerine göre",
+    "methodsCollected": "Tahsilat",
+    "methodsPaidOut": "Ödenen gider",
+    "methods": {
+      "cash": "Nakit",
+      "card": "Kart",
+      "transfer": "Havale / EFT",
+      "other": "Diğer"
+    },
+    "voidedNote": "Bugün iptal edilen {count} ödeme ({amount}) toplama dahil değildir",
+    "staffTitle": "Personel (tamamlanan işlemler)",
+    "staffEmpty": "Bugün tamamlanan işlem yok",
+    "staffItems": "İşlem",
+    "staffAmount": "Hizmet tutarı",
+    "staffDiscountNote": "Tutarlar indirim öncesidir; {amount} indirim kişilere paylaştırılmaz",
+    "currencyMixed": "Bazı kayıtlar salonun para biriminden farklı; toplamlar karışık olabilir.",
+    "footnote": "Bu bir muhasebe raporu değildir. Gün, salonun yerel saatine göre hesaplanır. Nakit farkı kâr değildir: yalnızca nakit alınan ve nakit ödenen tutarların farkıdır."
   }
 }

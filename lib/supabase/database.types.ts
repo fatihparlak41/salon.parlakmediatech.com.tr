@@ -2956,6 +2956,10 @@ export type Database = {
           table_name: string
         }[]
       }
+      get_daily_owner_overview: {
+        Args: { p_date?: string; p_tenant_id: string }
+        Returns: Json
+      }
       get_customer_history: {
         Args: { p_customer_id: string; p_limit?: number }
         Returns: Json

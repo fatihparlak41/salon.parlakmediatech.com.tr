@@ -35,6 +35,9 @@ import { PersonalDashboard } from "@/components/dashboard/personal-dashboard";
 import { SetupCard } from "@/components/onboarding/setup-card";
 import { shouldOfferOnboarding, type OnboardingStatus } from "@/lib/modules/onboarding/model";
 import { getOnboardingStatus } from "@/lib/modules/onboarding/queries";
+import { DailyOwnerOverview } from "@/components/dashboard/daily-owner-overview";
+import { getDailyOwnerOverview } from "@/lib/modules/finance-daily/queries";
+import type { DailyOverview } from "@/lib/modules/finance-daily/model";
 import {
   TodayKpiCards,
   QuickActions,
@@ -202,7 +205,7 @@ export default async function TenantAppPage({
 
   // Step 2 (salon-wide dashboard): every section's own read, each only when
   // the caller may see that section — all of them independent of each other.
-  const [todayAppointments, activeStaff, monthSummary, hasActiveService, onboardingStatus] =
+  const [todayAppointments, activeStaff, monthSummary, hasActiveService, onboardingStatus, dailyOverview] =
     await Promise.all([
       canViewAppointments
         ? getTodayAppointments(supabase, tenantId, tenantTimezone)
@@ -221,6 +224,9 @@ export default async function TenantAppPage({
       canManageStaff || canManageServices || canManageSettings
         ? getOnboardingStatus(tenantId)
         : Promise.resolve<OnboardingStatus | null>(null),
+      // Faz FIN.2A — the one canonical daily finance read model, read in parallel with the rest. Only a caller who
+      // holds finance.view is asked (the database re-checks); everyone else gets no finance block at all.
+      canViewFinance ? getDailyOwnerOverview(tenantId) : Promise.resolve<DailyOverview | null>(null),
     ]);
   const kpis = computeTodayKpis(todayAppointments);
   const { inProgress, next } = selectNextAppointment(
@@ -323,6 +329,7 @@ export default async function TenantAppPage({
           }}
         />
       )}
+      {dailyOverview && <DailyOwnerOverview overview={dailyOverview} tenantSlug={tenantSlug} />}
 
       {canViewAppointments && (
         <TodayKpiCards
