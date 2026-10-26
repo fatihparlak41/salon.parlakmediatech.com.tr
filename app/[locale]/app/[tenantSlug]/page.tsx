@@ -32,6 +32,9 @@ import {
   type TodayScheduleLabels,
 } from "@/components/dashboard/today-schedule";
 import { PersonalDashboard } from "@/components/dashboard/personal-dashboard";
+import { SetupCard } from "@/components/onboarding/setup-card";
+import { shouldOfferOnboarding, type OnboardingStatus } from "@/lib/modules/onboarding/model";
+import { getOnboardingStatus } from "@/lib/modules/onboarding/queries";
 import {
   TodayKpiCards,
   QuickActions,
@@ -58,6 +61,7 @@ export default async function TenantAppPage({
 
   const tenantId = access.tenant.id;
   const t = await getTranslations("TenantApp.dashboard");
+  const tSetup = await getTranslations("Setup");
   const supabase = await createClient();
 
   // Faz PERF.4 — this page used to be ten sequential awaits, each one a
@@ -198,7 +202,7 @@ export default async function TenantAppPage({
 
   // Step 2 (salon-wide dashboard): every section's own read, each only when
   // the caller may see that section — all of them independent of each other.
-  const [todayAppointments, activeStaff, monthSummary, hasActiveService] =
+  const [todayAppointments, activeStaff, monthSummary, hasActiveService, onboardingStatus] =
     await Promise.all([
       canViewAppointments
         ? getTodayAppointments(supabase, tenantId, tenantTimezone)
@@ -212,6 +216,11 @@ export default async function TenantAppPage({
       canManageStaff
         ? getHasActiveService(supabase, tenantId)
         : Promise.resolve<boolean | null>(null),
+      // Faz LAUNCH.1C — the one readiness answer, read in parallel with the rest (no added wait). Only salon managers
+      // are offered the guided setup, and only while the salon is not ready and has never taken an appointment.
+      canManageStaff || canManageServices || canManageSettings
+        ? getOnboardingStatus(tenantId)
+        : Promise.resolve<OnboardingStatus | null>(null),
     ]);
   const kpis = computeTodayKpis(todayAppointments);
   const { inProgress, next } = selectNextAppointment(
@@ -301,6 +310,19 @@ export default async function TenantAppPage({
           <p className="mt-2 text-sm">{summarySentence}</p>
         )}
       </div>
+
+      {onboardingStatus && shouldOfferOnboarding(onboardingStatus) && (
+        <SetupCard
+          status={onboardingStatus}
+          href={`/app/${tenantSlug}/setup`}
+          labels={{
+            title: tSetup("dashboardCard.title"),
+            body: tSetup("dashboardCard.body"),
+            cta: tSetup("dashboardCard.cta"),
+            progress: (done, total) => tSetup("progress", { done, total }),
+          }}
+        />
+      )}
 
       {canViewAppointments && (
         <TodayKpiCards

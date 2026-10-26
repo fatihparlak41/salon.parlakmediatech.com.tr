@@ -45,5 +45,5 @@ export async function createTenantAction(
     return fail("UNEXPECTED", "Salon oluşturulamadı, lütfen tekrar deneyin");
   }
 
-  redirect(`/app/${parsed.data.slug}`);
+  redirect(`/app/${parsed.data.slug}/setup`);
 }

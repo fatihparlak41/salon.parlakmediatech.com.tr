@@ -96,6 +96,137 @@
     "submit": "Salonu oluştur",
     "submitting": "Oluşturuluyor…"
   },
+  "Setup": {
+    "title": "Salonunuzu hazırlayın",
+    "subtitle": "Birkaç adımda online rezervasyona hazır olun. İstediğiniz an bırakıp kaldığınız yerden devam edebilirsiniz.",
+    "progress": "{done}/{total} adım tamamlandı",
+    "unknown": "Kurulum durumu şu an okunamadı. Sayfayı yenileyip tekrar deneyin.",
+    "done": "Tamamlandı",
+    "todo": "Bekliyor",
+    "next": "Devam",
+    "saving": "Kaydediliyor…",
+    "noPermission": "Bu adımı salon sahibi tamamlayabilir.",
+    "later": {
+      "title": "Sonra ayarlayabilirsiniz",
+      "body": "Müşteri bildirimleri, paketler, komisyon, finans, WhatsApp ve gelişmiş raporlar kurulumu engellemez; hazır olduğunuzda Ayarlar ve ilgili sayfalardan açabilirsiniz."
+    },
+    "steps": {
+      "profile": "Salon bilgileri",
+      "services": "Hizmetler",
+      "staff": "Personel",
+      "hours": "Çalışma saatleri",
+      "mapping": "Kim hangi hizmeti yapıyor",
+      "booking": "Online rezervasyon",
+      "ready": "Hazır"
+    },
+    "profile": {
+      "intro": "Müşterileriniz bu bilgileri rezervasyon sayfasında görür.",
+      "name": "Salon adı",
+      "phone": "Telefon",
+      "phoneHint": "Müşterilerin sizi arayabileceği numara",
+      "address": "Adres (isteğe bağlı)",
+      "timezone": "Saat dilimi",
+      "tzIstanbul": "Türkiye (UTC+03:00)",
+      "tzNicosia": "Kuzey Kıbrıs / Lefkoşa (Doğu Avrupa saati)",
+      "tzOther": "Kayıtlı saat dilimi: {zone}",
+      "currency": "Para birimi",
+      "save": "Kaydet ve devam et"
+    },
+    "services": {
+      "intro": "Sunduğunuz hizmetleri tek seferde ekleyin. Satırları elle doldurabilir ya da bir tablodan yapıştırabilirsiniz.",
+      "existing": "Eklenmiş hizmetler ({count})",
+      "category": "Kategori",
+      "name": "Hizmet adı",
+      "duration": "Süre (dk)",
+      "price": "Fiyat",
+      "addRow": "Satır ekle",
+      "removeRow": "Satırı sil",
+      "pasteTitle": "Yapıştırarak ekle",
+      "pasteHint": "Her satıra bir hizmet: Hizmet adı; süre; fiyat — ya da Kategori; Hizmet adı; süre; fiyat. Bir satırı yalnızca # Kategori yazarak başlık yapabilirsiniz.",
+      "pasteButton": "Satırlara dönüştür",
+      "save": "Hizmetleri ekle",
+      "saved": "{created} hizmet eklendi",
+      "savedSkipped": "{created} hizmet eklendi, {skipped} tanesi zaten vardı",
+      "nothing": "Eklenecek dolu satır yok"
+    },
+    "staff": {
+      "intro": "Salonda çalışan kişileri ekleyin. Giriş yapmaları ya da davet edilmeleri gerekmez; yalnızca randevu alabilmeleri için listede olurlar.",
+      "existing": "Eklenmiş personel ({count})",
+      "pasteHint": "Her satıra bir kişi: Ad Soyad ya da Ad Soyad; telefon",
+      "save": "Personeli ekle",
+      "saved": "{created} kişi eklendi",
+      "savedSkipped": "{created} kişi eklendi, {skipped} kişi zaten vardı"
+    },
+    "hours": {
+      "intro": "Haftalık çalışma saatlerini bir kez girin, seçtiğiniz herkese uygulansın. Sonradan kişi bazında değiştirebilirsiniz.",
+      "open": "Açık",
+      "closed": "Kapalı",
+      "from": "Başlangıç",
+      "to": "Bitiş",
+      "break": "Mola",
+      "copyMonday": "Pazartesi saatlerini diğer iş günlerine kopyala",
+      "copyHint": "Pazartesi'den Cumartesi'ye kadar aynı saatler uygulanır; Pazar'a dokunulmaz.",
+      "staff": "Uygulanacak personel",
+      "staffHint": "Henüz saati olmayanlar seçili gelir. Saati olan birini seçerseniz mevcut saatleri değişir.",
+      "hasHours": "saati var",
+      "noStaff": "Önce personel ekleyin.",
+      "save": "Saatleri uygula",
+      "errTime": "Saat biçimi geçersiz",
+      "errOrder": "Bitiş saati başlangıçtan sonra olmalı",
+      "errBreak": "Mola, çalışma saatlerinin içinde olmalı",
+      "errNoDays": "En az bir gün açık olmalı",
+      "days": {
+        "mon": "Pazartesi",
+        "tue": "Salı",
+        "wed": "Çarşamba",
+        "thu": "Perşembe",
+        "fri": "Cuma",
+        "sat": "Cumartesi",
+        "sun": "Pazar"
+      }
+    },
+    "mapping": {
+      "intro": "Her personelin hangi hizmetleri yaptığını işaretleyin. Müşteri yalnızca işaretli çiftler için randevu alabilir.",
+      "everyone": "Herkes tüm hizmetleri yapıyor",
+      "rowAll": "Tümü",
+      "needBoth": "Önce hizmet ve personel ekleyin.",
+      "save": "Eşleştirmeyi kaydet"
+    },
+    "booking": {
+      "intro": "Rezervasyon sayfanızı müşterilere açın. Dilediğinizde Ayarlar'dan kapatabilirsiniz.",
+      "enabled": "Online rezervasyon açık",
+      "disabled": "Online rezervasyon kapalı",
+      "enable": "Online rezervasyonu aç",
+      "enabling": "Açılıyor…"
+    },
+    "ready": {
+      "title": "Rezervasyon sayfanız hazır",
+      "body": "Müşterileriniz bu adresten randevu alabilir.",
+      "copy": "Bağlantıyı kopyala",
+      "copied": "Kopyalandı",
+      "open": "Sayfayı aç",
+      "firstSlot": "İlk müsait zaman: {when}",
+      "dashboard": "Panele git",
+      "notReady": "Rezervasyon sayfanız henüz hazır değil",
+      "notReadyBody": "Aşağıdaki eksikleri tamamlayın:",
+      "fix": "Düzelt"
+    },
+    "blockers": {
+      "tenant_inactive": "Salon şu anda aktif değil.",
+      "salon_profile_missing": "Salon bilgileri eksik (ad, saat dilimi, para birimi veya telefon).",
+      "no_working_hours": "Hiçbir personelin çalışma saati tanımlı değil.",
+      "no_services": "Henüz aktif bir hizmet yok.",
+      "no_staff": "Henüz aktif bir personel yok.",
+      "no_bookable_staff": "Hizmet yapabilen ve bir şubeye atanmış personel yok.",
+      "public_booking_disabled": "Online rezervasyon kapalı.",
+      "no_available_slot": "Önümüzdeki 14 günde randevu alınabilecek boş saat yok."
+    },
+    "dashboardCard": {
+      "title": "Kurulumu tamamlayın",
+      "body": "Salonunuz online rezervasyona henüz hazır değil.",
+      "cta": "Kuruluma devam et"
+    }
+  },
   "TenantApp": {
     "nav": {
       "dashboard": "Panel",

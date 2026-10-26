@@ -139,3 +139,34 @@ gated.
   AND to the two baseline pins in `tests/customer-reschedule.test.ts` and
   `tests/customer-cancellation.test.ts`, with the reason. A new `vercel.json`
   cron entry is pinned the same way in `tests/notification-purge-endpoint.test.ts`.
+
+## Guided onboarding — one readiness read model (Faz LAUNCH.1C)
+
+`20261024090000_guided_onboarding.sql` adds eight functions and nothing else: no table, no column, no trigger, no policy,
+no grant on an existing object, no data.
+
+- **One source of truth.** `private.onboarding_status(tenant)` derives everything from the real tables on every call:
+  which setup step is done, which blockers remain (`tenant_inactive`, `salon_profile_missing`, `no_working_hours`,
+  `no_services`, `no_staff`, `no_bookable_staff`, `public_booking_disabled`, `no_available_slot`), and `ready`. "Ready" is
+  not "rows exist": a probe walks the next 14 days with the SAME predicate the public slot picker uses
+  (`private.staff_is_available` plus the capacity check) and only a real bookable time makes a salon ready. Nothing is
+  stored, so nothing can drift, and a salon configured the old way is simply ready without ever seeing the wizard.
+  The application never recomputes readiness (`lib/modules/onboarding/model.ts` only validates the shape of the answer).
+- **Writes reuse the existing tables and permission keys** (`settings.manage`, `services.manage`, `staff.manage`,
+  `schedules.manage`): `update_salon_profile` (name, explicit time zone and currency, primary-branch phone/address),
+  `onboarding_add_services` (<= 50, atomic, idempotent by name), `onboarding_add_staff` (roster only, never a login or an
+  invitation), `onboarding_apply_weekly_hours` (one template to chosen people; a repeated weekday is a break),
+  `onboarding_set_staff_services` (the staff x service matrix). All are `authenticated` only (explicit revokes from every
+  other API role), tenant-scoped through `private.has_permission(p_tenant_id, ...)`, audited, and serialised per tenant.
+  Pinned era-aware in `tests/security-grants-regression.test.ts`. No `service_role` function is added.
+- **Error codes** `OB010` not signed in, `OB011` not allowed, `OB012` invalid input, `OB004` salon not active.
+- **A multi-block weekday** (a lunch break) is one row per block. The per-person schedule editor can only show one block
+  per day, so it now displays such a day read-only and saves it back unchanged (`tests/launch1c-schedule-tab.test.tsx`).
+- Release order: migration first, application second. Rollback: `LAUNCH-1C-ROLLBACK.sql` (reference; drops the eight
+  functions and restores the previous function catalog exactly, proven on a scratch database).
+- **Booking engine vs onboarding readiness.** The status carries both `bookingEngineReady` (a real slot can be produced:
+  no `tenant_inactive`, `no_working_hours`, `no_services`, `no_staff`, `no_bookable_staff`, `no_available_slot`) and `ready`
+  (the engine PLUS a complete profile with a salon phone and the public switch). The slot probe never looks at the phone, the
+  switch or the profile. Probe candidates sit on the same 15-minute grid, counted from midnight, as the public slot picker.
+  This function is the authoritative readiness definition; the older panel "Attention" card is known P1 tech debt and no
+  second definition may be added.
