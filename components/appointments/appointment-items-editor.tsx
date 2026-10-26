@@ -122,6 +122,13 @@ function ItemRow({
     onChange({ ...item, staffMemberId: preferredStaffMemberId });
   }, [staffOptionsRaw, preferredStaffMemberId, item, onChange]);
 
+  // RC.1C: when exactly one person can do the chosen service (a one-person salon, or a service only one person offers) there is
+  // nothing to choose: fill her in, the field stays visible and changeable. Only ever fills an empty slot.
+  useEffect(() => {
+    if (preferredStaffMemberId || item.staffMemberId || !item.serviceId || staffOptionsRaw.length !== 1) return;
+    onChange({ ...item, staffMemberId: staffOptionsRaw[0]!.id });
+  }, [staffOptionsRaw, preferredStaffMemberId, item, onChange]);
+
   useEffect(() => {
     if (!inputsCompleteForAvailability) return;
     const handle = setTimeout(async () => {
@@ -184,7 +191,7 @@ function ItemRow({
         </Select>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
           <Label>Personel</Label>
           <Select

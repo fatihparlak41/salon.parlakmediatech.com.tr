@@ -168,7 +168,7 @@ function NoteEditor({ tenantId, item, onSaved }: { tenantId: string; item: Treat
   );
 }
 
-function TreatmentCard({ tenantId, tenantSlug, item, today, canWrite, canRebook, onChanged }: { tenantId: string; tenantSlug: string; item: TreatmentItem; today: string; canWrite: boolean; canRebook: boolean; onChanged: () => void }) {
+function TreatmentCard({ tenantId, tenantSlug, customerId, item, today, canWrite, canRebook, onChanged }: { tenantId: string; tenantSlug: string; customerId: string; item: TreatmentItem; today: string; canWrite: boolean; canRebook: boolean; onChanged: () => void }) {
   const router = useRouter();
   const [rebookError, setRebookError] = useState<string | null>(null);
   const hint = item.rebook ? rebookText(item.rebook, today) : null;
@@ -220,7 +220,7 @@ function TreatmentCard({ tenantId, tenantSlug, item, today, canWrite, canRebook,
                   setRebookError(null);
                   const r = await fetchRebookDefaults(tenantId, item.itemId);
                   if (!r.ok) setRebookError(r.message);
-                  else router.push(rebookHref(tenantSlug, r.defaults));
+                  else router.push(rebookHref(tenantSlug, r.defaults, customerId));
                 }}
               >
                 <Repeat /> Tekrar Randevu
@@ -254,7 +254,7 @@ export function TreatmentHistoryPanel({ tenantId, tenantSlug, customerId, canWri
     <div className="flex flex-col gap-3">
       <ul className="flex flex-col gap-3">
         {history.items.map((item) => (
-          <TreatmentCard key={item.itemId} tenantId={tenantId} tenantSlug={tenantSlug} item={item} today={history.today} canWrite={canWrite} canRebook={canRebook} onChanged={load} />
+          <TreatmentCard key={item.itemId} tenantId={tenantId} tenantSlug={tenantSlug} customerId={customerId} item={item} today={history.today} canWrite={canWrite} canRebook={canRebook} onChanged={load} />
         ))}
       </ul>
       {history.hasMore && <p className="text-muted-foreground text-center text-xs">Daha eski işlemler gösterilmiyor.</p>}

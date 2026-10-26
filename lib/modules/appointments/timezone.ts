@@ -68,6 +68,13 @@ export function formatTenantLocalDateTime(isoString: string, tenantTz: string): 
   return `${date} ${time}`;
 }
 
+/** For people to read: "26.10.2026 14:00" (formatTenantLocalDateTime stays "2026-10-26 14:00" for code and tests). */
+export function formatTenantLocalDateTimeDisplay(isoString: string, tenantTz: string): string {
+  const { date, time } = utcIsoToTenantLocalParts(isoString, tenantTz);
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(date);
+  return `${m ? `${m[3]}.${m[2]}.${m[1]}` : date} ${time}`;
+}
+
 export function formatTenantLocalTime(isoString: string, tenantTz: string): string {
   return utcIsoToTenantLocalParts(isoString, tenantTz).time;
 }

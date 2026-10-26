@@ -56,7 +56,7 @@ export function CommissionRulesPanel({ tenantId, tenantSlug, rules, currency, ca
     <section className="flex flex-col gap-3 rounded-lg border p-4" aria-label="Komisyon kuralları">
       <h2 className="text-base font-semibold">Komisyon kuralları</h2>
       {rules.rules.length === 0 ? (
-        <p className="text-muted-foreground text-sm">Tanımlı komisyon kuralı yok; tüm personel için komisyon 0,00.</p>
+        <p className="text-muted-foreground text-sm">Henüz komisyon kuralı eklemediniz. Komisyon kullanmıyorsanız bir şey yapmanız gerekmez; bir kural eklediğinizde hesaplama o tarihten itibaren başlar.</p>
       ) : (
         <ul className="text-sm" data-testid="rule-list">
           {rules.rules.map((r) => (

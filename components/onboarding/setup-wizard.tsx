@@ -92,6 +92,13 @@ export function SetupWizard(props: SetupWizardProps) {
 
   const progress = stepProgress(status);
 
+  // A confirmation ("2 kişi eklendi") belongs to the step that was just saved; a save without its own message clears it, so it
+  // never lingers under a later, unrelated step.
+  function applyAndClear(result: StepResult) {
+    setNotice(null);
+    applyResult(result);
+  }
+
   function applyResult(result: StepResult) {
     setStatus(result.status);
     setActive(currentStepKey(result.status));
@@ -142,12 +149,12 @@ export function SetupWizard(props: SetupWizardProps) {
               {isActive ? (
                 <div className="border-t p-4">
                   {notice ? <p className="mb-3 text-sm text-emerald-700 dark:text-emerald-400">{notice}</p> : null}
-                  {step.key === "profile" ? <ProfileStep key={profileKey} {...props} status={status} onDone={applyResult} /> : null}
+                  {step.key === "profile" ? <ProfileStep key={profileKey} {...props} status={status} onDone={applyAndClear} /> : null}
                   {step.key === "services" ? <ServicesStep {...props} onDone={(r, msg) => (setNotice(msg), applyResult(r))} /> : null}
                   {step.key === "staff" ? <StaffStep {...props} onDone={(r, msg) => (setNotice(msg), applyResult(r))} /> : null}
-                  {step.key === "hours" ? <HoursStep key={hoursKey} {...props} onDone={applyResult} /> : null}
-                  {step.key === "mapping" ? <MappingStep key={mappingKey} {...props} onDone={applyResult} /> : null}
-                  {step.key === "booking" ? <BookingStep {...props} status={status} onChanged={() => router.refresh()} /> : null}
+                  {step.key === "hours" ? <HoursStep key={hoursKey} {...props} onDone={applyAndClear} /> : null}
+                  {step.key === "mapping" ? <MappingStep key={mappingKey} {...props} onDone={applyAndClear} /> : null}
+                  {step.key === "booking" ? <BookingStep {...props} status={status} onChanged={() => (setNotice(null), setActive("ready"), router.refresh())} /> : null}
                   {step.key === "ready" ? <ReadyStep {...props} status={status} onGo={setActive} /> : null}
                 </div>
               ) : null}
@@ -576,6 +583,7 @@ function MappingStep(props: SetupWizardProps & { onDone: (r: StepResult) => void
     <Denied allowed={props.can.staff}>
       <div className="flex flex-col gap-4">
         <p className="text-muted-foreground text-sm">{t("intro")}</p>
+        {staff.length === 1 ? <p className="text-sm">{t("singleHint")}</p> : null}
         <div>
           <Button
             type="button"

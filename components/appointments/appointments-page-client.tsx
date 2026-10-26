@@ -135,7 +135,7 @@ export function AppointmentsPageClient({
   canViewFinance: boolean;
   canManageFinance: boolean;
   /** Quick rebook (BEAUTY.1B): opens the create sheet with the service (and branch / staff if still valid) preselected. */
-  rebook: { serviceId: string; branchId?: string; staffId?: string } | null;
+  rebook: { serviceId: string; branchId?: string; staffId?: string; customer?: { id: string; fullName: string; phone: string | null; email: string | null } } | null;
   initialAppointments: AppointmentListRow[];
   labels: Labels;
 }) {
@@ -285,6 +285,7 @@ export function AppointmentsPageClient({
           initialServiceId={rebookPrefill?.serviceId}
           initialBranchId={rebookPrefill?.branchId}
           initialStaffMemberId={rebookPrefill?.staffId}
+          initialCustomer={rebookPrefill?.customer}
           tenantId={tenantId}
           tenantSlug={tenantSlug}
           tenantTimezone={tenantTimezone}

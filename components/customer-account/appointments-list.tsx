@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { cancelMyAppointmentAction } from "@/lib/modules/customer-account/actions";
 import type { MyAppointment } from "@/lib/modules/customer-account/queries";
 import { RescheduleAppointmentSheet } from "@/components/customer-account/reschedule-appointment-sheet";
-import { formatTenantLocalDateTime } from "@/lib/modules/appointments/timezone";
+import { formatTenantLocalDateTimeDisplay } from "@/lib/modules/appointments/timezone";
 import { STATUS_LABELS_TR, type AppointmentStatus } from "@/lib/modules/appointments/status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -92,7 +92,7 @@ export function AppointmentsList({ appointments }: { appointments: MyAppointment
             <Badge variant="secondary">{STATUS_LABELS_TR[a.status as AppointmentStatus] ?? a.status}</Badge>
           </div>
           <p className="text-muted-foreground text-sm">{a.branchName}</p>
-          <p className="text-sm">{formatTenantLocalDateTime(a.scheduledStartAt, a.tenantTimezone)}</p>
+          <p className="text-sm">{formatTenantLocalDateTimeDisplay(a.scheduledStartAt, a.tenantTimezone)}</p>
           <ul className="text-muted-foreground flex flex-col gap-0.5 text-sm">
             {a.services.map((s, i) => (
               <li key={i}>

@@ -222,11 +222,12 @@ export function CalendarPageClient({
             </Select>
           )}
 
-          {viewMode === "day" && branchStaff.length > 0 && (
+          {/* RC.1C: a one-person salon has nothing to filter or choose between. */}
+          {viewMode === "day" && branchStaff.length > 1 && (
             <StaffFilter staff={branchStaff} selectedIds={selectedStaffIds} onChange={setSelectedStaffIds} />
           )}
 
-          {viewMode === "week" && branchStaff.length > 0 && (
+          {viewMode === "week" && branchStaff.length > 1 && (
             // Keyed on the value: weekStaffId can change programmatically
             // (branch switch resets it outside this Select's own
             // interaction) — see the identical, directly-confirmed Base

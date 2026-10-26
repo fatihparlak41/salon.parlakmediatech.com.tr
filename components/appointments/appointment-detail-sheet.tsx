@@ -50,7 +50,7 @@ import {
   type AppointmentTransitionTarget,
 } from "@/lib/modules/appointments/status";
 import {
-  formatTenantLocalDateTime,
+  formatTenantLocalDateTimeDisplay,
   formatTenantLocalTime,
   utcIsoToTenantLocalParts,
   tenantLocalToUtcIso,
@@ -151,6 +151,15 @@ async function loadAppointmentDetail(appointmentId: string): Promise<Appointment
         actualStaffMember: i.actual_staff_members ? { id: i.actual_staff_members.id, fullName: i.actual_staff_members.full_name } : null,
       })),
   };
+}
+
+/** RC.1C: dates read "26.10.2026 14:00" like everywhere else in the product (the helper below returns 2026-10-26), and prices like "2.000,00 ₺". */
+function friendlyLocalDateTime(iso: string, tz: string): string {
+  return formatTenantLocalDateTimeDisplay(iso, tz);
+}
+function friendlyPrice(price: number | string): string {
+  const n = Number(price);
+  return Number.isFinite(n) ? `${n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺` : `${price} ₺`;
 }
 
 export function AppointmentDetailSheet({
@@ -268,7 +277,7 @@ function AppointmentDetailBody({
         <SheetTitle>{detail.customer?.fullName ?? "—"}</SheetTitle>
         <SheetDescription>
           {detail.branch.name} ·{" "}
-          {formatTenantLocalDateTime(detail.scheduledStartAt, tenantTimezone)}
+          {friendlyLocalDateTime(detail.scheduledStartAt, tenantTimezone)}
           {"–"}
           {formatTenantLocalTime(detail.scheduledEndAt, tenantTimezone)}
         </SheetDescription>
@@ -342,7 +351,7 @@ function AppointmentDetailBody({
                           appointments.view but not appointments.update
                           (Personel) — omit the segment rather than show a
                           placeholder that implies a price of zero. */}
-                      {item.durationMinutes} dk{item.price !== null ? ` · ₺${item.price}` : ""}
+                      {item.durationMinutes} dk{item.price !== null ? ` · ${friendlyPrice(item.price)}` : ""}
                     </span>
                   </div>
                 </div>
@@ -357,7 +366,7 @@ function AppointmentDetailBody({
             )}
 
             <p className="text-muted-foreground text-xs">
-              Oluşturulma: {formatTenantLocalDateTime(detail.createdAt, tenantTimezone)}
+              Oluşturulma: {friendlyLocalDateTime(detail.createdAt, tenantTimezone)}
             </p>
           </TabsContent>
 

@@ -427,7 +427,7 @@ function PaymentDialog({
               <Label>Yöntem</Label>
               <Select value={method} onValueChange={(v) => setMethod(v as typeof method)}>
                 <SelectTrigger className="w-full">
-                  <SelectValue />
+                  <SelectValue>{(value: string | null) => METHOD_LABELS_TR[value ?? ""] ?? value}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="cash">Nakit</SelectItem>

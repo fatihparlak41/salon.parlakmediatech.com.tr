@@ -173,6 +173,7 @@ export function CustomersPageClient({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={labels.searchPlaceholder}
+                aria-label={labels.searchPlaceholder}
                 className="pl-9"
               />
             </div>

@@ -89,10 +89,10 @@
   },
   "Onboarding": {
     "title": "Salonunuzu oluşturun",
-    "description": "Bu, hesabınıza bağlı ilk salon kaydı olacak — siz otomatik olarak sahibi (owner) olursunuz.",
+    "description": "Salonunuz hesabınıza bağlanır ve salon sahibi siz olursunuz. Diğer ayarları sonraki adımlarda yapacaksınız.",
     "nameLabel": "Salon adı",
-    "slugLabel": "Adres (URL)",
-    "slugHint": "Küçük harf, rakam ve tire kullanılabilir. Randevu sayfanız: /book/{slug}",
+    "slugLabel": "Randevu sayfası adresi",
+    "slugHint": "Müşterileriniz bu adresten randevu alır: /book/{slug}. Küçük harf, rakam ve tire kullanılabilir.",
     "submit": "Salonu oluştur",
     "submitting": "Oluşturuluyor…"
   },
@@ -188,6 +188,7 @@
     "mapping": {
       "intro": "Her personelin hangi hizmetleri yaptığını işaretleyin. Müşteri yalnızca işaretli çiftler için randevu alabilir.",
       "everyone": "Herkes tüm hizmetleri yapıyor",
+      "singleHint": "Salonda tek başınıza çalışıyorsanız “Herkes tüm hizmetleri yapıyor” düğmesine basıp kaydedin.",
       "rowAll": "Tümü",
       "needBoth": "Önce hizmet ve personel ekleyin.",
       "save": "Eşleştirmeyi kaydet"
@@ -958,8 +959,8 @@
       }
     },
     "selfService": {
-      "heading": "Müşteri Self-Servis",
-      "description": "Müşterilerin /account üzerinden kendi randevularını yönetmesine izin verin.",
+      "heading": "Müşteri hesabı",
+      "description": "Giriş yapan müşterilerin kendi randevularını görmesine, iptal etmesine ve değiştirmesine izin verin.",
       "cancellationEnabledLabel": "Online iptale izin ver",
       "cancellationCutoffLabel": "İptal süresi",
       "rescheduleEnabledLabel": "Online randevu değişikliğine izin ver",

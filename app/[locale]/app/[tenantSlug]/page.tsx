@@ -329,8 +329,6 @@ export default async function TenantAppPage({
           }}
         />
       )}
-      {dailyOverview && <DailyOwnerOverview overview={dailyOverview} tenantSlug={tenantSlug} />}
-
       {canViewAppointments && (
         <TodayKpiCards
           total={kpis.total}
@@ -401,7 +399,7 @@ export default async function TenantAppPage({
           </div>
 
           <div className="order-4 flex flex-col gap-4 lg:order-none lg:col-start-3 lg:row-start-2">
-            {canViewStaffList && (
+            {canViewStaffList && activeStaff.length > 1 && (
               <StaffTodaySummary
                 staff={activeStaff}
                 counts={staffCountMap(todayAppointments.map((a) => a.staff))}
@@ -443,7 +441,7 @@ export default async function TenantAppPage({
                 openInSettings: t("onlineBooking.openInSettings"),
               }}
             />
-            {setupHealth && (
+            {setupHealth && !(onboardingStatus && shouldOfferOnboarding(onboardingStatus)) && (
               <AttentionSection
                 health={setupHealth}
                 settingsHref={settingsHref}
@@ -460,6 +458,12 @@ export default async function TenantAppPage({
           </div>
         </div>
       </TodayScheduleProvider>
+
+      {/* RC.1C: the money summary comes AFTER the day (appointments first on a phone). The two appointment counts it used to repeat
+          are already in the cards above, and a one-person salon does not need a staff table of one row. */}
+      {dailyOverview && (
+        <DailyOwnerOverview overview={dailyOverview} tenantSlug={tenantSlug} hideAppointmentCounts hideStaff={activeStaff.length <= 1} />
+      )}
     </div>
   );
 }

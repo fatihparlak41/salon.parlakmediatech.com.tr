@@ -22,7 +22,7 @@ import { hasServiceInfo, isDirectlyBookable, priceLine, resolveStaffStep } from 
 import { submitGuestBookingAction } from "@/lib/modules/public-booking/actions";
 import { isValidSingleEmail } from "@/lib/modules/public-booking/email-validation";
 import { PUBLIC_BOOKING_HORIZON_DAYS } from "@/lib/modules/public-booking/constants";
-import { tenantLocalToUtcIso, formatTenantLocalDateTime, getTenantTodayRangeUtc } from "@/lib/modules/appointments/timezone";
+import { tenantLocalToUtcIso, formatTenantLocalDateTimeDisplay, getTenantTodayRangeUtc } from "@/lib/modules/appointments/timezone";
 
 const WEEKDAY_LABELS_TR = ["Paz", "Pzt", "Sal", "Çar", "Per", "Cum", "Cmt"]; // Sunday-first, matches Date#getUTCDay()
 
@@ -597,7 +597,7 @@ export function BookingWizard({
             <div className="flex justify-between gap-2">
               <span className="text-muted-foreground">{labels.summaryDateTime}</span>
               <span className="font-medium tabular-nums">
-                {dateStr} {timeStr}
+                {dateStr.split("-").reverse().join(".")} {timeStr}
               </span>
             </div>
             {shownPrice.kind === "price" && (
@@ -657,7 +657,7 @@ export function BookingWizard({
             <div className="flex justify-between gap-2">
               <span className="text-muted-foreground">{labels.summaryDateTime}</span>
               <span className="font-medium tabular-nums">
-                {formatTenantLocalDateTime(confirmation.scheduledStartAt, confirmation.tenantTimezone)}
+                {formatTenantLocalDateTimeDisplay(confirmation.scheduledStartAt, confirmation.tenantTimezone)}
               </span>
             </div>
             <div className="border-t pt-2">

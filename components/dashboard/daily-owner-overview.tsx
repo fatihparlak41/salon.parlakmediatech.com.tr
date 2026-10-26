@@ -10,7 +10,19 @@ import { formatOverviewDate, type DailyOverview } from "@/lib/modules/finance-da
  * value, money received, expenses and the cash difference are different numbers and are labelled as such. Nothing is
  * called profit.
  */
-export function DailyOwnerOverview({ overview, tenantSlug }: { overview: DailyOverview; tenantSlug: string }) {
+export function DailyOwnerOverview({
+  overview,
+  tenantSlug,
+  hideAppointmentCounts = false,
+  hideStaff = false,
+}: {
+  overview: DailyOverview;
+  tenantSlug: string;
+  /** The dashboard already shows today's appointment counts right above; the block can leave its own two out. */
+  hideAppointmentCounts?: boolean;
+  /** A salon with one provider does not need a one-row staff table. */
+  hideStaff?: boolean;
+}) {
   const t = useTranslations("DailyOverview");
   const money = (n: number) => formatMoney(n, overview.currency);
   const a = overview.appointments;
@@ -52,6 +64,8 @@ export function DailyOwnerOverview({ overview, tenantSlug }: { overview: DailyOv
     { key: "cashDifference", label: t("cashDifference"), value: money(overview.cash.difference), note: t("cashDifferenceNote", { cash: money(overview.cash.cashCollected), out: money(overview.cash.cashPaidOut) }) },
   ];
 
+  const shownCards = hideAppointmentCounts ? cards.filter((c) => c.key !== "appointments" && c.key !== "completed") : cards;
+
   const methods: { key: string; label: string; collected: number; paidOut: number }[] = [
     { key: "cash", label: t("methods.cash"), collected: p.cash, paidOut: e.paidOutCash },
     { key: "card", label: t("methods.card"), collected: p.card, paidOut: e.paidOutCard },
@@ -67,7 +81,7 @@ export function DailyOwnerOverview({ overview, tenantSlug }: { overview: DailyOv
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {cards.map((c) => {
+        {shownCards.map((c) => {
           const body = (
             <CardContent className="flex flex-col gap-1">
               <span className="font-heading text-xl font-semibold tabular-nums">{c.value}</span>
@@ -89,7 +103,7 @@ export function DailyOwnerOverview({ overview, tenantSlug }: { overview: DailyOv
         })}
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className={hideStaff ? "grid gap-3" : "grid gap-3 lg:grid-cols-2"}>
         <Card size="sm" data-section="methods">
           <CardContent className="flex flex-col gap-2">
             <h3 className="text-sm font-medium">{t("methodsTitle")}</h3>
@@ -115,6 +129,7 @@ export function DailyOwnerOverview({ overview, tenantSlug }: { overview: DailyOv
           </CardContent>
         </Card>
 
+        {hideStaff ? null : (
         <Card size="sm" data-section="staff">
           <CardContent className="flex flex-col gap-2">
             <h3 className="text-sm font-medium">{t("staffTitle")}</h3>
@@ -143,6 +158,7 @@ export function DailyOwnerOverview({ overview, tenantSlug }: { overview: DailyOv
             {overview.services.discountTotal > 0 ? <p className="text-muted-foreground text-xs">{t("staffDiscountNote", { amount: money(overview.services.discountTotal) })}</p> : null}
           </CardContent>
         </Card>
+        )}
       </div>
 
       {overview.currencyMixed ? (

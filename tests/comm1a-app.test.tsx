@@ -152,10 +152,11 @@ describe("rules panel", () => {
   const rules = parseCommissionRules({ today: "2026-10-10", rules: [], staff: [{ id: "11111111-1111-4111-8111-111111111111", name: "Ahmet" }], services: [{ id: "33333333-3333-4333-8333-333333333333", name: "Boya" }] })!;
   vi.mock("@/lib/modules/commission/actions", () => ({ setCommissionRuleAction: vi.fn() }));
 
-  it("without finance.manage the form does not exist; with no rules it says everyone earns 0,00", () => {
+  it("without finance.manage the form does not exist; with no rules it says so calmly (RC.1C wording, no payout implied)", () => {
     const { container } = render(<CommissionRulesPanel tenantId="t" tenantSlug="s" rules={rules} currency="TRY" canManage={false} />);
     expect(container.querySelector("form")).toBeNull();
-    expect(container.textContent).toContain("komisyon 0,00");
+    expect(container.textContent).toContain("Henüz komisyon kuralı eklemediniz");
+    expect(container.textContent).not.toMatch(/ödenecek|borç/i);
   });
 
   it("validates before calling, sends exactly what was typed, refreshes on success and shows the server's refusal", async () => {

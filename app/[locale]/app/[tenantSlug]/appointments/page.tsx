@@ -5,6 +5,7 @@ import { getAppointmentList, getTenantTimezone } from "@/lib/modules/appointment
 import { getBranchOptions } from "@/lib/modules/staff/queries";
 import { AppointmentsPageClient } from "@/components/appointments/appointments-page-client";
 import { parseRebookParams } from "@/lib/modules/treatment-history/model";
+import { createClient } from "@/lib/supabase/server";
 
 export default async function AppointmentsPage({
   params,
@@ -29,6 +30,15 @@ export default async function AppointmentsPage({
     redirect(`/app/${tenantSlug}`);
   }
 
+  // RC.1C: a quick rebook from a customer's own history arrives with that customer's id; she is looked up under the viewer's own
+  // access (RLS), so a person the viewer cannot see simply is not preselected.
+  let rebookCustomer: { id: string; fullName: string; phone: string | null; email: string | null } | null = null;
+  if (canCreate && rebook?.customerId) {
+    const supabase = await createClient();
+    const { data } = await supabase.from("customers").select("id, full_name, phone, email").eq("id", rebook.customerId).eq("tenant_id", access.tenant.id).is("deleted_at", null).maybeSingle();
+    if (data) rebookCustomer = { id: data.id, fullName: data.full_name, phone: data.phone, email: data.email };
+  }
+
   const [initialAppointments, tenantTimezone, branches] = await Promise.all([
     getAppointmentList(access.tenant.id, "upcoming", null, 0),
     getTenantTimezone(access.tenant.id),
@@ -48,7 +58,7 @@ export default async function AppointmentsPage({
       canCancel={canCancel}
       canViewFinance={canViewFinance}
       canManageFinance={canManageFinance}
-      rebook={canCreate ? rebook : null}
+      rebook={canCreate && rebook ? { ...rebook, customer: rebookCustomer ?? undefined } : null}
       initialAppointments={initialAppointments}
       labels={{
         title: t("title"),

@@ -101,22 +101,22 @@ describe("recommended re-booking window and quick rebook", () => {
     expect(screen.getByText("Tekrar Randevu")).toBeTruthy();
   });
 
-  it("'Tekrar Randevu' opens the appointments page with service, branch and staff only - the customer, date and time stay to be chosen", async () => {
+  it("'Tekrar Randevu' opens the appointments page with the service, branch and staff and the customer id it started from - date and time stay to be chosen", async () => {
     fetchDefaults.mockResolvedValue({ ok: true, defaults: { serviceId: SERVICE, serviceName: "Kaş Laminasyonu", branchId: "55555555-5555-4555-8555-555555555555", staffId: "66666666-6666-4666-8666-666666666666" } });
     renderPanel(hist([item()]));
     fireEvent.click(await screen.findByText("Tekrar Randevu"));
     await waitFor(() => expect(push).toHaveBeenCalled());
     expect(fetchDefaults).toHaveBeenCalledWith(T, "i1");
     const href = push.mock.calls[0]![0] as string;
-    expect(href).toBe(`/app/emel/appointments?rebookService=${SERVICE}&rebookBranch=55555555-5555-4555-8555-555555555555&rebookStaff=66666666-6666-4666-8666-666666666666`);
-    expect(href).not.toMatch(/customer|date|time/i);
+    expect(href).toBe(`/app/emel/appointments?rebookService=${SERVICE}&rebookCustomer=c1&rebookBranch=55555555-5555-4555-8555-555555555555&rebookStaff=66666666-6666-4666-8666-666666666666`);
+    expect(href).not.toMatch(/date|time|name|email|phone/i);
   });
 
   it("when the staff is gone the link simply has no staff; when the service is gone the message is shown and nothing opens", async () => {
     fetchDefaults.mockResolvedValue({ ok: true, defaults: { serviceId: SERVICE, serviceName: "x", branchId: null, staffId: null } });
     renderPanel(hist([item()]));
     fireEvent.click(await screen.findByText("Tekrar Randevu"));
-    await waitFor(() => expect(push).toHaveBeenCalledWith(`/app/emel/appointments?rebookService=${SERVICE}`));
+    await waitFor(() => expect(push).toHaveBeenCalledWith(`/app/emel/appointments?rebookService=${SERVICE}&rebookCustomer=c1`));
     push.mockReset();
     fetchDefaults.mockResolvedValue({ ok: false, message: "Bu hizmet artık sunulmuyor" });
     fireEvent.click(screen.getByText("Tekrar Randevu"));

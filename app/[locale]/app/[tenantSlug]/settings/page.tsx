@@ -45,6 +45,23 @@ export default async function SettingsPage({
         <h1 className="text-xl font-semibold tracking-tight">{t("title")}</h1>
         <p className="text-muted-foreground text-sm">{t("description")}</p>
       </div>
+      {/* RC.1C: one place that says where the other things live (salon details, commission, personal notifications). */}
+      <nav aria-label="Diğer ayarlar" className="flex flex-col divide-y rounded-lg border text-sm">
+        <Link href={`/app/${tenantSlug}/setup`} className="flex flex-col gap-0.5 p-3 hover:bg-muted/50">
+          <span className="font-medium">Salon bilgileri ve kurulum rehberi</span>
+          <span className="text-muted-foreground text-xs">Salon adı, telefon, saat dilimi, hizmetler, personel ve çalışma saatleri.</span>
+        </Link>
+        {canViewFinance ? (
+          <Link href={`/app/${tenantSlug}/finance/commission`} className="flex flex-col gap-0.5 p-3 hover:bg-muted/50">
+            <span className="font-medium">Komisyon (personel primleri)</span>
+            <span className="text-muted-foreground text-xs">Tamamlanan hizmetlerden doğan komisyonu görün, kural tanımlayın.</span>
+          </Link>
+        ) : null}
+        <Link href={`/app/${tenantSlug}/account#notifications`} className="flex flex-col gap-0.5 p-3 hover:bg-muted/50">
+          <span className="font-medium">Hesabım ve kişisel bildirimler</span>
+          <span className="text-muted-foreground text-xs">Adınız, şifreniz ve bu cihazdaki bildirimler.</span>
+        </Link>
+      </nav>
       <OnlineBookingToggle
         tenantId={access.tenant.id}
         tenantSlug={tenantSlug}
@@ -62,28 +79,6 @@ export default async function SettingsPage({
         health={notificationHealth}
       />
       {branches.length > 0 && <BranchContactForm tenantSlug={tenantSlug} branches={branches} />}
-      {/* Faz ACCOUNT.1 — this page is salon configuration only. Device
-          notifications are personal (every member, no permission) and live
-          on the member's own Hesabım page. */}
-      <p className="text-muted-foreground text-sm">
-        {t("personalNotifications.text")}{" "}
-        <Link
-          href={`/app/${tenantSlug}/account#notifications`}
-          className="text-foreground underline underline-offset-4"
-        >
-          {t("personalNotifications.link")}
-        </Link>
-      </p>
-      {/* Faz COMM.1A — staff commission: the Owner's screen (finance.view). Linked from here, not from the main navigation. */}
-      {canViewFinance ? (
-        <p className="text-muted-foreground text-sm">
-          Personelin tamamladığı hizmetlerden doğan komisyonu görmek ve kural tanımlamak için{" "}
-          <Link href={`/app/${tenantSlug}/finance/commission`} className="text-foreground underline underline-offset-4">
-            Personel Primleri
-          </Link>{" "}
-          sayfasını açın.
-        </p>
-      ) : null}
     </div>
   );
 }

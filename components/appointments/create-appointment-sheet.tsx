@@ -194,6 +194,7 @@ export function CreateAppointmentSheet({
   initialBranchId,
   initialStaffMemberId,
   initialServiceId,
+  initialCustomer,
   initialDate,
   initialStartTime,
   onCreated,
@@ -212,8 +213,9 @@ export function CreateAppointmentSheet({
    * never silently creates an invalid staff/service pairing. */
   initialBranchId?: string;
   initialStaffMemberId?: string;
-  /** Quick rebook (BEAUTY.1B): the service is preselected; the customer, date and time are still chosen. */
+  /** Quick rebook (BEAUTY.1B): the service is preselected (and, since RC.1C, the customer whose history it started from); date and time are still chosen. */
   initialServiceId?: string;
+  initialCustomer?: CustomerOption;
   initialDate?: string;
   initialStartTime?: string;
   onCreated: (appointmentId: string) => void;
@@ -234,6 +236,7 @@ export function CreateAppointmentSheet({
             initialBranchId={initialBranchId}
             initialStaffMemberId={initialStaffMemberId}
             initialServiceId={initialServiceId}
+            initialCustomer={initialCustomer}
             initialDate={initialDate}
             initialStartTime={initialStartTime}
             onCreated={onCreated}
@@ -252,6 +255,7 @@ function CreateAppointmentForm({
   initialBranchId,
   initialStaffMemberId,
   initialServiceId,
+  initialCustomer,
   initialDate,
   initialStartTime,
   onCreated,
@@ -263,11 +267,12 @@ function CreateAppointmentForm({
   initialBranchId?: string;
   initialStaffMemberId?: string;
   initialServiceId?: string;
+  initialCustomer?: CustomerOption;
   initialDate?: string;
   initialStartTime?: string;
   onCreated: (appointmentId: string) => void;
 }) {
-  const [customer, setCustomer] = useState<CustomerOption | null>(null);
+  const [customer, setCustomer] = useState<CustomerOption | null>(initialCustomer ?? null);
   const [branchId, setBranchId] = useState(initialBranchId ?? (branches.length === 1 ? branches[0]!.id : ""));
   const [date, setDate] = useState(initialDate ?? (() => todayLocalDate(tenantTimezone)));
   const [servicesRaw, setServicesRaw] = useState<ServiceForBranch[]>([]);
@@ -320,7 +325,7 @@ function CreateAppointmentForm({
     <form onSubmit={handleSubmit} className="flex h-full flex-col">
       <SheetHeader>
         <SheetTitle>Randevu oluştur</SheetTitle>
-        <SheetDescription>Müşteri, şube ve hizmetleri seçerek yeni bir randevu oluşturun.</SheetDescription>
+        <SheetDescription>Müşteriyi, günü ve hizmeti seçerek yeni bir randevu oluşturun.</SheetDescription>
       </SheetHeader>
 
       <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-4 pb-4">
@@ -329,7 +334,9 @@ function CreateAppointmentForm({
           <CustomerPicker tenantId={tenantId} tenantSlug={tenantSlug} selected={customer} onSelect={setCustomer} />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        {/* RC.1C: the branch only matters to a salon with more than one; the date takes the whole row on a phone. */}
+        <div className={branches.length > 1 ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-1 gap-3"}>
+          {branches.length > 1 ? (
           <div className="flex flex-col gap-1.5">
             <Label>Şube</Label>
             <Select value={branchId || undefined} onValueChange={(v) => setBranchId(v as string)}>
@@ -350,6 +357,7 @@ function CreateAppointmentForm({
               </SelectContent>
             </Select>
           </div>
+          ) : null}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="appointment-date">Tarih</Label>
             <Input id="appointment-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />

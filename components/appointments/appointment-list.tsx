@@ -1,7 +1,7 @@
 "use client";
 
 import type { AppointmentListRow } from "@/lib/modules/appointments/queries";
-import { formatTenantLocalDateTime, formatTenantLocalTime } from "@/lib/modules/appointments/timezone";
+import { formatTenantLocalDateTime, formatTenantLocalDateTimeDisplay, formatTenantLocalTime } from "@/lib/modules/appointments/timezone";
 import { STATUS_LABELS_TR, type AppointmentStatus } from "@/lib/modules/appointments/status";
 import { Badge } from "@/components/ui/badge";
 
@@ -42,8 +42,8 @@ export function AppointmentList({
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">
                   {sameLocalDay(appt.scheduledStartAt, appt.scheduledEndAt, tenantTimezone)
-                    ? `${formatTenantLocalDateTime(appt.scheduledStartAt, tenantTimezone)}–${formatTenantLocalTime(appt.scheduledEndAt, tenantTimezone)}`
-                    : `${formatTenantLocalDateTime(appt.scheduledStartAt, tenantTimezone)} → ${formatTenantLocalDateTime(appt.scheduledEndAt, tenantTimezone)}`}
+                    ? `${formatTenantLocalDateTimeDisplay(appt.scheduledStartAt, tenantTimezone)}–${formatTenantLocalTime(appt.scheduledEndAt, tenantTimezone)}`
+                    : `${formatTenantLocalDateTimeDisplay(appt.scheduledStartAt, tenantTimezone)} → ${formatTenantLocalDateTimeDisplay(appt.scheduledEndAt, tenantTimezone)}`}
                 </span>
                 <Badge variant={STATUS_BADGE_VARIANT[appt.status as AppointmentStatus] ?? "outline"}>
                   {STATUS_LABELS_TR[appt.status as AppointmentStatus] ?? appt.status}

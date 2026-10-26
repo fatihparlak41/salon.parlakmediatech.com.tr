@@ -139,8 +139,9 @@ export function rebookText(r: TreatmentRebook, today: string): { headline: strin
 }
 
 /** Link to the appointments page with the quick-rebook preselection; ids are validated again by the receiving page. */
-export function rebookHref(tenantSlug: string, d: RebookDefaults): string {
+export function rebookHref(tenantSlug: string, d: RebookDefaults, customerId?: string): string {
   const q = new URLSearchParams({ rebookService: d.serviceId });
+  if (customerId) q.set("rebookCustomer", customerId); // RC.1C: an id only; the receiving page looks the person up under the viewer's own access
   if (d.branchId) q.set("rebookBranch", d.branchId);
   if (d.staffId) q.set("rebookStaff", d.staffId);
   return `/app/${tenantSlug}/appointments?${q.toString()}`;
@@ -148,9 +149,9 @@ export function rebookHref(tenantSlug: string, d: RebookDefaults): string {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** The receiving side of rebookHref: only well-formed ids survive, anything else is dropped. */
-export function parseRebookParams(sp: Record<string, string | string[] | undefined>): { serviceId: string; branchId?: string; staffId?: string } | null {
+export function parseRebookParams(sp: Record<string, string | string[] | undefined>): { serviceId: string; branchId?: string; staffId?: string; customerId?: string } | null {
   const one = (k: string) => (typeof sp[k] === "string" && UUID_RE.test(sp[k] as string) ? (sp[k] as string) : undefined);
   const serviceId = one("rebookService");
   if (!serviceId) return null;
-  return { serviceId, branchId: one("rebookBranch"), staffId: one("rebookStaff") };
+  return { serviceId, branchId: one("rebookBranch"), staffId: one("rebookStaff"), customerId: one("rebookCustomer") };
 }
