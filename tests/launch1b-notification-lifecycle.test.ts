@@ -78,8 +78,10 @@ describe("CONFIRMATION", () => {
       [
         "appointmentStartAt", "attemptCount", "contactPhone", "greetingName", "jobId", "lockToken", "locationUrl",
         "notificationType", "recipientEmail", "salonName", "serviceNames", "staffNames", "tenantSlug", "tenantTimezone",
+        "preparationNote", // RC.1A: the one concise salon-authored preparation line (null here: this fixture's service has none)
       ].sort(),
     );
+    expect(job.preparationNote).toBeNull();
     const serialized = JSON.stringify(job);
     for (const secret of ["MÜŞTERİ-NOTU-GİZLİ-123", "RANDEVU-NOTU-GİZLİ-456", apt.appointmentId, apt.customerId, fxA.tenant.id, fxA.owner.id]) {
       expect(serialized).not.toContain(secret);
