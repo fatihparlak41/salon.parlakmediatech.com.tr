@@ -605,6 +605,135 @@ describe("AUTHORIZATION and PRIVACY", () => {
   });
 });
 
+describe("closeout: day boundaries, upcoming appointments, quick-rebook eligibility, object-level policies", () => {
+  it("'today' and the window states use the salon's own local date, whatever the UTC date is", async () => {
+    const f = await salon("tzs", await user("tzs-owner"), ["Eda"], [["Kaş Laminasyonu", 100, 28, 56]]);
+    const c = await customer(f, "Saat Dilimi");
+    await visit(f, c, await dayOffset(-35), [["Eda", "Kaş Laminasyonu"]], "completed");
+    for (const tz of ["Pacific/Kiritimati", "Pacific/Pago_Pago"]) {
+      await testDb`update tenants set timezone = ${tz} where id = ${f.t.id}`;
+      expect((await history(f, f.ownerId, c)).today, tz).toBe(await dayOffset(0, tz));
+    }
+  });
+
+  it("a past appointment that never happened is not an upcoming booking; another customer's upcoming booking is not this customer's", async () => {
+    const a = await customer(emel, "Gecmis Randevu");
+    await visit(emel, a, await dayOffset(-35), [["Emel Kaynakkan", "Kaş Laminasyonu"]], "completed");
+    await visit(emel, a, await dayOffset(-3), [["Emel Kaynakkan", "Kaş Laminasyonu"]], "scheduled"); // in the past, never completed
+    expect((await history(emel, owner.id, a)).items[0]!.rebook!.state).toBe("due");
+    const b = await customer(emel, "Baskasi");
+    await visit(emel, b, null, [["Emel Kaynakkan", "Kaş Laminasyonu"]], "scheduled");
+    expect((await history(emel, owner.id, a)).items[0]!.rebook!.state).toBe("due");
+    const c = await customer(emel, "Gelecek Teyit");
+    await visit(emel, c, await dayOffset(-35), [["Emel Kaynakkan", "Kaş Laminasyonu"]], "completed");
+    await visit(emel, c, null, [["Emel Kaynakkan", "Kaş Laminasyonu"]], "confirmed");
+    expect((await history(emel, owner.id, c)).items[0]!.rebook!.state).toBe("booked");
+  });
+
+  it("a service with no interval carries no rebook window at all", async () => {
+    const c = await customer(emel, "Aralik Yok");
+    await visit(emel, c, await dayOffset(-35), [["Emel Kaynakkan", "Kirpik Laminasyonu"]], "completed");
+    expect((await history(emel, owner.id, c)).items[0]!.rebook).toBeNull();
+  });
+
+  it("quick rebook: a person linked to another service or to another branch only is not offered; a foreign branch, service or person is never reused", async () => {
+    const c = await customer(gok, "Hizli Uygunluk");
+    const v = await visit(gok, c, await dayOffset(-2), [["Can", "Sakal"]], "completed");
+    const item = v.itemIds[0]!;
+    const defaults = () => asAuthenticatedUser(gok.ownerId, (sql) => sql<{ r: { branchId: string | null; staffId: string | null } }[]>`select public.get_treatment_rebook_defaults(${gok.t.id}, ${item}) as r`).then((r) => r[0]!.r);
+    expect((await defaults()).staffId).toBe(gok.staff["Can"]);
+    // linked to ANOTHER service only
+    await testDb`delete from staff_services where staff_member_id = ${gok.staff["Can"]!} and service_id = ${gok.svc["Sakal"]!}`;
+    expect((await defaults()).staffId).toBeNull();
+    await linkStaffService(gok.staff["Can"]!, gok.svc["Sakal"]!);
+    // linked to ANOTHER branch only
+    const branch2 = await createBranch(gok.t.id, "Ikinci");
+    await testDb`delete from staff_branches where staff_member_id = ${gok.staff["Can"]!}`;
+    await linkStaffBranch(gok.staff["Can"]!, branch2);
+    expect((await defaults()).staffId).toBeNull();
+    await testDb`delete from staff_branches where staff_member_id = ${gok.staff["Can"]!}`;
+    await linkStaffBranch(gok.staff["Can"]!, gok.branch);
+    expect((await defaults()).staffId).toBe(gok.staff["Can"]);
+    // foreign ids wearing this tenant's rows (constraints off for the corruption only)
+    await testDb.begin(async (tx) => {
+      await tx`set local session_replication_role = replica`;
+      await tx`update appointment_items set actual_staff_member_id = ${other.staff["Baska Kisi"]!} where id = ${item}`;
+    });
+    expect((await defaults()).staffId).toBeNull();
+    await testDb.begin(async (tx) => {
+      await tx`set local session_replication_role = replica`;
+      await tx`update appointment_items set actual_staff_member_id = ${gok.staff["Can"]!} where id = ${item}`;
+    });
+    const [ap] = await testDb<{ id: string; branch_id: string }[]>`select ap.id, ap.branch_id from appointments ap join appointment_items ai on ai.appointment_id = ap.id where ai.id = ${item}`;
+    const [foreignBranch] = await testDb<{ id: string }[]>`select id from branches where tenant_id = ${other.t.id} limit 1`;
+    await testDb.begin(async (tx) => {
+      await tx`set local session_replication_role = replica`;
+      await tx`update appointments set branch_id = ${foreignBranch!.id} where id = ${ap!.id}`;
+    });
+    expect((await defaults()).branchId).toBeNull();
+    await testDb.begin(async (tx) => {
+      await tx`set local session_replication_role = replica`;
+      await tx`update appointments set branch_id = ${ap!.branch_id} where id = ${ap!.id}`;
+    });
+    await testDb.begin(async (tx) => {
+      await tx`set local session_replication_role = replica`;
+      await tx`update appointment_items set service_id = ${other.svc["Kas Laminasyonu"]!} where id = ${item}`;
+    });
+    expect(await attemptAs(gok.ownerId, (sql) => sql`select public.get_treatment_rebook_defaults(${gok.t.id}, ${item})`)).toMatchObject({ ok: false, code: "BH003" });
+    await testDb.begin(async (tx) => {
+      await tx`set local session_replication_role = replica`;
+      await tx`update appointment_items set service_id = ${gok.svc["Sakal"]!} where id = ${item}`;
+    });
+    expect((await defaults()).staffId).toBe(gok.staff["Can"]);
+  });
+
+  it("a second confirm changes nothing and is not audited twice", async () => {
+    const c = await customer(emel, "Cift Onay");
+    const v = await visit(emel, c, await dayOffset(-8), [["Emel Kaynakkan", "Kaş Alımı"]], "completed");
+    const r = await register(emel, owner.id, v.itemIds[0]!);
+    await putObject(r.path);
+    await confirm(emel, owner.id, r.mediaId);
+    const before = (await auditRows(emel.t.id, "treatment.photo_confirmed")).length;
+    await confirm(emel, owner.id, r.mediaId);
+    expect((await auditRows(emel.t.id, "treatment.photo_confirmed")).length).toBe(before);
+  });
+
+  it("object level: nothing is readable once the customer is deleted or the appointment is no longer completed; a ready path accepts no second upload; another bucket's same name is not exposed", async () => {
+    const c = await customer(emel, "Nesne Duzeyi");
+    const v = await visit(emel, c, await dayOffset(-9), [["Emel Kaynakkan", "Kaş Alımı"]], "completed");
+    const p = await readyPhoto(emel, v.itemIds[0]!);
+    const visible = (name: string, bucket = "treatment-media") =>
+      asAuthenticatedUser(owner.id, (sql) => sql<{ n: string }[]>`select count(*)::text as n from storage.objects where bucket_id = ${bucket} and name = ${name}`).then((r) => r[0]!.n);
+    expect(await visible(p.path)).toBe("1");
+    await testDb`update customers set deleted_at = now() where id = ${c.id}`;
+    expect(await visible(p.path)).toBe("0");
+    await testDb`update customers set deleted_at = null where id = ${c.id}`;
+    await testDb`update appointments set status = 'cancelled' where id = ${v.id}`;
+    expect(await visible(p.path)).toBe("0");
+    await testDb`update appointments set status = 'completed' where id = ${v.id}`;
+    expect(await visible(p.path)).toBe("1");
+    expect(await attemptAs(owner.id, (sql) => sql`insert into storage.objects (bucket_id, name, metadata) values ('treatment-media', ${p.path}, '{}'::jsonb)`)).toMatchObject({ ok: false });
+    await testDb`insert into storage.buckets (id, name, public) values ('misc-bucket', 'misc-bucket', false) on conflict do nothing`;
+    await testDb`insert into storage.objects (bucket_id, name, metadata) values ('misc-bucket', ${p.path}, '{}'::jsonb)`;
+    expect(await visible(p.path, "misc-bucket")).toBe("0");
+    expect(await attemptAs(owner.id, (sql) => sql`insert into storage.objects (bucket_id, name, metadata) values ('misc-bucket', ${emel.t.id + "/" + crypto.randomUUID() + ".jpg"}, '{}'::jsonb)`)).toMatchObject({ ok: false });
+  });
+
+  it("upload is refused once the registrant lost customers.update; deletion by a role without it is refused at the object level", async () => {
+    const temp = await user("temp-role");
+    const roleId = await createCustomRole(emel.t.id, "Gecici Foto", ["customers.update", "customers.view"]);
+    await addMembership(emel.t.id, temp.id, roleId);
+    const c = await customer(emel, "Rol Degisimi");
+    const v = await visit(emel, c, await dayOffset(-11), [["Emel Kaynakkan", "Kaş Alımı"]], "completed");
+    const r = await register(emel, temp.id, v.itemIds[0]!);
+    await testDb`delete from role_permissions where role_id = ${roleId} and permission_id = (select id from permissions where key = 'customers.update')`;
+    expect(await attemptAs(temp.id, (sql) => sql`insert into storage.objects (bucket_id, name, metadata) values ('treatment-media', ${r.path}, '{}'::jsonb)`)).toMatchObject({ ok: false });
+    const ready = await readyPhoto(emel, v.itemIds[0]!);
+    const gone = await asAuthenticatedUser(temp.id, (sql) => sql<{ name: string }[]>`delete from storage.objects where bucket_id = 'treatment-media' and name = ${ready.path} returning name`);
+    expect(gone).toEqual([]);
+  });
+});
+
 describe("TENANT ISOLATION in depth: corrupted ids cannot pull a foreign row into a history", () => {
   it("a foreign salon's service, staff or note wearing this tenant's ids is not shown (each tenant predicate alone)", async () => {
     const c = await customer(gok, "Izolasyon");
