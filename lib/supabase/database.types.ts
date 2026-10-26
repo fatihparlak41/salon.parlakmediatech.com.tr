@@ -1876,6 +1876,67 @@ export type Database = {
           },
         ]
       }
+      staff_commission_rules: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          effective_from: string
+          fixed_amount: number | null
+          id: string
+          kind: string
+          percentage: number | null
+          service_id: string
+          staff_member_id: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          effective_from: string
+          fixed_amount?: number | null
+          id?: string
+          kind: string
+          percentage?: number | null
+          service_id: string
+          staff_member_id: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          fixed_amount?: number | null
+          id?: string
+          kind?: string
+          percentage?: number | null
+          service_id?: string
+          staff_member_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_commission_rules_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_commission_rules_staff_fk"
+            columns: ["staff_member_id", "tenant_id"]
+            isOneToOne: false
+            referencedRelation: "staff_members"
+            referencedColumns: ["id", "tenant_id"]
+          },
+          {
+            foreignKeyName: "staff_commission_rules_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       staff_members: {
         Row: {
           color: string | null
@@ -2405,6 +2466,105 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      treatment_media: {
+        Row: {
+          appointment_item_id: string
+          confirmed_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          kind: string
+          mime_type: string
+          size_bytes: number
+          status: string
+          storage_path: string
+          tenant_id: string
+        }
+        Insert: {
+          appointment_item_id: string
+          confirmed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind: string
+          mime_type: string
+          size_bytes: number
+          status?: string
+          storage_path: string
+          tenant_id: string
+        }
+        Update: {
+          appointment_item_id?: string
+          confirmed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind?: string
+          mime_type?: string
+          size_bytes?: number
+          status?: string
+          storage_path?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treatment_media_appointment_item_id_fkey"
+            columns: ["appointment_item_id"]
+            isOneToOne: false
+            referencedRelation: "appointment_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "treatment_media_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      treatment_notes: {
+        Row: {
+          appointment_item_id: string
+          created_at: string
+          note: string
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          appointment_item_id: string
+          created_at?: string
+          note: string
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          appointment_item_id?: string
+          created_at?: string
+          note?: string
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treatment_notes_appointment_item_id_fkey"
+            columns: ["appointment_item_id"]
+            isOneToOne: true
+            referencedRelation: "appointment_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "treatment_notes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
