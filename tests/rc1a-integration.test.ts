@@ -281,6 +281,7 @@ describe("customer identity, history, treatment photos, rebooking (one customer 
       { row: 1, name: "Ice Aktarilan Bir", phone: "0542 800 90 10" },
       { row: 2, name: "Ice Aktarilan Bir", phone: "+90 542 800 90 10" }, // same person, written differently, in the same file
       { row: 3, name: "Sentetik Tedavi Musterisi", phone: "+905334445566" }, // an existing customer
+      { row: 4, name: "Ice Aktarilan Bir", phone: "90 542 800 90 10" }, // the 90-prefixed form of the same number
     ];
     const before = Number((await testDb<{ n: string }[]>`select count(*)::text as n from customers where tenant_id = ${emel.t.id}`)[0]!.n);
     const r = await asAuthenticatedUser(ownerE.id, (sql) => sql<{ c: { summary: { created: number; matchExisting: number } } }[]>`select public.commit_customer_import(${emel.t.id}, ${sql.json(rows as never)}) as c`).then((x) => x[0]!.c);
@@ -327,6 +328,28 @@ describe("finance and commission stay distinct (FIN.2A x COMM.1A)", () => {
     expect(JSON.stringify(o2)).not.toMatch(/commission|komisyon/i);
     expect(o2.services.completedAmount).toBe(2000);
     await testDb`delete from staff_commission_rules where tenant_id = ${emel.t.id}`;
+  });
+});
+
+describe("a checkout-edited price is one number for finance and for commission", () => {
+  it("the charged price (not the booking price) reaches the daily total and the commission, once each", async () => {
+    const c = await customer(emel.t.id, "Fiyat Duzenleme", "0544 900 10 20", null);
+    const day = await dayOffset(-4);
+    const v = await visit(emel, c, day, [[emel.staffId, emel.svc["Kaş Laminasyonu"]!]], "completed", "14:00");
+    const [sale] = await asAuthenticatedUser(ownerE.id, (sql) => sql<{ id: string }[]>`select * from public.get_or_create_appointment_sale(${v.id})`);
+    const [item] = await testDb<{ id: string }[]>`select id from appointment_sale_items where sale_id = ${sale!.id}`;
+    await asAuthenticatedUser(ownerE.id, (sql) => sql`select * from public.update_appointment_sale_pricing(${sale!.id}, ${sql.json([{ sale_item_id: item!.id, unit_price: 1500 }] as never)}, 0, 'RC test')`);
+    await asAuthenticatedUser(ownerE.id, (sql) => sql`select public.set_commission_rule(${emel.t.id}, ${emel.staffId}, ${emel.svc["Kaş Laminasyonu"]!}, 'percentage', 10, '2026-01-01'::date)`);
+    try {
+      const o = await asAuthenticatedUser(ownerE.id, (sql) => sql<{ o: { services: { completedAmount: number } } }[]>`select public.get_daily_owner_overview(${emel.t.id}, ${day}::date) as o`).then((r) => r[0]!.o);
+      const s = await asAuthenticatedUser(ownerE.id, (sql) => sql<{ s: { staff: { serviceAmount: number; commissionAmount: number }[] } }[]>`select public.get_staff_commission(${emel.t.id}, ${day}::date, ${day}::date) as s`).then((r) => r[0]!.s);
+      expect(o.services.completedAmount).toBe(1500);
+      expect(s.staff[0]).toMatchObject({ serviceAmount: 1500, commissionAmount: 150 });
+      const h = await asAuthenticatedUser(ownerE.id, (sql) => sql<{ h: { items: { value: string }[] } }[]>`select public.get_customer_treatment_history(${emel.t.id}, ${c}, 10) as h`).then((r) => r[0]!.h);
+      expect(h.items[0]!.value).toBe("1500.00"); // the Owner sees the same charged price in the history
+    } finally {
+      await testDb`delete from staff_commission_rules where tenant_id = ${emel.t.id}`;
+    }
   });
 });
 

@@ -158,6 +158,17 @@ describe("service Server Actions", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("RC.1A one model: create and update write the re-booking window together with the experience columns", async () => {
+    await createServiceAction(null, { tenantId: T, tenantSlug: "x", name: "Kaş Laminasyonu", durationMinutes: 30, price: "2000", branchIds: [], pricePublic: true, rebookMinDays: 28, rebookMaxDays: 56 });
+    expect(calls[0]!.payload).toMatchObject({ price_public: true, rebook_min_days: 28, rebook_max_days: 56 });
+    calls.length = 0;
+    await updateServiceProfileAction(null, { tenantSlug: "x", serviceId: S, name: "Kaş Laminasyonu", durationMinutes: 30, price: "2000", rebookMinDays: 21, rebookMaxDays: null });
+    expect(calls[0]!.payload).toMatchObject({ rebook_min_days: 21, rebook_max_days: null });
+    calls.length = 0;
+    await updateServiceProfileAction(null, { tenantSlug: "x", serviceId: S, name: "Kaş Laminasyonu", durationMinutes: 30, price: "2000" });
+    expect(calls[0]!.payload).not.toHaveProperty("rebook_min_days");
+  });
+
   it("create: no experience fields at all -> the insert carries none of them (existing callers are untouched)", async () => {
     await createServiceAction(null, { tenantId: T, tenantSlug: "x", name: "Saç Kesimi", durationMinutes: 45, price: "500", branchIds: [] });
     const keys = Object.keys(calls[0]!.payload!);
