@@ -673,7 +673,7 @@ export function BookingWizard({
 
       {step !== "success" && (
         <div className="mt-1 flex items-center justify-between">
-          {stepOrder.indexOf(step) > 0 ? (
+          {stepOrder.indexOf(step) > 0 || step === "info" ? (
             <Button type="button" variant="ghost" size="sm" onClick={goBack}>
               {labels.back}
             </Button>

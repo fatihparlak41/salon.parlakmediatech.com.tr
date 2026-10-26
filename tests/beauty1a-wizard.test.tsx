@@ -218,6 +218,19 @@ describe("progressive information and the unchanged simple flow", () => {
   });
 });
 
+describe("the information step has a way back to the service list (found by the RC.1A phone check)", () => {
+  it("a direct service with information and an inquiry service both offer back, which returns to the list - not to the home page", async () => {
+    renderWizard();
+    for (const name of ["Kaş Laminasyonu", "Gelin / Nişan / Kına Makyajı"]) {
+      fireEvent.click(card(name));
+      await screen.findByTestId("service-info");
+      expect(screen.queryByText("backHome")).toBeNull();
+      fireEvent.click(screen.getByText("back"));
+      expect(await screen.findByText("chooseServiceTitle")).toBeTruthy();
+    }
+  });
+});
+
 describe("stale state and panel contents", () => {
   it("the staff fetch always asks for the service just chosen, even after a previous choice", async () => {
     fetchEligible.mockResolvedValue([{ id: "a", fullName: "A" }, { id: "b", fullName: "B" }]);

@@ -25,7 +25,7 @@ export function ServiceExperienceFields({
   const set = (patch: Partial<ExperienceForm>) => onChange({ ...value, ...patch });
   const inquiry = value.pricingMode === "inquiry";
   return (
-    <fieldset className="flex flex-col gap-3 rounded-lg border p-3" disabled={disabled}>
+    <fieldset className="flex min-w-0 flex-col gap-3 rounded-lg border p-3" disabled={disabled}>
       <legend className="px-1 text-sm font-medium">Online randevu sayfasında görünür</legend>
 
       <div className="flex flex-col gap-1.5">
