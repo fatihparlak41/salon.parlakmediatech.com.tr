@@ -170,3 +170,29 @@ no grant on an existing object, no data.
   switch or the profile. Probe candidates sit on the same 15-minute grid, counted from midnight, as the public slot picker.
   This function is the authoritative readiness definition; the older panel "Attention" card is known P1 tech debt and no
   second definition may be added.
+
+## Customer appointment notifications — the lifecycle (Faz LAUNCH.1B)
+
+`20261023090000_customer_notification_lifecycle.sql` extends the NOTIF.1A/1B outbox; it does not add a second one.
+
+- **Four types** (`appointment_confirmation`, `appointment_update`, `appointment_cancellation`,
+  `appointment_reminder_24h`), each an independent per-salon switch in `private.customer_notification_activation`.
+  No row = OFF, for every salon, including every existing one. The Owner (`settings.manage`, which the locked default
+  roles give to the Owner only) flips them through `get_/set_customer_notification_setting` and reads a PII-free
+  `get_customer_notification_health`; each real change writes an audit event. These three RPCs are `authenticated` only
+  (never anon, never service_role) and are pinned era-aware in `tests/security-grants-regression.test.ts`.
+- **Dedupe**: the key is now (appointment, type, channel, `dedupe_revision`). Confirmation and cancellation stay at
+  revision 0. An update takes the next revision per change (changes made while one is still queued are coalesced into it,
+  90 s debounce). A reminder's revision is the appointment start in epoch seconds: one reminder per appointment per start.
+- **Reminder rule** (`private.materialize_customer_reminders`, run at the start of every claim, instant arithmetic only, so
+  the salon timezone only matters for how the time is WRITTEN): created when the start - 24 h moment has arrived and is at
+  most 3 hours old, the appointment is confirmed, a recipient exists, the switch is ON, and the last schedule change
+  (`private.appointment_schedule_anchor.set_at`) happened BEFORE that moment. An appointment booked or moved less than
+  24 h before its start therefore never gets a "tomorrow" reminder; a missed window is skipped, not sent late.
+- **Claim-time re-validation** for every type against current state (switch still ON, tenant active, recipient,
+  confirmed / cancelled as the type requires, still in the future, reminder start unchanged and inside its window, job not
+  older than 48 h). A switched-off tenant's queued jobs are simply not handed out; history is kept.
+- **Recipient snapshots** are now also captured for staff-created appointments (the customer record's address at creation,
+  immutable), only while a switch is ON, and live until the appointment ended plus the retention window.
+- Release order: migration first, application second. Rollback: `LAUNCH-1B-ROLLBACK.sql` (reference, proven on a scratch
+  database to restore main's catalog exactly; it deletes only the new notification types' rows).

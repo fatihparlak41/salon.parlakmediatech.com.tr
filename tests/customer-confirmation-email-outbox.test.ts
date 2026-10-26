@@ -149,14 +149,21 @@ describe("A. trigger — exactly one job, only for a public booking's first conf
     expect(after[0]!.status).toBe("pending");
   });
 
-  it("4. an appointment that did not come from the public booking flow never gets a job", async () => {
-    // 'internal' is what staff-created appointments carry; the others are
-    // the values a walk-in / imported / legacy row might have.
+  it("4. LAUNCH.1B: a staff-created appointment is treated like any other — its customer's address was snapshotted at creation, so its confirmation is one pending job", async () => {
+    // Before LAUNCH.1B only the public booking flow produced a job. Now the first
+    // scheduled -> confirmed of ANY appointment does, provided a recipient exists:
+    // 'internal' is what staff-created appointments carry; the others are the
+    // values a walk-in / imported / legacy row might have.
     for (const source of ["internal", "salon_staff", "walk_in", "phone", null]) {
       const appointmentId = await insertAppointmentWithSource(fxA, source, nextDay());
       await confirmAs(fxA.owner.id, appointmentId);
       expect(await appointmentStatus(appointmentId), String(source)).toBe("confirmed");
-      expect(await jobsForAppointment(appointmentId), String(source)).toHaveLength(0);
+      expect(await contactForAppointment(appointmentId), String(source)).toMatchObject({
+        recipient_email: "kaynak.testi@example.test",
+      });
+      const jobs = await jobsForAppointment(appointmentId);
+      expect(jobs, String(source)).toHaveLength(1);
+      expect(jobs[0], String(source)).toMatchObject({ notification_type: "appointment_confirmation", status: "pending" });
     }
   });
 
@@ -219,7 +226,7 @@ describe("A. trigger — exactly one job, only for a public booking's first conf
     expect(await jobsForAppointment(booking.appointmentId)).toHaveLength(0);
   });
 
-  it("6e. the trigger is exactly the documented one: AFTER UPDATE OF status, scheduled -> confirmed, public_booking only", async () => {
+  it("6e. the trigger is exactly the documented one: AFTER UPDATE OF status, scheduled -> confirmed, any source (LAUNCH.1B)", async () => {
     const [row] = await testDb<{ def: string }[]>`
       select pg_get_triggerdef(t.oid) as def
       from pg_trigger t
@@ -229,7 +236,7 @@ describe("A. trigger — exactly one job, only for a public booking's first conf
     expect(row!.def).toContain("AFTER UPDATE OF status ON public.appointments");
     expect(row!.def).toContain("old.status = 'scheduled'");
     expect(row!.def).toContain("new.status = 'confirmed'");
-    expect(row!.def).toContain("new.source = 'public_booking'");
+    expect(row!.def).not.toContain("source");
     // the function sends nothing: no network-capable call is even possible from it
     const [fn] = await testDb<{ src: string }[]>`
       select prosrc as src from pg_proc where oid = 'private.enqueue_customer_confirmation_email()'::regprocedure
@@ -719,18 +726,32 @@ describe("retention — recipient snapshots do not outlive their purpose", () =>
     return row!.n;
   };
 
-  it("deletes the snapshot of a long-finished job, keeps a recent one and a still-queued one", async () => {
+  // LAUNCH.1B: a snapshot now lives until the APPOINTMENT is over (a 24 h reminder for a
+  // far-future booking must still find its recipient), plus the retention window, and
+  // never while a job is still active.
+  async function endLongAgo(appointmentId: string, days = 61) {
+    await testDb`
+      update appointments
+      set scheduled_start_at = now() - make_interval(days => ${days}),
+          scheduled_end_at = now() - make_interval(days => ${days}) + interval '30 minutes'
+      where id = ${appointmentId}
+    `;
+  }
+
+  it("deletes the snapshot of an appointment that ended long ago; keeps an upcoming one (even with an old finished job) and one with a still-queued job", async () => {
     const old = await bookPublicly(fxA, { dayOffset: nextDay() });
-    const recent = await bookPublicly(fxA, { dayOffset: nextDay() });
+    const upcoming = await bookPublicly(fxA, { dayOffset: nextDay() });
     const queued = await bookPublicly(fxA, { dayOffset: nextDay() });
+    await endLongAgo(old.appointmentId);
+    await endLongAgo(queued.appointmentId);
     await insertJob(old.appointmentId, fxA.tenant.id, "sent", 45);
-    await insertJob(recent.appointmentId, fxA.tenant.id, "sent", 2);
+    await insertJob(upcoming.appointmentId, fxA.tenant.id, "sent", 45);
     await insertJob(queued.appointmentId, fxA.tenant.id, "pending", 45);
 
     await purge();
 
     expect(await contactForAppointment(old.appointmentId)).toBeUndefined();
-    expect(await contactForAppointment(recent.appointmentId)).toBeDefined();
+    expect(await contactForAppointment(upcoming.appointmentId)).toBeDefined();
     expect(await contactForAppointment(queued.appointmentId)).toBeDefined();
     // the job row itself (no PII) stays as the audit trail
     expect(await jobsForAppointment(old.appointmentId)).toHaveLength(1);
@@ -752,6 +773,8 @@ describe("retention — recipient snapshots do not outlive their purpose", () =>
   it("is bounded per call and validates its arguments", async () => {
     const a = await bookPublicly(fxA, { dayOffset: nextDay() });
     const b = await bookPublicly(fxA, { dayOffset: nextDay() });
+    await endLongAgo(a.appointmentId, 90);
+    await endLongAgo(b.appointmentId, 90);
     await insertJob(a.appointmentId, fxA.tenant.id, "sent", 90);
     await insertJob(b.appointmentId, fxA.tenant.id, "sent", 90);
     expect(await purge(30, 1)).toBe(1);
@@ -765,6 +788,7 @@ describe("retention — recipient snapshots do not outlive their purpose", () =>
     const booking = await bookPublicly(fxC, { dayOffset: nextDay() }); // fxC is not activated: no snapshot yet
     expect(await contactForAppointment(booking.appointmentId)).toBeUndefined();
     await insertContact(booking.appointmentId, fxC.tenant.id);
+    await endLongAgo(booking.appointmentId);
     await insertJob(booking.appointmentId, fxC.tenant.id, "skipped", 60);
     await purge();
     expect(await contactForAppointment(booking.appointmentId)).toBeUndefined();

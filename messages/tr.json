@@ -932,6 +932,31 @@
       "heading": "Online Randevu",
       "description": "Müşteriler internet üzerinden randevu oluşturabilsin."
     },
+    "customerNotifications": {
+      "heading": "Müşteri Bildirimleri",
+      "description": "Randevusu olan müşterilerinize e-posta ile haber verin. Her bildirim ayrı ayrı açılıp kapatılır; kapalı olan hiçbir e-posta göndermez. Yalnızca e-posta adresi bilinen müşterilere gönderilir.",
+      "saved": "Kaydedildi.",
+      "appointment_confirmation": {
+        "label": "Randevu onay e-postası",
+        "hint": "Randevu onaylandığında müşteriye gönderilir."
+      },
+      "appointment_update": {
+        "label": "Değişiklik e-postası",
+        "hint": "Onaylanmış bir randevunun tarihi, saati, hizmeti veya personeli değişince gönderilir."
+      },
+      "appointment_cancellation": {
+        "label": "İptal e-postası",
+        "hint": "Randevu iptal edildiğinde gönderilir."
+      },
+      "appointment_reminder_24h": {
+        "label": "24 saat hatırlatma",
+        "hint": "Randevudan 24 saat önce gönderilir. Randevudan daha kısa süre önce alınan veya değiştirilen randevular için hatırlatma gönderilmez."
+      },
+      "health": {
+        "ok": "Son {days} günde {sent} e-posta gönderildi, sorun yok.",
+        "problems": "Son {days} günde {count} e-posta gönderilemedi veya teslimi doğrulanamadı."
+      }
+    },
     "selfService": {
       "heading": "Müşteri Self-Servis",
       "description": "Müşterilerin /account üzerinden kendi randevularını yönetmesine izin verin.",

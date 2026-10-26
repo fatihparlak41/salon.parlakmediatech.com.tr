@@ -359,21 +359,32 @@ const FIN_2A_AUTHENTICATED_FUNCTIONS = ["public.get_daily_owner_overview"];
 // Faz COMM.1A (migration 20261027090000) is a schema ERA too. Sentinel = the commission summary. Four client-facing RPCs for
 // `authenticated` ONLY (never anon, never service_role); each re-checks finance.view / finance.manage for the given tenant inside.
 const COMM_1A_AUTHENTICATED_FUNCTIONS = ["public.get_staff_commission", "public.get_staff_commission_detail", "public.list_commission_rules", "public.set_commission_rule"];
+// Faz LAUNCH.1B (migration 20261023090000) is a schema ERA in the same sense: PROD carries it
+// only after the Owner releases it, DEV never will. Sentinel = the owner's settings RPC. Three
+// client-facing RPCs for `authenticated` ONLY (never anon, never service_role): read the four
+// customer-notification switches, set one, read the PII-free delivery health. Each re-checks
+// settings.manage inside. No service_role function is added (the worker RPCs are unchanged).
+const LAUNCH_1B_AUTHENTICATED_FUNCTIONS = [
+  "public.get_customer_notification_settings",
+  "public.set_customer_notification_setting",
+  "public.get_customer_notification_health",
+];
 
 // The fully locked-down finance ledgers: RLS on, zero policies, no privilege at
 // all for any API role. Checked only for the eras that exist.
 const FIN_1A_LOCKED_DOWN_TABLES = ["appointment_sales", "appointment_sale_items", "payments"];
 const FIN_1B1_LOCKED_DOWN_TABLES = ["expense_categories", "expenses", "expense_payments"];
 
-async function readFinanceEra(): Promise<{ fin1a: boolean; fin1b1: boolean; launch1c: boolean; cust1a: boolean; fin2a: boolean; comm1a: boolean; beauty1b: boolean }> {
-  const [row] = await testDb<{ fin1a: boolean; fin1b1: boolean; launch1c: boolean; cust1a: boolean; fin2a: boolean; comm1a: boolean; beauty1b: boolean }[]>`
+async function readFinanceEra(): Promise<{ fin1a: boolean; fin1b1: boolean; launch1c: boolean; cust1a: boolean; fin2a: boolean; comm1a: boolean; beauty1b: boolean; launch1b: boolean }> {
+  const [row] = await testDb<{ fin1a: boolean; fin1b1: boolean; launch1c: boolean; cust1a: boolean; fin2a: boolean; comm1a: boolean; beauty1b: boolean; launch1b: boolean }[]>`
     select to_regclass('public.appointment_sales') is not null as fin1a,
            to_regclass('public.expenses') is not null as fin1b1,
            to_regprocedure('public.get_onboarding_status(uuid)') is not null as launch1c,
            to_regprocedure('public.get_customer_history(uuid,integer)') is not null as cust1a,
            to_regprocedure('public.get_daily_owner_overview(uuid,date)') is not null as fin2a,
            to_regprocedure('public.get_staff_commission(uuid,date,date)') is not null as comm1a,
-           to_regclass('public.treatment_media') is not null as beauty1b`;
+           to_regclass('public.treatment_media') is not null as beauty1b,
+           to_regprocedure('public.get_customer_notification_settings(uuid)') is not null as launch1b`;
   return row!;
 }
 
@@ -735,6 +746,7 @@ describe("security grants regression", () => {
       ...(era.fin2a ? FIN_2A_AUTHENTICATED_FUNCTIONS : []),
       ...(era.comm1a ? COMM_1A_AUTHENTICATED_FUNCTIONS : []),
       ...(era.beauty1b ? BEAUTY_1B_AUTHENTICATED_FUNCTIONS : []),
+      ...(era.launch1b ? LAUNCH_1B_AUTHENTICATED_FUNCTIONS : []),
     ];
 
     const actual = new Set(
