@@ -9,6 +9,7 @@ type Call = { op: string; args: unknown[] };
 const calls: Call[] = [];
 let rpcResults: Record<string, { data?: unknown; error?: { code?: string; message: string } | null }> = {};
 let uploadResult: { error: { message: string } | null } = { error: null };
+let removeResult: { error: { message: string } | null } = { error: null };
 let signResult: { data: { signedUrl: string } | null; error: { message: string } | null } = { data: { signedUrl: "https://signed.example/x?token=t" }, error: null };
 
 const fake = {
@@ -24,7 +25,7 @@ const fake = {
       },
       remove: async (paths: string[]) => {
         calls.push({ op: "remove", args: [bucket, paths] });
-        return { error: null };
+        return removeResult;
       },
       createSignedUrl: async (path: string, seconds: number) => {
         calls.push({ op: "sign", args: [bucket, path, seconds] });
@@ -56,6 +57,7 @@ beforeEach(() => {
   calls.length = 0;
   rpcResults = {};
   uploadResult = { error: null };
+  removeResult = { error: null };
   signResult = { data: { signedUrl: "https://signed.example/x?token=t" }, error: null };
 });
 
@@ -199,30 +201,42 @@ describe("upload: register -> upload -> confirm, and it cleans up after itself",
     const a = await uploadTreatmentPhoto({ tenantId: T, itemId: I, kind: "before", file: file("image/png", 10) });
     expect(a.ok).toBe(false);
     expect(JSON.stringify(a)).not.toContain("storage down");
-    expect(calls.map((c) => c.op)).toEqual(["rpc:register_treatment_photo", "upload", "rpc:delete_treatment_photo", "remove"]);
+    expect(calls.map((c) => c.op)).toEqual(["rpc:register_treatment_photo", "upload", "remove", "rpc:delete_treatment_photo"]);
     calls.length = 0;
     uploadResult = { error: null };
     rpcResults.confirm_treatment_photo = { data: null, error: { code: "BH006", message: "x" } };
     const b = await uploadTreatmentPhoto({ tenantId: T, itemId: I, kind: "before", file: file("image/png", 10) });
     expect(b).toEqual({ ok: false, message: "Fotoğraf yüklenemedi, lütfen tekrar deneyin" });
-    expect(calls.map((c) => c.op)).toEqual(["rpc:register_treatment_photo", "upload", "rpc:confirm_treatment_photo", "rpc:delete_treatment_photo", "remove"]);
+    expect(calls.map((c) => c.op)).toEqual(["rpc:register_treatment_photo", "upload", "rpc:confirm_treatment_photo", "remove", "rpc:delete_treatment_photo"]);
   });
 
-  it("delete: the database row first (access ends at once), then the object", async () => {
-    rpcResults.delete_treatment_photo = { data: { path: `${T}/${M}.jpg` } };
+  it("delete: the authorised path, the stored object (while the row still lets the caller see it), then the row that ends all access", async () => {
+    rpcResults.get_treatment_photo_access = { data: { path: `${T}/${M}.jpg`, mime: "image/jpeg", kind: "before" } };
     expect(await deleteTreatmentPhoto(T, M)).toBeNull();
-    expect(calls.map((c) => c.op)).toEqual(["rpc:delete_treatment_photo", "remove"]);
+    expect(calls.map((c) => c.op)).toEqual(["rpc:get_treatment_photo_access", "remove", "rpc:delete_treatment_photo"]);
     expect(calls[1]!.args).toEqual(["treatment-media", [`${T}/${M}.jpg`]]);
-    calls.length = 0;
-    rpcResults.delete_treatment_photo = { data: null, error: { code: "BH002", message: "x" } };
-    expect(await deleteTreatmentPhoto(T, M)).toBe("Bu işlem için yetkiniz yok");
-    expect(calls.map((c) => c.op)).toEqual(["rpc:delete_treatment_photo"]);
+    expect(calls[2]!.args[0]).toEqual({ p_tenant_id: T, p_media_id: M });
   });
 
-  it("a delete the database refused never touches the stored object, even if an answer carried a path", async () => {
-    rpcResults.delete_treatment_photo = { data: { path: `${T}/${M}.jpg` }, error: { code: "BH002", message: "x" } };
+  it("delete: a refused authorisation, a failed object removal or a refused row delete is reported in plain words and stops the sequence", async () => {
+    rpcResults.get_treatment_photo_access = { data: null, error: { code: "BH002", message: "x" } };
     expect(await deleteTreatmentPhoto(T, M)).toBe("Bu işlem için yetkiniz yok");
-    expect(calls.map((c) => c.op)).toEqual(["rpc:delete_treatment_photo"]);
+    expect(calls.map((c) => c.op)).toEqual(["rpc:get_treatment_photo_access"]);
+    calls.length = 0;
+    rpcResults.get_treatment_photo_access = { data: { path: `${T}/${M}.jpg`, mime: "image/jpeg", kind: "before" } };
+    removeResult = { error: { message: "storage down - internal" } };
+    const r = await deleteTreatmentPhoto(T, M);
+    expect(r).toBe("Fotoğraf yüklenemedi, lütfen tekrar deneyin");
+    expect(r).not.toContain("storage down");
+    expect(calls.map((c) => c.op)).toEqual(["rpc:get_treatment_photo_access", "remove"]); // the row is kept: nothing was lost
+    calls.length = 0;
+    removeResult = { error: null };
+    rpcResults.delete_treatment_photo = { data: null, error: { code: "BH003", message: "x" } };
+    expect(await deleteTreatmentPhoto(T, M)).toBe("Kayıt bulunamadı");
+    rpcResults.get_treatment_photo_access = { data: { path: "a.html", mime: "text/html" } };
+    calls.length = 0;
+    expect(await deleteTreatmentPhoto(T, M)).toBe("Kayıt bulunamadı");
+    expect(calls.map((c) => c.op)).toEqual(["rpc:get_treatment_photo_access"]);
   });
 
   it("a photo URL is a 60-second signed URL created only after the database authorised the row; a refusal gives none", async () => {

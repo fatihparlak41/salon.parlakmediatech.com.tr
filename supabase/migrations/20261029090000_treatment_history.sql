@@ -463,11 +463,16 @@ create or replace function private.treatment_object_readable(p_name text)
  security definer
  set search_path to ''
 as $function$
+  -- a confirmed photo: those who may read the history. A still-pending object: only the person who registered it (so that a failed
+  -- upload can be cleaned up - a storage DELETE needs SELECT visibility of the row it removes).
   select p_name ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}\.(jpg|png|webp)$' and exists (
     select 1 from public.treatment_media m
-    where m.storage_path = p_name and m.status = 'ready'
-      and private.has_permission(m.tenant_id, 'customers.view') and private.has_permission(m.tenant_id, 'appointments.view')
+    where m.storage_path = p_name
       and private.treatment_item_exists(m.tenant_id, m.appointment_item_id)
+      and (
+        (m.status = 'ready' and private.has_permission(m.tenant_id, 'customers.view') and private.has_permission(m.tenant_id, 'appointments.view'))
+        or (m.status = 'pending' and m.created_by = auth.uid() and private.has_permission(m.tenant_id, 'customers.update'))
+      )
   );
 $function$;
 

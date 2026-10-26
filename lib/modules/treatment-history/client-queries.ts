@@ -73,9 +73,10 @@ export async function uploadTreatmentPhoto(args: { tenantId: string; itemId: str
   if (reg.error || !reg.data) return { ok: false, message: treatmentErrorMessage(reg.error?.code) };
   const { mediaId, path } = reg.data as unknown as { mediaId: string; path: string };
 
+  // the object first (a storage delete needs the metadata row to still exist), then the registration
   const undo = async () => {
-    await supabase.rpc("delete_treatment_photo", { p_tenant_id: args.tenantId, p_media_id: mediaId });
     await supabase.storage.from(TREATMENT_BUCKET).remove([path]);
+    await supabase.rpc("delete_treatment_photo", { p_tenant_id: args.tenantId, p_media_id: mediaId });
   };
 
   const up = await supabase.storage.from(TREATMENT_BUCKET).upload(path, args.file, { contentType: args.file.type, upsert: false });
@@ -91,12 +92,19 @@ export async function uploadTreatmentPhoto(args: { tenantId: string; itemId: str
   return { ok: true };
 }
 
-/** The database row goes first (the photo is unavailable at once); the stored object is then removed on a best-effort basis. */
+/**
+ * The stored object goes first, while its metadata row still lets the caller see it (a storage delete only removes rows the caller
+ * can select); a failure there stops everything and nothing changes. Then the database row is deleted, which is what ends all
+ * access to the photo at once.
+ */
 export async function deleteTreatmentPhoto(tenantId: string, mediaId: string): Promise<string | null> {
   const supabase = createClient();
-  const { data, error } = await supabase.rpc("delete_treatment_photo", { p_tenant_id: tenantId, p_media_id: mediaId });
-  if (error) return treatmentErrorMessage(error.code);
-  const path = (data as unknown as { path?: string } | null)?.path;
-  if (path) await supabase.storage.from(TREATMENT_BUCKET).remove([path]);
-  return null;
+  const access = await supabase.rpc("get_treatment_photo_access", { p_tenant_id: tenantId, p_media_id: mediaId });
+  if (access.error) return treatmentErrorMessage(access.error.code);
+  const parsed = parsePhotoAccess(access.data);
+  if (!parsed) return treatmentErrorMessage("BH003");
+  const removed = await supabase.storage.from(TREATMENT_BUCKET).remove([parsed.path]);
+  if (removed.error) return treatmentErrorMessage("BH006");
+  const { error } = await supabase.rpc("delete_treatment_photo", { p_tenant_id: tenantId, p_media_id: mediaId });
+  return error ? treatmentErrorMessage(error.code) : null;
 }

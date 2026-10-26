@@ -478,14 +478,30 @@ describe("STORAGE POLICIES (private bucket): the same rules at the object level"
     await expect(asDatabaseRole("anon", null, (sql) => sql`select name from storage.objects where bucket_id = 'treatment-media'`)).resolves.toEqual([]);
   });
 
-  it("an unconfirmed object is not readable; after the row is deleted the object is unreadable even though it still exists", async () => {
-    expect(await visible(owner.id, pending.path)).toBe("0");
+  it("an unconfirmed object is visible only to the person who registered it; after the row is deleted the object is unreadable even though it still exists", async () => {
+    expect(await visible(owner.id, pending.path)).toBe("1"); // the registrant (needed to clean up a failed upload)
+    expect(await visible(manager.id, pending.path)).toBe("0");
+    expect(await visible(receptionist.id, pending.path)).toBe("0");
     const r = await readyPhoto(emel, item);
     expect(await visible(owner.id, r.path)).toBe("1");
     await asAuthenticatedUser(owner.id, (sql) => sql`select public.delete_treatment_photo(${emel.t.id}, ${r.mediaId})`);
     const [o] = await testDb<{ n: string }[]>`select count(*)::text as n from storage.objects where name = ${r.path}`;
     expect(o!.n).toBe("1");
     expect(await visible(owner.id, r.path)).toBe("0");
+  });
+
+  it("removal order: an object can be removed while its row exists (pending by the registrant, ready by a deleter); once the row is gone nothing is left to remove through the API", async () => {
+    const reg = await register(emel, owner.id, item, "other");
+    await putObject(reg.path);
+    const remove = (userId: string, path: string) =>
+      asAuthenticatedUser(userId, (sql) => sql<{ name: string }[]>`delete from storage.objects where bucket_id = 'treatment-media' and name = ${path} returning name`);
+    expect(await remove(manager.id, reg.path)).toEqual([]); // not the registrant
+    expect(await remove(owner.id, reg.path)).toHaveLength(1);
+    const ready = await readyPhoto(emel, item);
+    expect(await remove(receptionist.id, ready.path)).toHaveLength(1);
+    const second = await readyPhoto(emel, item);
+    await asAuthenticatedUser(owner.id, (sql) => sql`select public.delete_treatment_photo(${emel.t.id}, ${second.mediaId})`);
+    expect(await remove(owner.id, second.path)).toEqual([]); // the row is gone: this is why the object is removed first
   });
 
   it("upload is allowed only to a registered pending path by the person who registered it", async () => {
@@ -901,6 +917,15 @@ describe("round two: permission edges, each tenant predicate alone, table checks
     await testDb`insert into storage.objects (bucket_id, name, metadata) values ('misc-bucket', ${ready.path}, '{}'::jsonb)`;
     const gone = await asAuthenticatedUser(owner.id, (sql) => sql<{ name: string }[]>`delete from storage.objects where bucket_id = 'misc-bucket' and name = ${ready.path} returning name`);
     expect(gone).toEqual([]);
+  });
+
+  it("confirming needs customers.update itself, not just being the registrant on record", async () => {
+    const c = await customer(emel, "Kayit Sahibi");
+    const v = await visit(emel, c, await dayOffset(-19), [["Emel Kaynakkan", "Kaş Alımı"]], "completed");
+    const r = await register(emel, owner.id, v.itemIds[0]!);
+    await putObject(r.path);
+    await testDb`update treatment_media set created_by = ${viewOnly.id} where id = ${r.mediaId}`; // a registrant who has since lost (or never had) customers.update
+    expect(await attemptAs(viewOnly.id, (sql) => sql`select public.confirm_treatment_photo(${emel.t.id}, ${r.mediaId})`)).toMatchObject({ ok: false, code: "BH002" });
   });
 
   it("the tables refuse bad rows on their own: blank note, bad type, huge size, unknown kind, free-form path; rebook upper bound", async () => {
