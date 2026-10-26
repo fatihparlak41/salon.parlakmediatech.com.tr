@@ -20,6 +20,8 @@ import type { ActionResult } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/client";
 import type { BranchOption } from "@/lib/modules/staff/queries";
 import type { ServiceDetail, StaffOption } from "@/lib/modules/services/queries";
+import { ServiceExperienceFields } from "@/components/services/service-experience-fields";
+import { experienceFormFromRow, experienceFormToInput } from "@/lib/modules/services/experience";
 import {
   updateServiceProfileAction,
   updateServiceStatusAction,
@@ -37,6 +39,8 @@ async function loadServiceDetail(serviceId: string): Promise<ServiceDetail | nul
     .from("services")
     .select(
       `id, name, category, description, duration_minutes, price, status,
+       pricing_mode, booking_mode, price_public, display_duration_min, display_duration_max,
+       public_summary, public_details, preparation_note, aftercare_note, important_note, badge_label,
        service_branches(branch_id), staff_services(staff_member_id)`,
     )
     .eq("id", serviceId)
@@ -52,6 +56,17 @@ async function loadServiceDetail(serviceId: string): Promise<ServiceDetail | nul
     durationMinutes: data.duration_minutes,
     price: String(data.price),
     status: data.status,
+    pricingMode: data.pricing_mode as ServiceDetail["pricingMode"],
+    bookingMode: data.booking_mode as ServiceDetail["bookingMode"],
+    pricePublic: data.price_public,
+    displayDurationMin: data.display_duration_min,
+    displayDurationMax: data.display_duration_max,
+    publicSummary: data.public_summary,
+    publicDetails: data.public_details,
+    preparationNote: data.preparation_note,
+    aftercareNote: data.aftercare_note,
+    importantNote: data.important_note,
+    badgeLabel: data.badge_label,
     branchIds: data.service_branches.map((b) => b.branch_id),
     staffMemberIds: data.staff_services.map((s) => s.staff_member_id),
   };
@@ -211,6 +226,7 @@ function ProfileTab({
   const [description, setDescription] = useState(detail.description ?? "");
   const [durationMinutes, setDurationMinutes] = useState(String(detail.durationMinutes));
   const [price, setPrice] = useState(detail.price);
+  const [experience, setExperience] = useState(() => experienceFormFromRow(detail));
 
   const [state, action, isPending] = useActionState(
     async (prevState: ActionResult<null> | null, input: UpdateServiceProfileInput) => {
@@ -304,9 +320,10 @@ function ProfileTab({
           <Input
             id="edit-service-price"
             inputMode="decimal"
-            value={price}
+            value={experience.pricingMode === "inquiry" ? "" : price}
             onChange={(e) => setPrice(e.target.value)}
-            disabled={!canManage}
+            disabled={!canManage || experience.pricingMode === "inquiry"}
+            placeholder={experience.pricingMode === "inquiry" ? "Değişken" : undefined}
           />
         </div>
       </div>
@@ -321,6 +338,8 @@ function ProfileTab({
           rows={2}
         />
       </div>
+
+      <ServiceExperienceFields value={experience} onChange={setExperience} disabled={!canManage} idPrefix="edit-service" />
 
       {state && !state.success && (
         <p className="text-destructive text-sm" role="alert">
@@ -339,11 +358,12 @@ function ProfileTab({
                 category,
                 description,
                 durationMinutes: Number(durationMinutes),
-                price,
+                price: experience.pricingMode === "inquiry" ? "0" : price,
+                ...experienceFormToInput(experience),
               }),
             )
           }
-          disabled={isPending || !name.trim() || !price.trim()}
+          disabled={isPending || !name.trim() || (experience.pricingMode !== "inquiry" && !price.trim())}
           className="self-start"
         >
           {isPending ? "Kaydediliyor…" : "Kaydet"}

@@ -22,16 +22,27 @@ import { createClient } from "@/lib/supabase/client";
  * which verifies Turnstile before ever reaching the database.
  */
 
+/**
+ * Faz BEAUTY.1A — what the public page may know about a service. The calendar (booking) duration is deliberately NOT here:
+ * only the salon's customer-facing display range is. `price` is a number only for a fixed-price service the salon chose to
+ * show (price_public), otherwise null. A genuine JSON number, not a string: it comes from jsonb_build_object inside the RPC,
+ * which serializes `numeric` as a JSON number.
+ */
 export type PublicBookingService = {
   id: string;
   name: string;
   category: string | null;
-  durationMinutes: number;
-  // A genuine JSON number here, not a string: this comes from
-  // jsonb_build_object('price', s.price, ...) inside the RPC, which
-  // serializes `numeric` as a JSON number — unlike a plain PostgREST
-  // column response, where numeric normally arrives as a string.
-  price: number;
+  pricingMode: "fixed" | "inquiry";
+  bookingMode: "direct" | "inquiry";
+  price: number | null;
+  displayDurationMin: number | null;
+  displayDurationMax: number | null;
+  summary: string | null;
+  details: string | null;
+  preparationNote: string | null;
+  aftercareNote: string | null;
+  importantNote: string | null;
+  badge: string | null;
 };
 
 export type PublicBookingBranch = {

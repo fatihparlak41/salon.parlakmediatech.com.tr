@@ -17,6 +17,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { createServiceAction, type CreateServiceInput } from "@/lib/modules/services/actions";
 import type { BranchOption } from "@/lib/modules/staff/queries";
+import { ServiceExperienceFields } from "@/components/services/service-experience-fields";
+import { emptyExperienceForm, experienceFormToInput } from "@/lib/modules/services/experience";
 
 export function CreateServiceDialog({
   open,
@@ -40,6 +42,7 @@ export function CreateServiceDialog({
   const [description, setDescription] = useState("");
   const [durationMinutes, setDurationMinutes] = useState("30");
   const [price, setPrice] = useState("");
+  const [experience, setExperience] = useState(emptyExperienceForm());
   const [branchIds, setBranchIds] = useState<string[]>(
     branches.length === 1 ? [branches[0]!.id] : [],
   );
@@ -57,6 +60,7 @@ export function CreateServiceDialog({
         setDescription("");
         setDurationMinutes("30");
         setPrice("");
+        setExperience(emptyExperienceForm());
         setBranchIds(branches.length === 1 ? [branches[0]!.id] : []);
       }
       return result;
@@ -77,15 +81,16 @@ export function CreateServiceDialog({
       category,
       description,
       durationMinutes: Number(durationMinutes),
-      price,
+      price: experience.pricingMode === "inquiry" ? "0" : price,
       branchIds,
+      ...experienceFormToInput(experience),
     };
     startTransition(() => formAction(input));
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
         <form onSubmit={handleSubmit} className="contents">
           <DialogHeader>
             <DialogTitle>Hizmet ekle</DialogTitle>
@@ -133,10 +138,11 @@ export function CreateServiceDialog({
                 <Input
                   id="service-price"
                   inputMode="decimal"
-                  value={price}
+                  value={experience.pricingMode === "inquiry" ? "" : price}
                   onChange={(e) => setPrice(e.target.value)}
-                  placeholder="150"
-                  required
+                  placeholder={experience.pricingMode === "inquiry" ? "Değişken" : "150"}
+                  disabled={experience.pricingMode === "inquiry"}
+                  required={experience.pricingMode !== "inquiry"}
                 />
               </div>
             </div>
@@ -150,6 +156,8 @@ export function CreateServiceDialog({
                 rows={2}
               />
             </div>
+
+            <ServiceExperienceFields value={experience} onChange={setExperience} idPrefix="service" />
 
             <div className="flex flex-col gap-2">
               <Label>Şubeler</Label>
@@ -183,7 +191,7 @@ export function CreateServiceDialog({
           </div>
 
           <DialogFooter>
-            <Button type="submit" disabled={isPending || !name.trim() || !price.trim()}>
+            <Button type="submit" disabled={isPending || !name.trim() || (experience.pricingMode !== "inquiry" && !price.trim())}>
               {isPending ? "Oluşturuluyor…" : "Hizmeti oluştur"}
             </Button>
           </DialogFooter>

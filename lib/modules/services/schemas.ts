@@ -13,6 +13,18 @@ export const serviceProfileSchema = z.object({
     .trim()
     .regex(/^\d+(\.\d{1,2})?$/, "Geçerli bir tutar girin (örn. 150 veya 150.50)"),
   branchIds: z.array(z.string().uuid()),
+  // Faz BEAUTY.1A - optional generic experience fields; see experience.ts for the cross-field rules.
+  pricingMode: z.enum(["fixed", "inquiry"]).optional(),
+  bookingMode: z.enum(["direct", "inquiry"]).optional(),
+  pricePublic: z.boolean().optional(),
+  displayDurationMin: z.number().int().min(1).max(1440).nullable().optional(),
+  displayDurationMax: z.number().int().min(1).max(1440).nullable().optional(),
+  publicSummary: z.string().max(400).optional(),
+  publicDetails: z.string().max(3000).optional(),
+  preparationNote: z.string().max(900).optional(),
+  aftercareNote: z.string().max(900).optional(),
+  importantNote: z.string().max(600).optional(),
+  badgeLabel: z.string().max(120).optional(),
 });
 
 export const serviceBranchesSchema = z.object({

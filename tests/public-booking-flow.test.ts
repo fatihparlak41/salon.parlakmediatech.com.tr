@@ -253,7 +253,13 @@ describe("public booking context", () => {
       ["address", "id", "instagramHandle", "locationUrl", "name", "phone", "services", "whatsappPhone"].sort(),
     );
     const svc = b1.services[0]!;
-    expect(Object.keys(svc).sort()).toEqual(["category", "durationMinutes", "id", "name", "price"].sort());
+    // Faz BEAUTY.1A (20261028090000): the booking (calendar) duration and the raw price are no longer in the public payload;
+    // the explicitly public presentation fields are. A service that configured none of them carries them as null.
+    expect(Object.keys(svc).sort()).toEqual(
+      ["aftercareNote", "badge", "bookingMode", "category", "details", "displayDurationMax", "displayDurationMin", "id", "importantNote", "name", "preparationNote", "price", "pricingMode", "summary"].sort(),
+    );
+    expect(svc).not.toHaveProperty("durationMinutes");
+    expect(svc.price).toBeNull();
   });
 
   it("unconfigured contact fields are null, not omitted — lets the client hide that action", async () => {

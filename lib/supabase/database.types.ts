@@ -1750,6 +1750,17 @@ export type Database = {
       }
       services: {
         Row: {
+          aftercare_note: string | null
+          badge_label: string | null
+          booking_mode: string
+          display_duration_max: number | null
+          display_duration_min: number | null
+          important_note: string | null
+          preparation_note: string | null
+          price_public: boolean
+          pricing_mode: string
+          public_details: string | null
+          public_summary: string | null
           category: string | null
           created_at: string
           created_by: string | null
@@ -1765,6 +1776,17 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          aftercare_note?: string | null
+          badge_label?: string | null
+          booking_mode?: string
+          display_duration_max?: number | null
+          display_duration_min?: number | null
+          important_note?: string | null
+          preparation_note?: string | null
+          price_public?: boolean
+          pricing_mode?: string
+          public_details?: string | null
+          public_summary?: string | null
           category?: string | null
           created_at?: string
           created_by?: string | null
@@ -1780,6 +1802,17 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          aftercare_note?: string | null
+          badge_label?: string | null
+          booking_mode?: string
+          display_duration_max?: number | null
+          display_duration_min?: number | null
+          important_note?: string | null
+          preparation_note?: string | null
+          price_public?: boolean
+          pricing_mode?: string
+          public_details?: string | null
+          public_summary?: string | null
           category?: string | null
           created_at?: string
           created_by?: string | null

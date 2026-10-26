@@ -50,6 +50,17 @@ export type ServiceDetail = {
   durationMinutes: number;
   price: string;
   status: string;
+  pricingMode: "fixed" | "inquiry";
+  bookingMode: "direct" | "inquiry";
+  pricePublic: boolean;
+  displayDurationMin: number | null;
+  displayDurationMax: number | null;
+  publicSummary: string | null;
+  publicDetails: string | null;
+  preparationNote: string | null;
+  aftercareNote: string | null;
+  importantNote: string | null;
+  badgeLabel: string | null;
   branchIds: string[];
   staffMemberIds: string[];
 };
@@ -60,6 +71,8 @@ export async function getServiceDetail(serviceId: string): Promise<ServiceDetail
     .from("services")
     .select(
       `id, name, category, description, duration_minutes, price, status,
+       pricing_mode, booking_mode, price_public, display_duration_min, display_duration_max,
+       public_summary, public_details, preparation_note, aftercare_note, important_note, badge_label,
        service_branches(branch_id), staff_services(staff_member_id)`,
     )
     .eq("id", serviceId)
@@ -76,6 +89,17 @@ export async function getServiceDetail(serviceId: string): Promise<ServiceDetail
     durationMinutes: data.duration_minutes,
     price: String(data.price),
     status: data.status,
+    pricingMode: data.pricing_mode as ServiceDetail["pricingMode"],
+    bookingMode: data.booking_mode as ServiceDetail["bookingMode"],
+    pricePublic: data.price_public,
+    displayDurationMin: data.display_duration_min,
+    displayDurationMax: data.display_duration_max,
+    publicSummary: data.public_summary,
+    publicDetails: data.public_details,
+    preparationNote: data.preparation_note,
+    aftercareNote: data.aftercare_note,
+    importantNote: data.important_note,
+    badgeLabel: data.badge_label,
     branchIds: data.service_branches.map((b) => b.branch_id),
     staffMemberIds: data.staff_services.map((s) => s.staff_member_id),
   };

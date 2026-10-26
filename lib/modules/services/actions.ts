@@ -10,6 +10,7 @@ import {
   serviceStaffSchema,
   serviceStatusSchema,
 } from "./schemas";
+import { experienceColumns, validateExperience, type ServiceExperienceInput } from "./experience";
 
 /** RLS is the actual authorization boundary — see the identical comment in
  * lib/modules/staff/actions.ts. */
@@ -32,7 +33,7 @@ export type CreateServiceInput = {
   durationMinutes: number;
   price: string;
   branchIds: string[];
-};
+} & ServiceExperienceInput;
 
 export async function createServiceAction(
   _prevState: ActionResult<{ id: string }> | null,
@@ -44,6 +45,8 @@ export async function createServiceAction(
   if (!parsed.success) {
     return fail("VALIDATION", parsed.error.issues[0]?.message ?? "Geçersiz form");
   }
+  const experienceError = validateExperience(parsed.data);
+  if (experienceError) return fail("VALIDATION", experienceError);
 
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -60,6 +63,7 @@ export async function createServiceAction(
       // is just satisfying the generated client type for a single
       // realistic currency value, never used in arithmetic.
       price: Number(parsed.data.price),
+      ...experienceColumns(parsed.data),
     })
     .select("id")
     .single();
@@ -91,7 +95,7 @@ export type UpdateServiceProfileInput = {
   description?: string;
   durationMinutes: number;
   price: string;
-};
+} & ServiceExperienceInput;
 
 export async function updateServiceProfileAction(
   _prevState: ActionResult<null> | null,
@@ -105,6 +109,8 @@ export async function updateServiceProfileAction(
   if (!parsed.success) {
     return fail("VALIDATION", parsed.error.issues[0]?.message ?? "Geçersiz form");
   }
+  const experienceError = validateExperience(parsed.data);
+  if (experienceError) return fail("VALIDATION", experienceError);
 
   const supabase = await createClient();
   const { error } = await supabase
@@ -115,6 +121,7 @@ export async function updateServiceProfileAction(
       description: parsed.data.description || null,
       duration_minutes: parsed.data.durationMinutes,
       price: Number(parsed.data.price),
+      ...experienceColumns(parsed.data),
     })
     .eq("id", input.serviceId);
 

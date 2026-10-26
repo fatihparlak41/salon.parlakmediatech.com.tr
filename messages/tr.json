@@ -832,7 +832,19 @@
     "confirmationReference": "Randevu referansı",
     "newBooking": "Yeni randevu oluştur",
     "requiredField": "Bu alan zorunludur.",
-    "todayLabel": "Bugün"
+    "todayLabel": "Bugün",
+    "priceInquiry": "Fiyat için iletişime geçin",
+    "inquiryAction": "Bilgi Al",
+    "bookAction": "Randevu Al",
+    "aboutService": "İşlem hakkında",
+    "beforeAppointment": "Randevu öncesi",
+    "afterAppointment": "Randevu sonrası",
+    "importantInfo": "Önemli bilgi",
+    "inquiryIntro": "Bu hizmet için fiyat ve randevu bilgisi salonla iletişime geçerek netleştirilir.",
+    "noContactConfigured": "Bilgi almak için lütfen doğrudan salonla iletişime geçin.",
+    "contactCall": "Ara",
+    "noEligibleStaff": "Bu hizmet için şu anda randevu alınamıyor.",
+    "summaryPrepNote": "Randevu öncesi:"
   },
   "Account": {
     "nav": {
