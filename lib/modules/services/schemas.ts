@@ -13,6 +13,9 @@ export const serviceProfileSchema = z.object({
     .trim()
     .regex(/^\d+(\.\d{1,2})?$/, "Geçerli bir tutar girin (örn. 150 veya 150.50)"),
   branchIds: z.array(z.string().uuid()),
+  // Faz BEAUTY.1B - optional recommended re-booking window (days); cross-field rules in rebook.ts.
+  rebookMinDays: z.number().int().min(1).max(730).nullable().optional(),
+  rebookMaxDays: z.number().int().min(1).max(730).nullable().optional(),
 });
 
 export const serviceBranchesSchema = z.object({

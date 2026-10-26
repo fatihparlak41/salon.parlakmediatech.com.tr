@@ -4,11 +4,15 @@ import { getTenantAccess, hasPermission } from "@/lib/auth/session";
 import { getAppointmentList, getTenantTimezone } from "@/lib/modules/appointments/queries";
 import { getBranchOptions } from "@/lib/modules/staff/queries";
 import { AppointmentsPageClient } from "@/components/appointments/appointments-page-client";
+import { parseRebookParams } from "@/lib/modules/treatment-history/model";
 
 export default async function AppointmentsPage({
   params,
+  searchParams,
 }: PageProps<"/[locale]/app/[tenantSlug]/appointments">) {
   const { tenantSlug } = await params;
+  // Faz BEAUTY.1B - quick rebook from a treatment: service/branch/staff preselected, never the customer, date or time.
+  const rebook = parseRebookParams((await searchParams) as Record<string, string | string[] | undefined>);
   const access = await getTenantAccess(tenantSlug);
   if (access.reason !== "ok") return null;
 
@@ -44,6 +48,7 @@ export default async function AppointmentsPage({
       canCancel={canCancel}
       canViewFinance={canViewFinance}
       canManageFinance={canManageFinance}
+      rebook={canCreate ? rebook : null}
       initialAppointments={initialAppointments}
       labels={{
         title: t("title"),

@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { createServiceAction, type CreateServiceInput } from "@/lib/modules/services/actions";
 import type { BranchOption } from "@/lib/modules/staff/queries";
+import { rebookDaysFromText } from "@/lib/modules/services/rebook";
 
 export function CreateServiceDialog({
   open,
@@ -40,6 +41,8 @@ export function CreateServiceDialog({
   const [description, setDescription] = useState("");
   const [durationMinutes, setDurationMinutes] = useState("30");
   const [price, setPrice] = useState("");
+  const [rebookMin, setRebookMin] = useState("");
+  const [rebookMax, setRebookMax] = useState("");
   const [branchIds, setBranchIds] = useState<string[]>(
     branches.length === 1 ? [branches[0]!.id] : [],
   );
@@ -57,6 +60,8 @@ export function CreateServiceDialog({
         setDescription("");
         setDurationMinutes("30");
         setPrice("");
+        setRebookMin("");
+        setRebookMax("");
         setBranchIds(branches.length === 1 ? [branches[0]!.id] : []);
       }
       return result;
@@ -79,6 +84,8 @@ export function CreateServiceDialog({
       durationMinutes: Number(durationMinutes),
       price,
       branchIds,
+      rebookMinDays: rebookDaysFromText(rebookMin),
+      rebookMaxDays: rebookDaysFromText(rebookMax),
     };
     startTransition(() => formAction(input));
   }
@@ -138,6 +145,17 @@ export function CreateServiceDialog({
                   placeholder="150"
                   required
                 />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="service-rebook-min">Önerilen tekrar: en az (gün)</Label>
+                <Input id="service-rebook-min" type="number" min={1} value={rebookMin} onChange={(e) => setRebookMin(e.target.value)} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="service-rebook-max">en çok (gün)</Label>
+                <Input id="service-rebook-max" type="number" min={1} value={rebookMax} onChange={(e) => setRebookMax(e.target.value)} />
               </div>
             </div>
 

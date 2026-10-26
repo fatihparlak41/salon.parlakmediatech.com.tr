@@ -50,6 +50,8 @@ export type ServiceDetail = {
   durationMinutes: number;
   price: string;
   status: string;
+  rebookMinDays: number | null;
+  rebookMaxDays: number | null;
   branchIds: string[];
   staffMemberIds: string[];
 };
@@ -59,7 +61,7 @@ export async function getServiceDetail(serviceId: string): Promise<ServiceDetail
   const { data, error } = await supabase
     .from("services")
     .select(
-      `id, name, category, description, duration_minutes, price, status,
+      `id, name, category, description, duration_minutes, price, status, rebook_min_days, rebook_max_days,
        service_branches(branch_id), staff_services(staff_member_id)`,
     )
     .eq("id", serviceId)
@@ -76,6 +78,8 @@ export async function getServiceDetail(serviceId: string): Promise<ServiceDetail
     durationMinutes: data.duration_minutes,
     price: String(data.price),
     status: data.status,
+    rebookMinDays: data.rebook_min_days,
+    rebookMaxDays: data.rebook_max_days,
     branchIds: data.service_branches.map((b) => b.branch_id),
     staffMemberIds: data.staff_services.map((s) => s.staff_member_id),
   };

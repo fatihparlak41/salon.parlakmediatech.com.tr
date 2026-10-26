@@ -20,6 +20,7 @@ import type { ActionResult } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/client";
 import type { BranchOption } from "@/lib/modules/staff/queries";
 import type { ServiceDetail, StaffOption } from "@/lib/modules/services/queries";
+import { rebookDaysFromText } from "@/lib/modules/services/rebook";
 import {
   updateServiceProfileAction,
   updateServiceStatusAction,
@@ -36,7 +37,7 @@ async function loadServiceDetail(serviceId: string): Promise<ServiceDetail | nul
   const { data } = await supabase
     .from("services")
     .select(
-      `id, name, category, description, duration_minutes, price, status,
+      `id, name, category, description, duration_minutes, price, status, rebook_min_days, rebook_max_days,
        service_branches(branch_id), staff_services(staff_member_id)`,
     )
     .eq("id", serviceId)
@@ -52,6 +53,8 @@ async function loadServiceDetail(serviceId: string): Promise<ServiceDetail | nul
     durationMinutes: data.duration_minutes,
     price: String(data.price),
     status: data.status,
+    rebookMinDays: data.rebook_min_days,
+    rebookMaxDays: data.rebook_max_days,
     branchIds: data.service_branches.map((b) => b.branch_id),
     staffMemberIds: data.staff_services.map((s) => s.staff_member_id),
   };
@@ -211,6 +214,8 @@ function ProfileTab({
   const [description, setDescription] = useState(detail.description ?? "");
   const [durationMinutes, setDurationMinutes] = useState(String(detail.durationMinutes));
   const [price, setPrice] = useState(detail.price);
+  const [rebookMin, setRebookMin] = useState(detail.rebookMinDays === null ? "" : String(detail.rebookMinDays));
+  const [rebookMax, setRebookMax] = useState(detail.rebookMaxDays === null ? "" : String(detail.rebookMaxDays));
 
   const [state, action, isPending] = useActionState(
     async (prevState: ActionResult<null> | null, input: UpdateServiceProfileInput) => {
@@ -311,6 +316,17 @@ function ProfileTab({
         </div>
       </div>
 
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="edit-service-rebook-min">Önerilen tekrar: en az (gün)</Label>
+          <Input id="edit-service-rebook-min" type="number" min={1} value={rebookMin} onChange={(e) => setRebookMin(e.target.value)} disabled={!canManage} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="edit-service-rebook-max">en çok (gün)</Label>
+          <Input id="edit-service-rebook-max" type="number" min={1} value={rebookMax} onChange={(e) => setRebookMax(e.target.value)} disabled={!canManage} />
+        </div>
+      </div>
+
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="edit-service-description">Açıklama</Label>
         <Textarea
@@ -340,6 +356,8 @@ function ProfileTab({
                 description,
                 durationMinutes: Number(durationMinutes),
                 price,
+                rebookMinDays: rebookDaysFromText(rebookMin),
+                rebookMaxDays: rebookDaysFromText(rebookMax),
               }),
             )
           }

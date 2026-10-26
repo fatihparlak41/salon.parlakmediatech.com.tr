@@ -26,6 +26,7 @@ import {
   type UpdateCustomerStatusInput,
 } from "@/lib/modules/customers/actions";
 import { AccountLinkSection } from "@/components/customers/account-link-section";
+import { TreatmentHistoryPanel } from "@/components/customers/treatment-history";
 
 async function loadCustomer(customerId: string): Promise<CustomerRow | null> {
   const supabase = createClient();
@@ -50,16 +51,22 @@ async function loadCustomer(customerId: string): Promise<CustomerRow | null> {
 export function CustomerDetailSheet({
   customerId,
   onOpenChange,
+  tenantId,
   tenantSlug,
   canManage,
   canLinkAccount,
+  canViewHistory,
+  canRebook,
   onSaved,
 }: {
   customerId: string | null;
   onOpenChange: (open: boolean) => void;
+  tenantId: string;
   tenantSlug: string;
   canManage: boolean;
   canLinkAccount: boolean;
+  canViewHistory: boolean;
+  canRebook: boolean;
   onSaved: () => void;
 }) {
   return (
@@ -73,9 +80,12 @@ export function CustomerDetailSheet({
           <CustomerDetailSheetBody
             key={customerId}
             customerId={customerId}
+            tenantId={tenantId}
             tenantSlug={tenantSlug}
             canManage={canManage}
             canLinkAccount={canLinkAccount}
+            canViewHistory={canViewHistory}
+            canRebook={canRebook}
             onSaved={onSaved}
           />
         )}
@@ -86,15 +96,21 @@ export function CustomerDetailSheet({
 
 function CustomerDetailSheetBody({
   customerId,
+  tenantId,
   tenantSlug,
   canManage,
   canLinkAccount,
+  canViewHistory,
+  canRebook,
   onSaved,
 }: {
   customerId: string;
+  tenantId: string;
   tenantSlug: string;
   canManage: boolean;
   canLinkAccount: boolean;
+  canViewHistory: boolean;
+  canRebook: boolean;
   onSaved: () => void;
 }) {
   const [customer, setCustomer] = useState<CustomerRow | null>(null);
@@ -133,7 +149,7 @@ function CustomerDetailSheetBody({
         <Tabs defaultValue="profile">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="profile">Profil</TabsTrigger>
-            <TabsTrigger value="appointments">Randevular</TabsTrigger>
+            <TabsTrigger value="appointments">{canViewHistory ? "Geçmiş" : "Randevular"}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile" className="pt-4">
@@ -147,10 +163,14 @@ function CustomerDetailSheetBody({
           </TabsContent>
 
           <TabsContent value="appointments" className="pt-4">
-            <div className="border-border flex flex-col items-center gap-2 rounded-xl border border-dashed px-6 py-10 text-center">
-              <CalendarClock className="text-muted-foreground size-6" />
-              <p className="text-muted-foreground text-sm">Randevu geçmişi yakında burada görünecek.</p>
-            </div>
+            {canViewHistory ? (
+              <TreatmentHistoryPanel tenantId={tenantId} tenantSlug={tenantSlug} customerId={customerId} canWrite={canManage} canRebook={canRebook} />
+            ) : (
+              <div className="border-border flex flex-col items-center gap-2 rounded-xl border border-dashed px-6 py-10 text-center">
+                <CalendarClock className="text-muted-foreground size-6" />
+                <p className="text-muted-foreground text-sm">Randevu geçmişi yakında burada görünecek.</p>
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </div>

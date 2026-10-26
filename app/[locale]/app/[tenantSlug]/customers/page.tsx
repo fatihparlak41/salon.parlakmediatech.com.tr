@@ -11,7 +11,7 @@ export default async function CustomersPage({
   const access = await getTenantAccess(tenantSlug);
   if (access.reason !== "ok") return null;
 
-  const [canView, canManage, canLinkAccount] = await Promise.all([
+  const [canView, canManage, canLinkAccount, canViewHistory, canRebook] = await Promise.all([
     hasPermission(access.tenant.id, "customers.view"),
     // customers.create and customers.update are two separate permission
     // keys (no unified customers.manage) — but every role template that
@@ -27,6 +27,10 @@ export default async function CustomersPage({
     // capability from editing a phone field. Owner/Manager by default,
     // not Receptionist even though Receptionist holds customers.update.
     hasPermission(access.tenant.id, "customers.link_account"),
+    // Faz BEAUTY.1B - the treatment history needs customers.view (already required for this page) AND appointments.view, so a
+    // role that can open the customer directory but not the calendar sees no history; quick rebook needs appointments.create.
+    hasPermission(access.tenant.id, "appointments.view"),
+    hasPermission(access.tenant.id, "appointments.create"),
   ]);
 
   if (!canView) {
@@ -46,6 +50,8 @@ export default async function CustomersPage({
       tenantSlug={tenantSlug}
       canManage={canManage}
       canLinkAccount={canLinkAccount}
+      canViewHistory={canViewHistory}
+      canRebook={canRebook}
       initialCustomers={initialCustomers}
       initialCounts={counts}
       labels={{
