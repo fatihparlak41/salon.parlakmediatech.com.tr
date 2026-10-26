@@ -1,5 +1,6 @@
 import { sanitizeEmailLocationUrl } from "@/lib/email/location-url";
 import {
+  cleanPreparationNote,
   cleanSalonName,
   cleanServiceNames,
   cleanStaffNames,
@@ -28,7 +29,7 @@ import {
  * doubles as the greeting, the appointment date and time in the SALON'S OWN
  * timezone, the service name(s), optionally the staff name(s) and the branch phone,
  * and — only when the branch has a valid https location link — a "Yol Tarifi Al"
- * button. No notes, no prices, no internal ids, no roles, no marketing call to
+ * button, and (RC.1A) at most one concise salon-authored preparation line from the booked services. No private notes, no prices, no internal ids, no roles, no marketing call to
  * action, no tracking pixel, no remote image, no remote font. The customer's name
  * never appears in the subject or preheader (both can surface in a lock-screen
  * preview) — only in the headline, inside the opened email.
@@ -69,6 +70,7 @@ export function buildAppointmentConfirmationEmail(
     services: cleanServiceNames(input.serviceNames),
     staffNames: cleanStaffNames(input.staffNames),
     contactPhone: sanitizeContactPhone(input.contactPhone),
+    preparationNote: cleanPreparationNote(input.preparationNote),
     button: locationUrl ? { label: "Yol Tarifi Al", url: locationUrl, textLabel: "Yol tarifi" } : null,
     footer:
       "Bu ileti randevu onayınız için otomatik olarak gönderilmiştir; lütfen yanıtlamayınız. Randevunuzla ilgili bir değişiklik için lütfen salonla iletişime geçin.",

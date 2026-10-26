@@ -54,6 +54,8 @@ export type ClaimedConfirmationJob = {
   staffNames: string[];
   contactPhone: string | null;
   locationUrl: string | null;
+  /** RC.1A: the booked services' salon-authored preparation note(s); null when none. Used by the confirmation and the reminder only. */
+  preparationNote: string | null;
 };
 
 /** Short, fixed prefixes for the Message-ID local part (never customer data). */
@@ -162,6 +164,7 @@ function parseClaimedJob(raw: unknown): ClaimedConfirmationJob | null {
     staffNames: stringArray(raw.staffNames),
     contactPhone: asString(raw.contactPhone),
     locationUrl: asString(raw.locationUrl),
+    preparationNote: asString(raw.preparationNote),
   };
 }
 
@@ -289,6 +292,7 @@ export async function processCustomerConfirmationEmailBatch(
           staffNames: job.staffNames,
           contactPhone: job.contactPhone,
           locationUrl: job.locationUrl,
+          preparationNote: job.preparationNote,
           referenceInstant: new Date(now()).toISOString(),
           rebookUrl: job.tenantSlug ? `${getSiteUrl()}/book/${encodeURIComponent(job.tenantSlug)}` : null,
         });

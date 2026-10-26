@@ -140,6 +140,8 @@ export type AppointmentEmailLayout = {
   services: string[];
   staffNames: string[];
   contactPhone: string | null;
+  /** RC.1A: one concise, already-cleaned salon-authored preparation line (confirmation and reminder only), or null. */
+  preparationNote?: string | null;
   button: { label: string; url: string; textLabel: string } | null;
   footer: string;
   /** Footer split into plain-text lines. */
@@ -172,6 +174,7 @@ export function renderAppointmentEmail(layout: AppointmentEmailLayout): Appointm
     subject, salonName, preheader, headlineLead, headlineTail, headlineMark, intro,
     dateLabel, dateLine, time, services, staffNames, contactPhone, button, footer, textFooter,
   } = layout;
+  const preparationNote = layout.preparationNote ?? null;
 
   const salonHtml = escapeHtml(salonName);
   const headlineLeadHtml = escapeHtml(headlineLead);
@@ -206,6 +209,7 @@ export function renderAppointmentEmail(layout: AppointmentEmailLayout): Appointm
   const extraSections = [
     services.length > 0 ? panelSectionHtml(serviceLabelHtml, servicesHtml, true) : "",
     staffNames.length > 0 ? panelSectionHtml(staffLabelHtml, staffHtml, true) : "",
+    preparationNote ? panelSectionHtml("RANDEVU ÖNCESİ", escapeHtml(preparationNote), true) : "",
     contactPhone ? panelSectionHtml("İLETİŞİM", escapeHtml(contactPhone), true) : "",
   ].join("");
 
@@ -291,6 +295,9 @@ export function renderAppointmentEmail(layout: AppointmentEmailLayout): Appointm
   } else if (staffNames.length > 1) {
     textLines.push("Personel:", ...staffNames.map((name) => `- ${name}`));
   }
+  if (preparationNote) {
+    textLines.push(`Randevu öncesi: ${preparationNote}`);
+  }
   if (contactPhone) {
     textLines.push(`İletişim: ${contactPhone}`);
   }
@@ -317,7 +324,16 @@ export type AppointmentEmailInput = {
   contactPhone?: string | null;
   /** branches.location_url as stored; validated (https-only) by the caller's template. */
   locationUrl: string | null;
+  /** RC.1A: the services' salon-authored preparation note(s) from the claim payload; used by the confirmation and the reminder only. */
+  preparationNote?: string | null;
 };
+
+/** One concise line: single line, control characters gone, at most 240 characters; null when nothing is left. */
+export function cleanPreparationNote(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const line = truncate(singleLine(raw), 240);
+  return line.length > 0 ? line : null;
+}
 
 export function cleanSalonName(raw: string): string {
   return truncate(singleLine(raw), 100) || "Salon";

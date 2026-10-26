@@ -1,5 +1,6 @@
 import { sanitizeEmailLocationUrl } from "@/lib/email/location-url";
 import {
+  cleanPreparationNote,
   cleanSalonName,
   cleanServiceNames,
   cleanStaffNames,
@@ -141,6 +142,7 @@ export function buildAppointmentReminderEmail(input: CustomerNotificationEmailIn
     services: cleanServiceNames(input.serviceNames),
     staffNames: cleanStaffNames(input.staffNames),
     contactPhone: sanitizeContactPhone(input.contactPhone),
+    preparationNote: cleanPreparationNote(input.preparationNote),
     button: locationUrl ? { label: "Yol Tarifi Al", url: locationUrl, textLabel: "Yol tarifi" } : null,
     footer: `Bu ileti randevu hatırlatması olarak otomatik gönderilmiştir; ${AUTOMATIC_FOOTER_TAIL} Randevunuzla ilgili bir değişiklik için lütfen salonla iletişime geçin.`,
     textFooter: [
