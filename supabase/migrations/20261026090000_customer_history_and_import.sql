@@ -3,7 +3,7 @@
 -- 1. ONE central phone canonicalisation. Until now private.normalize_phone only stripped formatting, so "0533 123 45 67",
 --    "+90 533 123 45 67", "90 533 123 45 67" and "533 123 45 67" were four different customers to every matching rule
 --    (public booking, staff search, duplicate detection). The function is now a pure function of the stripped string
---    (private.strip_phone, the OLD behaviour), so two phones that matched before still match; the Turkish / KKTC forms
+--    (the formatting-only strip, i.e. the OLD behaviour), so two phones that matched before still match; the Turkish / KKTC forms
 --    additionally collapse to one canonical "+90..." form. Other numbers are left exactly as before.
 --    The stored generated column customers.phone_normalized is refreshed for the rows whose value changes.
 -- 2. public.get_customer_history: ONE read model for the customer card (summary, upcoming, past, services, staff), with
@@ -26,17 +26,6 @@
 -- ---------------------------------------------------------------------------------------------------------------
 -- 1. canonical phone
 -- ---------------------------------------------------------------------------------------------------------------
-create or replace function private.strip_phone(p_phone text)
- returns text
- language sql
- immutable
- set search_path to ''
-as $function$
-  select nullif(regexp_replace(coalesce(p_phone, ''), '[^0-9+]', '', 'g'), '');
-$function$;
-
-revoke all on function private.strip_phone(text) from public, anon, authenticated, service_role;
-
 create or replace function private.normalize_phone(p_phone text)
  returns text
  language sql
@@ -65,8 +54,8 @@ update public.customers set phone = phone where phone is not null and phone_norm
 alter table public.customers enable trigger audit_customer_change;
 alter table public.customers enable trigger set_updated_at;
 
--- search: a partial number typed the way people type it ("0533 12") must keep finding "+90533..."; match the canonical
--- value AND the stripped number as it was entered
+-- search: unchanged apart from calling the (now canonical) normalize_phone; a number typed with its trunk 0 ("0533 12") still
+-- finds "+90533..." because "+90533" contains "0533"
 create or replace function public.search_customers(
   p_tenant_id uuid,
   p_query text default '',
@@ -94,7 +83,6 @@ begin
       p_query = ''
       or c.full_name ilike '%' || p_query || '%'
       or c.phone_normalized ilike '%' || private.normalize_phone(p_query) || '%'
-      or private.strip_phone(c.phone) ilike '%' || private.strip_phone(p_query) || '%'
       or c.email_normalized ilike '%' || private.normalize_email(p_query) || '%'
     )
   order by c.full_name
