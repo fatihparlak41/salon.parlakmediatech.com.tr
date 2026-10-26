@@ -81,7 +81,7 @@ describe("CONFIRMATION", () => {
         "preparationNote", // RC.1A: the one concise salon-authored preparation line (null here: this fixture's service has none)
       ].sort(),
     );
-    expect(job.preparationNote).toBeNull();
+    expect((job as Record<string, unknown>).preparationNote).toBeNull();
     const serialized = JSON.stringify(job);
     for (const secret of ["MÜŞTERİ-NOTU-GİZLİ-123", "RANDEVU-NOTU-GİZLİ-456", apt.appointmentId, apt.customerId, fxA.tenant.id, fxA.owner.id]) {
       expect(serialized).not.toContain(secret);
