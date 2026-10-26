@@ -76,6 +76,11 @@ describe("parsing", () => {
     const neg = summaryRaw();
     neg.staff[0]!.commissionAmount = -1;
     expect(parseCommissionSummary(neg)).toBeNull();
+    // a negative that is consistent with its own totals is still refused
+    const negConsistent = summaryRaw();
+    negConsistent.staff = [{ ...negConsistent.staff[0]!, serviceAmount: -5, commissionAmount: -1, completedServices: 1 }];
+    negConsistent.totals = { completedServices: 1, serviceAmount: -5, commissionAmount: -1 };
+    expect(parseCommissionSummary(negConsistent)).toBeNull();
     for (const rule of [{ kind: "percentage", percentage: null, fixedAmount: null }, { kind: "percentage", percentage: 101, fixedAmount: null }, { kind: "fixed", percentage: 5, fixedAmount: 1 }, { kind: "none", percentage: 5, fixedAmount: null }, { kind: "salary", percentage: null, fixedAmount: null }]) {
       const d = detailRaw();
       d.rows[0]!.rule = rule as never;
@@ -117,6 +122,12 @@ describe("presentation", () => {
     expect(container.textContent).toContain("tahsilat yöntemi ve ödeme durumu komisyonu değiştirmez");
     expect(container.textContent).toContain("Bu bir bordro değildir");
     expect(container.querySelector("a")!.getAttribute("href")).toContain("staff=11111111-1111-4111-8111-111111111111");
+    // the COMMISSION column (last cell) of each person and of the total row shows the commission, not the service amount
+    const lastCell = (r: Element) => r.querySelector("td:last-child")!.textContent;
+    const rows = [...table.querySelectorAll("tbody tr")];
+    expect(lastCell(rows[0]!)).toBe("101,01 TRY");
+    expect(lastCell(can)).toBe("0,00 TRY");
+    expect(lastCell(table.querySelector("tfoot tr")!)).toBe("101,01 TRY");
   });
 
   it("an empty range says so", () => {

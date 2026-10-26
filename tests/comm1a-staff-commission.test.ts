@@ -349,6 +349,7 @@ describe("EMEL BEAUTY BAR (single person: the Owner is the only provider; all tr
     expect(s.totals).toEqual({ completedServices: 3, serviceAmount: 5100, commissionAmount: 0 });
     const d = await detail(e, emelOwner.id, "Emel Kaynakkan");
     expect(d.rows.map((r) => [r.commission, r.rule.kind])).toEqual([[0, "none"], [0, "none"], [0, "none"]]);
+    expect(d.rows.every((r) => r.rule.percentage === null && r.rule.fixedAmount === null)).toBe(true);
   });
 
   it("a rule she chooses to set for herself works (10% of 5,100 = 510.00) and the future appointment still adds nothing", async () => {
@@ -462,5 +463,168 @@ describe("AUTHORIZATION and PRIVACY", () => {
     await summary(g, owner.id);
     await detail(g, owner.id, "Ahmet");
     expect(await snap()).toEqual(before);
+  });
+});
+
+/* ------------------------------------------------------------------------------------------------------------------
+ * Closeout round: behaviours pinned after the first mutation run. Every figure is synthetic and proven in the comments.
+ * ---------------------------------------------------------------------------------------------------------------- */
+
+const todayIn = async (tz: string, plusDays = 0): Promise<string> => {
+  const [r] = await testDb<{ d: string }[]>`select (((now() at time zone ${tz})::date) + ${plusDays}::int)::text as d`;
+  return r!.d;
+};
+/** corrupt/restore rows the application can never produce (cross-tenant ids): constraints and triggers off for this transaction only */
+const raw = (run: (tx: typeof testDb) => Promise<unknown>) =>
+  testDb.begin(async (tx) => {
+    await tx`set local session_replication_role = replica`;
+    await run(tx as never);
+  });
+
+describe("RANGE edges: the tenant-local day is [00:00, next 00:00) exactly", () => {
+  it("00:00 and 01:00 local belong to the day; 23:30 the day before and 00:00 / 10:00 the day after do not", async () => {
+    const f = await salon("bounds", owner, ["Bora"], [["Sac Kesimi", 500]]);
+    await rule(f, owner.id, "Bora", "Sac Kesimi", "percentage", 10);
+    const D = "2026-10-14";
+    for (const [day, time] of [["2026-10-13", "23:30"], [D, "00:00"], [D, "01:00"], [D, "23:30"], ["2026-10-15", "00:00"], ["2026-10-15", "10:00"]] as const) {
+      await appt(f, day, time, [["Bora", "Sac Kesimi"]], "completed");
+    }
+    const s = await summary(f, owner.id, D, D);
+    // three items on the 14th: 3 x 10% of 500 = 150.00; the 13th 23:30 and both 15th items are outside
+    expect(s.totals).toEqual({ completedServices: 3, serviceAmount: 1500, commissionAmount: 150 });
+  });
+});
+
+describe("ATTRIBUTION and value: the performer, the voided checkout, a sub-lira commission", () => {
+  it("the person who actually performed gets the commission; a voided checkout's price is ignored; a 0.50 commission is still in the total", async () => {
+    const f = await salon("attrib", owner, ["Ayse", "Banu"], [["Sac Kesimi", 500], ["Mini", 5]]);
+    await rule(f, owner.id, "Ayse", "Sac Kesimi", "percentage", 10);
+    await rule(f, owner.id, "Banu", "Sac Kesimi", "percentage", 20);
+    await rule(f, owner.id, "Banu", "Mini", "percentage", 10);
+    const a1 = await appt(f, DAY, "09:00", [["Ayse", "Sac Kesimi"]], "completed"); // booked Ayse, performed by Banu: 20% of 500 = 100.00 to Banu
+    const sale1 = await checkout(f, a1.id);
+    await testDb`update appointment_sale_items set actual_staff_member_id = ${f.staff["Banu"]!} where sale_id = ${sale1}`;
+    await appt(f, DAY, "11:00", [["Banu", "Mini"]], "completed"); // 10% of 5 = 0.50
+    const a3 = await appt(f, DAY, "13:00", [["Ayse", "Sac Kesimi"]], "completed");
+    const sale3 = await checkout(f, a3.id, { unit: 400 });
+    await testDb`update appointment_sales set status = 'voided' where id = ${sale3}`; // a voided checkout: the booking price 500 stands -> 10% = 50.00
+    const s = await summary(f, owner.id);
+    expect(row(s, "Ayse")).toMatchObject({ completedServices: 1, serviceAmount: 500, commissionAmount: 50 });
+    expect(row(s, "Banu")).toMatchObject({ completedServices: 2, serviceAmount: 505, commissionAmount: 100.5 });
+    const d = await detail(f, owner.id, "Banu");
+    expect(d.total).toMatchObject({ commissionAmount: 100.5, rows: 2 });
+  });
+});
+
+describe("RULE LOOKUP: one person's rule never pays another; no rule and 'none' carry no hidden rate", () => {
+  it("a colleague's rule for the same service does not apply; the no-rule row shows no percentage and no amount", async () => {
+    const f = await salon("lookup", owner, ["Xa", "Xb"], [["Sac Kesimi", 500]]);
+    await rule(f, owner.id, "Xb", "Sac Kesimi", "percentage", 50);
+    await appt(f, DAY, "09:00", [["Xa", "Sac Kesimi"]], "completed");
+    const s = await summary(f, owner.id);
+    expect(row(s, "Xa")).toMatchObject({ commissionAmount: 0, serviceAmount: 500 });
+    const d = await detail(f, owner.id, "Xa");
+    expect(d.rows[0]!.rule).toEqual({ kind: "none", percentage: null, fixedAmount: null });
+  });
+});
+
+describe("DETAIL: the limit keeps the newest rows, the total still covers all of them, a foreign person is refused", () => {
+  it("limit 2 of 3 rows -> the two newest, hasMore, total rows 3; another salon's person is CM003", async () => {
+    const f = await salon("limit", owner, ["Gul"], [["Sac Kesimi", 500]]);
+    await rule(f, owner.id, "Gul", "Sac Kesimi", "percentage", 10);
+    for (const day of ["2026-10-01", "2026-10-05", "2026-10-09"]) await appt(f, day, "09:00", [["Gul", "Sac Kesimi"]], "completed");
+    const d = await asAuthenticatedUser(owner.id, (sql) => sql<{ d: Detail }[]>`select public.get_staff_commission_detail(${f.t.id}, ${f.staff["Gul"]!}, '2026-10-01'::date, '2026-10-31'::date, 2) as d`).then((r) => r[0]!.d);
+    expect(d.rows.map((r) => r.date)).toEqual(["2026-10-09", "2026-10-05"]);
+    expect(d.hasMore).toBe(true);
+    expect(d.total).toMatchObject({ rows: 3, commissionAmount: 150 });
+    expect(await attemptAs(owner.id, (sql) => sql`select public.get_staff_commission_detail(${f.t.id}, ${other.staff["Ahmet"]!}, '2026-10-01'::date, '2026-10-31'::date, 5)`)).toMatchObject({ ok: false, code: "CM003" });
+  });
+});
+
+describe("DEFAULTS and dates: a rule set without a date starts today; the future is not in force; a deleted salon is closed", () => {
+  it("no date -> effective today (past work earns nothing); a rule dated ahead is not listed; at most 366 days ahead", async () => {
+    const f = await salon("defaults", owner, ["Dora"], [["Sac Kesimi", 500], ["Boya", 1500]]);
+    await rule(f, owner.id, "Dora", "Sac Kesimi", "percentage", 20, null);
+    await appt(f, DAY, "09:00", [["Dora", "Sac Kesimi"]], "completed"); // done BEFORE the rule started
+    expect((await summary(f, owner.id)).totals.commissionAmount).toBe(0);
+    const today = await todayIn(TZ);
+    const ahead = await todayIn(TZ, 30);
+    await rule(f, owner.id, "Dora", "Boya", "percentage", 10, ahead);
+    const [{ r }] = await asAuthenticatedUser(owner.id, (sql) => sql<{ r: { today: string; rules: { serviceName: string; effectiveFrom: string }[] } }[]>`select public.list_commission_rules(${f.t.id}) as r`);
+    expect(r.today).toBe(today);
+    expect(r.rules.map((x) => [x.serviceName, x.effectiveFrom])).toEqual([["Sac Kesimi", today]]);
+    const d366 = await todayIn(TZ, 366);
+    const d367 = await todayIn(TZ, 367);
+    expect(await attemptAs(owner.id, (sql) => sql`select public.set_commission_rule(${f.t.id}, ${f.staff["Dora"]!}, ${f.svc["Boya"]!}, 'none', null, ${d366}::date)`)).toEqual({ ok: true });
+    expect(await attemptAs(owner.id, (sql) => sql`select public.set_commission_rule(${f.t.id}, ${f.staff["Dora"]!}, ${f.svc["Boya"]!}, 'none', null, ${d367}::date)`)).toMatchObject({ ok: false, code: "CM004" });
+  });
+
+  it("the default range is the tenant's own today, whatever the clock's UTC date is", async () => {
+    const f = await salon("tzs", owner, ["Eda"], [["Sac Kesimi", 500]]);
+    for (const tz of ["Pacific/Kiritimati", "Pacific/Pago_Pago"]) {
+      await testDb`update tenants set timezone = ${tz} where id = ${f.t.id}`;
+      const s = await summary(f, owner.id, null, null);
+      expect([s.from, s.to], tz).toEqual([await todayIn(tz), await todayIn(tz)]);
+    }
+  });
+
+  it("a deleted salon is closed to its own Owner", async () => {
+    const f = await salon("deleted", owner, ["Fer"], [["Sac Kesimi", 500]]);
+    await testDb`update tenants set deleted_at = now() where id = ${f.t.id}`;
+    try {
+      expect(await attemptAs(owner.id, (sql) => sql`select public.get_staff_commission(${f.t.id}, null, null)`)).toMatchObject({ ok: false, code: "CM002" });
+    } finally {
+      await testDb`update tenants set deleted_at = null where id = ${f.t.id}`;
+    }
+  });
+});
+
+describe("TENANT ISOLATION, defence in depth: rows the application can never write still cannot cross salons", () => {
+  it("each tenant predicate alone keeps a foreign row out (corrupted ids, restored afterwards)", async () => {
+    const X = await salon("isox", owner, ["Xa"], [["Sac Kesimi", 500]]);
+    const Y = await salon("isoy", otherOwner, ["Ya"], [["Sac Kesimi", 500]]);
+    const ya = await appt(Y, DAY, "09:00", [["Ya", "Sac Kesimi"]], "completed");
+    const xa = await appt(X, DAY, "09:00", [["Xa", "Sac Kesimi"]], "completed");
+    const calls = {
+      count: async () => (await summary(X, owner.id)).totals.completedServices,
+    };
+    // Y's work wearing X's id on ONE of: the appointment, the item, the service — the other two still say Y
+    const cases: [string, (tx: typeof testDb) => Promise<unknown>, (tx: typeof testDb) => Promise<unknown>][] = [
+      ["appointment says Y, item+service say X",
+        (tx) => tx`with a as (update appointment_items set tenant_id = ${X.t.id} where id = ${ya.itemIds[0]!}) update services set tenant_id = ${X.t.id} where id = ${Y.svc["Sac Kesimi"]!}`,
+        (tx) => tx`with a as (update appointment_items set tenant_id = ${Y.t.id} where id = ${ya.itemIds[0]!}) update services set tenant_id = ${Y.t.id} where id = ${Y.svc["Sac Kesimi"]!}`],
+      ["item says Y, appointment+service say X",
+        (tx) => tx`with a as (update appointments set tenant_id = ${X.t.id} where id = ${ya.id}) update services set tenant_id = ${X.t.id} where id = ${Y.svc["Sac Kesimi"]!}`,
+        (tx) => tx`with a as (update appointments set tenant_id = ${Y.t.id} where id = ${ya.id}) update services set tenant_id = ${Y.t.id} where id = ${Y.svc["Sac Kesimi"]!}`],
+      ["service says Y, appointment+item say X",
+        (tx) => tx`with a as (update appointments set tenant_id = ${X.t.id} where id = ${ya.id}) update appointment_items set tenant_id = ${X.t.id} where id = ${ya.itemIds[0]!}`,
+        (tx) => tx`with a as (update appointments set tenant_id = ${Y.t.id} where id = ${ya.id}) update appointment_items set tenant_id = ${Y.t.id} where id = ${ya.itemIds[0]!}`],
+    ];
+    expect(await calls.count()).toBe(1); // X's own item only
+    for (const [label, corrupt, restore] of cases) {
+      await raw(corrupt);
+      try {
+        expect(await calls.count(), label).toBe(1);
+      } finally {
+        await raw(restore);
+      }
+    }
+    // a rule filed under Y for X's person and service pays nothing in X, and is not listed in X
+    await raw((tx) => tx`insert into staff_commission_rules (tenant_id, staff_member_id, service_id, kind, percentage, effective_from) values (${Y.t.id}, ${X.staff["Xa"]!}, ${X.svc["Sac Kesimi"]!}, 'percentage', 50, '2026-01-01')`);
+    try {
+      expect(row(await summary(X, owner.id), "Xa")!.commissionAmount).toBe(0);
+      const [{ r }] = await asAuthenticatedUser(owner.id, (sql) => sql<{ r: { rules: unknown[] } }[]>`select public.list_commission_rules(${X.t.id}) as r`);
+      expect(r.rules).toHaveLength(0);
+    } finally {
+      await testDb`delete from staff_commission_rules where tenant_id = ${Y.t.id}`;
+    }
+    // a person whose row says Y is not listed in X's summary
+    await raw((tx) => tx`update staff_members set tenant_id = ${Y.t.id} where id = ${X.staff["Xa"]!}`);
+    try {
+      expect((await summary(X, owner.id)).staff).toHaveLength(0);
+    } finally {
+      await raw((tx) => tx`update staff_members set tenant_id = ${X.t.id} where id = ${X.staff["Xa"]!}`);
+    }
+    void xa;
   });
 });
