@@ -343,12 +343,30 @@ const FIN_1B1_AUTHENTICATED_FUNCTIONS = [
 const FIN_1A_LOCKED_DOWN_TABLES = ["appointment_sales", "appointment_sale_items", "payments"];
 const FIN_1B1_LOCKED_DOWN_TABLES = ["expense_categories", "expenses", "expense_payments"];
 
-async function readFinanceEra(): Promise<{ fin1a: boolean; fin1b1: boolean }> {
-  const [row] = await testDb<{ fin1a: boolean; fin1b1: boolean }[]>`
+async function readFinanceEra(): Promise<{ fin1a: boolean; fin1b1: boolean; beauty1b: boolean }> {
+  const [row] = await testDb<{ fin1a: boolean; fin1b1: boolean; beauty1b: boolean }[]>`
     select to_regclass('public.appointment_sales') is not null as fin1a,
-           to_regclass('public.expenses') is not null as fin1b1`;
+           to_regclass('public.expenses') is not null as fin1b1,
+           to_regclass('public.treatment_media') is not null as beauty1b`;
   return row!;
 }
+
+// Faz BEAUTY.1B - treatment history / private treatment photos. An era like the finance ones: once its sentinel table exists, every
+// wrapper below must be granted to authenticated. The three private.treatment_object_* helpers are the storage-policy predicates; the
+// policies are evaluated for the caller, so authenticated must be able to execute them (they only answer a boolean about one path).
+const BEAUTY_1B_AUTHENTICATED_FUNCTIONS = [
+  "public.get_customer_treatment_history",
+  "public.get_treatment_rebook_defaults",
+  "public.set_treatment_note",
+  "public.register_treatment_photo",
+  "public.confirm_treatment_photo",
+  "public.get_treatment_photo_access",
+  "public.delete_treatment_photo",
+  "private.treatment_object_readable",
+  "private.treatment_object_insertable",
+  "private.treatment_object_deletable",
+];
+const BEAUTY_1B_LOCKED_DOWN_TABLES = ["treatment_notes", "treatment_media"];
 
 // Phase 2F's public read surface — the only functions anon has ever
 // been granted execute on in this project. Deliberately identical to
@@ -686,6 +704,7 @@ describe("security grants regression", () => {
       ...AUTHENTICATED_FUNCTION_WHITELIST,
       ...(era.fin1a ? FIN_1A_AUTHENTICATED_FUNCTIONS : []),
       ...(era.fin1b1 ? FIN_1B1_AUTHENTICATED_FUNCTIONS : []),
+      ...(era.beauty1b ? BEAUTY_1B_AUTHENTICATED_FUNCTIONS : []),
     ];
 
     const actual = new Set(
@@ -702,7 +721,7 @@ describe("security grants regression", () => {
 
   it("the finance ledger tables that exist on this schema are fully locked down (RLS on, zero policies, no API-role privilege)", async () => {
     const era = await readFinanceEra();
-    const tables = [...(era.fin1a ? FIN_1A_LOCKED_DOWN_TABLES : []), ...(era.fin1b1 ? FIN_1B1_LOCKED_DOWN_TABLES : [])];
+    const tables = [...(era.fin1a ? FIN_1A_LOCKED_DOWN_TABLES : []), ...(era.fin1b1 ? FIN_1B1_LOCKED_DOWN_TABLES : []), ...(era.beauty1b ? BEAUTY_1B_LOCKED_DOWN_TABLES : [])];
 
     const rls = await testDb<RlsStatusRow[]>`select * from security_audit_rls_status()`;
     const grants = await testDb<TableGrantRow[]>`select * from security_audit_table_grants()`;
