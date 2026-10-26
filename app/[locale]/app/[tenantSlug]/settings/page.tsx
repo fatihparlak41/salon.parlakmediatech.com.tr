@@ -29,6 +29,7 @@ export default async function SettingsPage({
     getOwnerManagedBranches(access.tenant.id),
   ]);
   const t = await getTranslations("Settings");
+  const canViewFinance = await hasPermission(access.tenant.id, "finance.view");
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 p-6">
@@ -59,6 +60,16 @@ export default async function SettingsPage({
           {t("personalNotifications.link")}
         </Link>
       </p>
+      {/* Faz COMM.1A — staff commission: the Owner's screen (finance.view). Linked from here, not from the main navigation. */}
+      {canViewFinance ? (
+        <p className="text-muted-foreground text-sm">
+          Personelin tamamladığı hizmetlerden doğan komisyonu görmek ve kural tanımlamak için{" "}
+          <Link href={`/app/${tenantSlug}/finance/commission`} className="text-foreground underline underline-offset-4">
+            Personel Primleri
+          </Link>{" "}
+          sayfasını açın.
+        </p>
+      ) : null}
     </div>
   );
 }
