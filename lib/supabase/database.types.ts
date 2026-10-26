@@ -2956,6 +2956,18 @@ export type Database = {
           table_name: string
         }[]
       }
+      get_customer_history: {
+        Args: { p_customer_id: string; p_limit?: number }
+        Returns: Json
+      }
+      preview_customer_import: {
+        Args: { p_rows: Json; p_tenant_id: string }
+        Returns: Json
+      }
+      commit_customer_import: {
+        Args: { p_rows: Json; p_tenant_id: string }
+        Returns: Json
+      }
       get_onboarding_status: {
         Args: { p_tenant_id: string }
         Returns: Json

@@ -11,7 +11,7 @@ export default async function CustomersPage({
   const access = await getTenantAccess(tenantSlug);
   if (access.reason !== "ok") return null;
 
-  const [canView, canManage, canLinkAccount] = await Promise.all([
+  const [canView, canManage, canLinkAccount, canCreate, canSettings] = await Promise.all([
     hasPermission(access.tenant.id, "customers.view"),
     // customers.create and customers.update are two separate permission
     // keys (no unified customers.manage) — but every role template that
@@ -27,6 +27,9 @@ export default async function CustomersPage({
     // capability from editing a phone field. Owner/Manager by default,
     // not Receptionist even though Receptionist holds customers.update.
     hasPermission(access.tenant.id, "customers.link_account"),
+    // Faz CUST.1A — the import is the Owner's: it needs the same four permissions the database re-checks
+    hasPermission(access.tenant.id, "customers.create"),
+    hasPermission(access.tenant.id, "settings.manage"),
   ]);
 
   if (!canView) {
@@ -46,6 +49,7 @@ export default async function CustomersPage({
       tenantSlug={tenantSlug}
       canManage={canManage}
       canLinkAccount={canLinkAccount}
+      canImport={canView && canManage && canCreate && canSettings}
       initialCustomers={initialCustomers}
       initialCounts={counts}
       labels={{
