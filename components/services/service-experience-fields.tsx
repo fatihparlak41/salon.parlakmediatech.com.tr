@@ -77,6 +77,18 @@ export function ServiceExperienceFields({
       </div>
       <p className="text-muted-foreground -mt-1 text-xs">Müşteriye gösterilen süre aralığıdır; takvimde ayrılan süre Takvim Süresidir.</p>
 
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`${idPrefix}-rmin`}>Önerilen tekrar: en az (gün)</Label>
+          <Input id={`${idPrefix}-rmin`} type="number" min={1} value={value.rebookMin} onChange={(e) => set({ rebookMin: e.target.value })} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`${idPrefix}-rmax`}>en çok (gün)</Label>
+          <Input id={`${idPrefix}-rmax`} type="number" min={1} value={value.rebookMax} onChange={(e) => set({ rebookMax: e.target.value })} />
+        </div>
+      </div>
+      <p className="text-muted-foreground -mt-1 text-xs">Tamamlanan işlemden sonra tekrar randevu için önerilen dönem; müşteriye otomatik mesaj gitmez.</p>
+
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`${idPrefix}-summary`}>Kısa açıklama (kartta)</Label>
         <Input id={`${idPrefix}-summary`} maxLength={EXPERIENCE_TEXT_LIMITS.publicSummary} value={value.summary} onChange={(e) => set({ summary: e.target.value })} />

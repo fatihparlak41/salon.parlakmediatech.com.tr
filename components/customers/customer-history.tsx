@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { createClient } from "@/lib/supabase/client";
 import { parseCustomerHistory, type CustomerHistory, type HistoryAppointment } from "@/lib/modules/customers/import-model";
@@ -24,10 +24,15 @@ function money(amount: number, currency: string): string {
   return `${amount.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
 }
 
-/** Pure view of one history answer (exported for tests); the money columns exist only when the model carries them. */
-export function CustomerHistoryView({ history }: { history: CustomerHistory }) {
+/**
+ * Pure view of one history answer (exported for tests); the money columns exist only when the model carries them.
+ * `treatments` (RC.1A) is the treatment-detail section (notes, photos, re-booking window) of the SAME screen: when present, completed
+ * visits are shown there as treatment cards instead of being listed twice, and the visit list keeps the other past appointments.
+ */
+export function CustomerHistoryView({ history, treatments }: { history: CustomerHistory; treatments?: ReactNode }) {
   const s = history.summary;
   const currency = history.finance?.currency ?? "TRY";
+  const pastShown = treatments ? history.past.filter((a) => a.status !== "completed") : history.past;
   const row = (a: HistoryAppointment, i: number) => (
     <li key={`${a.startAt}-${i}`} className="flex flex-col gap-0.5 border-t py-2 first:border-t-0" data-status={a.status}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -90,9 +95,16 @@ export function CustomerHistoryView({ history }: { history: CustomerHistory }) {
         {history.upcoming.length === 0 ? <p className="text-muted-foreground text-sm">Yaklaşan randevu yok.</p> : <ul>{history.upcoming.map(row)}</ul>}
       </section>
 
-      <section aria-label="Geçmiş">
-        <h3 className="mb-1 text-sm font-semibold">Geçmiş</h3>
-        {history.past.length === 0 ? <p className="text-muted-foreground text-sm">Henüz geçmiş randevu yok.</p> : <ul>{history.past.map(row)}</ul>}
+      {treatments ? (
+        <section aria-label="İşlem kayıtları" data-section="treatments">
+          <h3 className="mb-1 text-sm font-semibold">Tamamlanan işlemler</h3>
+          {treatments}
+        </section>
+      ) : null}
+
+      <section aria-label={treatments ? "Diğer geçmiş randevular" : "Geçmiş"}>
+        <h3 className="mb-1 text-sm font-semibold">{treatments ? "İptal / gelmedi" : "Geçmiş"}</h3>
+        {pastShown.length === 0 ? <p className="text-muted-foreground text-sm">{treatments ? "İptal edilen veya gelmediği kayıtlı randevu yok." : "Henüz geçmiş randevu yok."}</p> : <ul>{pastShown.map(row)}</ul>}
         {history.hasMorePast ? <p className="text-muted-foreground mt-1 text-xs">Daha eski randevular var; en yeni {history.past.length} gösteriliyor.</p> : null}
       </section>
 
@@ -124,7 +136,7 @@ export function CustomerHistoryView({ history }: { history: CustomerHistory }) {
   );
 }
 
-export function CustomerHistoryTab({ customerId }: { customerId: string }) {
+export function CustomerHistoryTab({ customerId, treatments }: { customerId: string; treatments?: ReactNode }) {
   const [history, setHistory] = useState<CustomerHistory | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "denied" | "failed">("loading");
 
@@ -161,5 +173,5 @@ export function CustomerHistoryTab({ customerId }: { customerId: string }) {
   }
   if (state === "denied") return <p className="text-muted-foreground text-sm">Bu müşterinin geçmişini görüntüleme yetkiniz yok.</p>;
   if (state === "failed" || !history) return <p className="text-destructive text-sm" role="alert">Geçmiş şu an okunamadı. Lütfen tekrar deneyin.</p>;
-  return <CustomerHistoryView history={history} />;
+  return <CustomerHistoryView history={history} treatments={treatments} />;
 }

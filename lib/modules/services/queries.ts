@@ -61,6 +61,8 @@ export type ServiceDetail = {
   aftercareNote: string | null;
   importantNote: string | null;
   badgeLabel: string | null;
+  rebookMinDays: number | null;
+  rebookMaxDays: number | null;
   branchIds: string[];
   staffMemberIds: string[];
 };
@@ -73,6 +75,7 @@ export async function getServiceDetail(serviceId: string): Promise<ServiceDetail
       `id, name, category, description, duration_minutes, price, status,
        pricing_mode, booking_mode, price_public, display_duration_min, display_duration_max,
        public_summary, public_details, preparation_note, aftercare_note, important_note, badge_label,
+       rebook_min_days, rebook_max_days,
        service_branches(branch_id), staff_services(staff_member_id)`,
     )
     .eq("id", serviceId)
@@ -100,6 +103,8 @@ export async function getServiceDetail(serviceId: string): Promise<ServiceDetail
     aftercareNote: data.aftercare_note,
     importantNote: data.important_note,
     badgeLabel: data.badge_label,
+    rebookMinDays: data.rebook_min_days,
+    rebookMaxDays: data.rebook_max_days,
     branchIds: data.service_branches.map((b) => b.branch_id),
     staffMemberIds: data.staff_services.map((s) => s.staff_member_id),
   };

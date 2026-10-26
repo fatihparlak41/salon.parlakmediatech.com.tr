@@ -25,6 +25,9 @@ export const serviceProfileSchema = z.object({
   aftercareNote: z.string().max(900).optional(),
   importantNote: z.string().max(600).optional(),
   badgeLabel: z.string().max(120).optional(),
+  // Faz BEAUTY.1B - optional recommended re-booking window (days); cross-field rules in rebook.ts.
+  rebookMinDays: z.number().int().min(1).max(730).nullable().optional(),
+  rebookMaxDays: z.number().int().min(1).max(730).nullable().optional(),
 });
 
 export const serviceBranchesSchema = z.object({

@@ -11,7 +11,7 @@ export default async function CustomersPage({
   const access = await getTenantAccess(tenantSlug);
   if (access.reason !== "ok") return null;
 
-  const [canView, canManage, canLinkAccount, canCreate, canSettings] = await Promise.all([
+  const [canView, canManage, canLinkAccount, canCreate, canSettings, canRebook] = await Promise.all([
     hasPermission(access.tenant.id, "customers.view"),
     // customers.create and customers.update are two separate permission
     // keys (no unified customers.manage) — but every role template that
@@ -30,6 +30,8 @@ export default async function CustomersPage({
     // Faz CUST.1A — the import is the Owner's: it needs the same four permissions the database re-checks
     hasPermission(access.tenant.id, "customers.create"),
     hasPermission(access.tenant.id, "settings.manage"),
+    // Faz BEAUTY.1B - quick rebook from a treatment needs appointments.create (reading the history is CUST.1A's rule, enforced by the database).
+    hasPermission(access.tenant.id, "appointments.create"),
   ]);
 
   if (!canView) {
@@ -50,6 +52,7 @@ export default async function CustomersPage({
       canManage={canManage}
       canLinkAccount={canLinkAccount}
       canImport={canView && canManage && canCreate && canSettings}
+      canRebook={canRebook}
       initialCustomers={initialCustomers}
       initialCounts={counts}
       labels={{

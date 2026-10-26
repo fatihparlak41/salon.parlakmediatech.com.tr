@@ -1774,6 +1774,8 @@ export type Database = {
           status: string
           tenant_id: string
           updated_at: string
+          rebook_max_days: number | null
+          rebook_min_days: number | null
         }
         Insert: {
           aftercare_note?: string | null
@@ -1800,6 +1802,8 @@ export type Database = {
           status?: string
           tenant_id: string
           updated_at?: string
+          rebook_max_days?: number | null
+          rebook_min_days?: number | null
         }
         Update: {
           aftercare_note?: string | null
@@ -1826,6 +1830,8 @@ export type Database = {
           status?: string
           tenant_id?: string
           updated_at?: string
+          rebook_max_days?: number | null
+          rebook_min_days?: number | null
         }
         Relationships: [
           {
@@ -2544,6 +2550,34 @@ export type Database = {
           appointment_id: string
           customer_display_name: string
         }[]
+      }
+      get_customer_treatment_history: {
+        Args: { p_customer_id: string; p_limit?: number; p_tenant_id: string }
+        Returns: Json
+      }
+      get_treatment_rebook_defaults: {
+        Args: { p_item_id: string; p_tenant_id: string }
+        Returns: Json
+      }
+      set_treatment_note: {
+        Args: { p_item_id: string; p_note: string; p_tenant_id: string }
+        Returns: Json
+      }
+      register_treatment_photo: {
+        Args: { p_item_id: string; p_kind: string; p_mime: string; p_size: number; p_tenant_id: string }
+        Returns: Json
+      }
+      confirm_treatment_photo: {
+        Args: { p_media_id: string; p_tenant_id: string }
+        Returns: Json
+      }
+      get_treatment_photo_access: {
+        Args: { p_media_id: string; p_tenant_id: string }
+        Returns: Json
+      }
+      delete_treatment_photo: {
+        Args: { p_media_id: string; p_tenant_id: string }
+        Returns: Json
       }
       get_appointment_private_details: {
         Args: { p_appointment_id: string; p_tenant_id: string }

@@ -118,15 +118,16 @@ describe("experience columns and validation", () => {
   });
 
   it("every form field lands in its own input field", () => {
-    const f = { pricingMode: "fixed", bookingMode: "inquiry", pricePublic: true, displayMin: "5", displayMax: "6", summary: "s1", details: "d2", preparation: "p3", aftercare: "a4", important: "i5", badge: "b6" } as const;
-    expect(experienceFormToInput(f)).toEqual({ pricingMode: "fixed", bookingMode: "inquiry", pricePublic: true, displayDurationMin: 5, displayDurationMax: 6, publicSummary: "s1", publicDetails: "d2", preparationNote: "p3", aftercareNote: "a4", importantNote: "i5", badgeLabel: "b6" });
+    const f = { pricingMode: "fixed", bookingMode: "inquiry", pricePublic: true, displayMin: "5", displayMax: "6", summary: "s1", details: "d2", preparation: "p3", aftercare: "a4", important: "i5", badge: "b6", rebookMin: "28", rebookMax: "56" } as const;
+    // RC.1A: the one service model also carries BEAUTY.1B's re-booking window
+    expect(experienceFormToInput(f)).toEqual({ pricingMode: "fixed", bookingMode: "inquiry", pricePublic: true, displayDurationMin: 5, displayDurationMax: 6, publicSummary: "s1", publicDetails: "d2", preparationNote: "p3", aftercareNote: "a4", importantNote: "i5", badgeLabel: "b6", rebookMinDays: 28, rebookMaxDays: 56 });
   });
 
   it("the form maps to the action input and back without loss; inquiry in the form is inquiry everywhere", () => {
     const f = { ...emptyExperienceForm(), pricingMode: "inquiry" as const, bookingMode: "direct" as const, pricePublic: true, displayMin: "30", displayMax: "40", summary: "s", preparation: "p" };
     expect(experienceFormToInput(f)).toMatchObject({ pricingMode: "inquiry", bookingMode: "inquiry", pricePublic: false, displayDurationMin: 30, displayDurationMax: 40, publicSummary: "s", preparationNote: "p" });
-    const row = { pricingMode: "fixed" as const, bookingMode: "direct" as const, pricePublic: true, displayDurationMin: 10, displayDurationMax: null, publicSummary: null, publicDetails: "d", preparationNote: null, aftercareNote: null, importantNote: "i", badgeLabel: "b" };
-    expect(experienceFormFromRow(row)).toEqual({ pricingMode: "fixed", bookingMode: "direct", pricePublic: true, displayMin: "10", displayMax: "", summary: "", details: "d", preparation: "", aftercare: "", important: "i", badge: "b" });
+    const row = { pricingMode: "fixed" as const, bookingMode: "direct" as const, pricePublic: true, displayDurationMin: 10, displayDurationMax: null, publicSummary: null, publicDetails: "d", preparationNote: null, aftercareNote: null, importantNote: "i", badgeLabel: "b", rebookMinDays: 28, rebookMaxDays: 56 };
+    expect(experienceFormFromRow(row)).toEqual({ pricingMode: "fixed", bookingMode: "direct", pricePublic: true, displayMin: "10", displayMax: "", summary: "", details: "d", preparation: "", aftercare: "", important: "i", badge: "b", rebookMin: "28", rebookMax: "56" });
     expect(experienceFormToInput(emptyExperienceForm())).toMatchObject({ displayDurationMin: null, displayDurationMax: null, pricingMode: "fixed", bookingMode: "direct" });
   });
 });

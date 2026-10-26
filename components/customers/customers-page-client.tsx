@@ -61,6 +61,7 @@ export function CustomersPageClient({
   canManage,
   canLinkAccount,
   canImport = false,
+  canRebook,
   initialCustomers,
   initialCounts,
   labels,
@@ -70,6 +71,7 @@ export function CustomersPageClient({
   canManage: boolean;
   canLinkAccount: boolean;
   canImport?: boolean;
+  canRebook: boolean;
   initialCustomers: CustomerRow[];
   initialCounts: { active: number; archived: number };
   labels: Labels;
@@ -234,9 +236,11 @@ export function CustomersPageClient({
         onOpenChange={(open) => {
           if (!open) setSelectedCustomerId(null);
         }}
+        tenantId={tenantId}
         tenantSlug={tenantSlug}
         canManage={canManage}
         canLinkAccount={canLinkAccount}
+        canRebook={canRebook}
         onSaved={refreshList}
       />
     </div>

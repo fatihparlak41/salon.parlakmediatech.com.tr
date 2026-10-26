@@ -121,6 +121,7 @@ export function AppointmentsPageClient({
   canCancel,
   canViewFinance,
   canManageFinance,
+  rebook,
   initialAppointments,
   labels,
 }: {
@@ -133,6 +134,8 @@ export function AppointmentsPageClient({
   canCancel: boolean;
   canViewFinance: boolean;
   canManageFinance: boolean;
+  /** Quick rebook (BEAUTY.1B): opens the create sheet with the service (and branch / staff if still valid) preselected. */
+  rebook: { serviceId: string; branchId?: string; staffId?: string } | null;
   initialAppointments: AppointmentListRow[];
   labels: Labels;
 }) {
@@ -142,7 +145,8 @@ export function AppointmentsPageClient({
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(initialAppointments.length === APPOINTMENTS_PAGE_SIZE);
   const [hasAnyEver, setHasAnyEver] = useState<boolean | null>(initialAppointments.length > 0 ? true : null);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(rebook !== null);
+  const [rebookPrefill, setRebookPrefill] = useState(rebook);
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
 
   const isFirstRun = useRef(true);
@@ -274,7 +278,13 @@ export function AppointmentsPageClient({
       {canCreate && (
         <CreateAppointmentSheet
           open={createOpen}
-          onOpenChange={setCreateOpen}
+          onOpenChange={(next) => {
+            setCreateOpen(next);
+            if (!next) setRebookPrefill(null);
+          }}
+          initialServiceId={rebookPrefill?.serviceId}
+          initialBranchId={rebookPrefill?.branchId}
+          initialStaffMemberId={rebookPrefill?.staffId}
           tenantId={tenantId}
           tenantSlug={tenantSlug}
           tenantTimezone={tenantTimezone}

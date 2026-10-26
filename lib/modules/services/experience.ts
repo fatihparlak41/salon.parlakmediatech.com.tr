@@ -1,10 +1,12 @@
+import { rebookColumns, rebookDaysFromText, validateRebook, type ServiceRebookInput } from "./rebook";
+
 /**
  * Faz BEAUTY.1A - the generic "service experience" fields (pricing/booking mode, display duration, salon-authored copy).
  * Pure functions so the rules are tested once and the Server Actions only call them. Nothing here is specific to a business or
  * a treatment. Every field is optional on update: an absent field means "leave the stored value alone".
  */
 
-export type ServiceExperienceInput = {
+export type ServiceExperienceInput = ServiceRebookInput & {
   pricingMode?: "fixed" | "inquiry";
   bookingMode?: "direct" | "inquiry";
   pricePublic?: boolean;
@@ -38,6 +40,8 @@ const TEXT_FIELDS: [keyof typeof EXPERIENCE_TEXT_LIMITS, string][] = [
 
 /** A plain-language message for the first problem, or null when the input is acceptable. */
 export function validateExperience(input: ServiceExperienceInput): string | null {
+  const rebookError = validateRebook(input);
+  if (rebookError) return rebookError;
   const { displayDurationMin: min, displayDurationMax: max } = input;
   if ((min === null || min === undefined) && max !== null && max !== undefined) {
     return "Görünen süre için önce en az süreyi girin";
@@ -59,7 +63,7 @@ export function validateExperience(input: ServiceExperienceInput): string | null
  * (never displayed) and is never shown with a public price.
  */
 export function experienceColumns(input: ServiceExperienceInput): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
+  const out: Record<string, unknown> = { ...rebookColumns(input) };
   if (input.pricingMode === "inquiry") {
     out.pricing_mode = "inquiry";
     out.booking_mode = "inquiry";
@@ -94,10 +98,12 @@ export type ExperienceForm = {
   aftercare: string;
   important: string;
   badge: string;
+  rebookMin: string;
+  rebookMax: string;
 };
 
 export function emptyExperienceForm(): ExperienceForm {
-  return { pricingMode: "fixed", bookingMode: "direct", pricePublic: false, displayMin: "", displayMax: "", summary: "", details: "", preparation: "", aftercare: "", important: "", badge: "" };
+  return { pricingMode: "fixed", bookingMode: "direct", pricePublic: false, displayMin: "", displayMax: "", summary: "", details: "", preparation: "", aftercare: "", important: "", badge: "", rebookMin: "", rebookMax: "" };
 }
 
 const toMinutes = (s: string): number | null => (s.trim() === "" ? null : Number(s.trim()));
@@ -115,6 +121,8 @@ export function experienceFormToInput(f: ExperienceForm): ServiceExperienceInput
     aftercareNote: f.aftercare,
     importantNote: f.important,
     badgeLabel: f.badge,
+    rebookMinDays: rebookDaysFromText(f.rebookMin),
+    rebookMaxDays: rebookDaysFromText(f.rebookMax),
   };
 }
 
@@ -130,6 +138,8 @@ export type ServiceExperienceRow = {
   aftercareNote: string | null;
   importantNote: string | null;
   badgeLabel: string | null;
+  rebookMinDays: number | null;
+  rebookMaxDays: number | null;
 };
 
 export function experienceFormFromRow(r: ServiceExperienceRow): ExperienceForm {
@@ -145,5 +155,7 @@ export function experienceFormFromRow(r: ServiceExperienceRow): ExperienceForm {
     aftercare: r.aftercareNote ?? "",
     important: r.importantNote ?? "",
     badge: r.badgeLabel ?? "",
+    rebookMin: r.rebookMinDays === null ? "" : String(r.rebookMinDays),
+    rebookMax: r.rebookMaxDays === null ? "" : String(r.rebookMaxDays),
   };
 }

@@ -193,6 +193,7 @@ export function CreateAppointmentSheet({
   branches,
   initialBranchId,
   initialStaffMemberId,
+  initialServiceId,
   initialDate,
   initialStartTime,
   onCreated,
@@ -211,6 +212,8 @@ export function CreateAppointmentSheet({
    * never silently creates an invalid staff/service pairing. */
   initialBranchId?: string;
   initialStaffMemberId?: string;
+  /** Quick rebook (BEAUTY.1B): the service is preselected; the customer, date and time are still chosen. */
+  initialServiceId?: string;
   initialDate?: string;
   initialStartTime?: string;
   onCreated: (appointmentId: string) => void;
@@ -230,6 +233,7 @@ export function CreateAppointmentSheet({
             branches={branches}
             initialBranchId={initialBranchId}
             initialStaffMemberId={initialStaffMemberId}
+            initialServiceId={initialServiceId}
             initialDate={initialDate}
             initialStartTime={initialStartTime}
             onCreated={onCreated}
@@ -247,6 +251,7 @@ function CreateAppointmentForm({
   branches,
   initialBranchId,
   initialStaffMemberId,
+  initialServiceId,
   initialDate,
   initialStartTime,
   onCreated,
@@ -257,6 +262,7 @@ function CreateAppointmentForm({
   branches: BranchOption[];
   initialBranchId?: string;
   initialStaffMemberId?: string;
+  initialServiceId?: string;
   initialDate?: string;
   initialStartTime?: string;
   onCreated: (appointmentId: string) => void;
@@ -266,7 +272,7 @@ function CreateAppointmentForm({
   const [date, setDate] = useState(initialDate ?? (() => todayLocalDate(tenantTimezone)));
   const [servicesRaw, setServicesRaw] = useState<ServiceForBranch[]>([]);
   const [items, setItems] = useState<ItemDraft[]>([
-    { key: crypto.randomUUID(), serviceId: "", staffMemberId: "", startTime: initialStartTime ?? "" },
+    { key: crypto.randomUUID(), serviceId: initialServiceId ?? "", staffMemberId: "", startTime: initialStartTime ?? "" },
   ]);
   const [notes, setNotes] = useState("");
 
