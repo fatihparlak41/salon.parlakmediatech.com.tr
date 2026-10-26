@@ -744,6 +744,8 @@ describe("closeout: day boundaries, upcoming appointments, quick-rebook eligibil
     const r = await register(emel, temp.id, v.itemIds[0]!);
     await testDb`delete from role_permissions where role_id = ${roleId} and permission_id = (select id from permissions where key = 'customers.update')`;
     expect(await attemptAs(temp.id, (sql) => sql`insert into storage.objects (bucket_id, name, metadata) values ('treatment-media', ${r.path}, '{}'::jsonb)`)).toMatchObject({ ok: false });
+    const seen = await asAuthenticatedUser(temp.id, (sql) => sql<{ n: string }[]>`select count(*)::text as n from storage.objects where bucket_id = 'treatment-media' and name = ${r.path}`);
+    expect(seen[0]!.n).toBe("0"); // the registrant lost customers.update: even their own pending object is no longer visible
     const ready = await readyPhoto(emel, v.itemIds[0]!);
     const gone = await asAuthenticatedUser(temp.id, (sql) => sql<{ name: string }[]>`delete from storage.objects where bucket_id = 'treatment-media' and name = ${ready.path} returning name`);
     expect(gone).toEqual([]);
