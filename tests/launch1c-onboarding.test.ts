@@ -164,7 +164,7 @@ describe("NEW OWNER — an empty tenant is incomplete, and each step is derived 
     const afterProfile = (await rpc.profile(owner.id, salon.id))[0]!.s;
     expect(afterProfile.steps.find((x) => x.key === "profile")!.done).toBe(true);
     expect(afterProfile.ready).toBe(false);
-    expect(afterProfile.profile).toMatchObject({ name: "Güzellik Atölyesi", timezone: "Europe/Istanbul", currency: "TRY", phone: "05421234567" });
+    expect(afterProfile.profile).toMatchObject({ name: "Güzellik Atölyesi", timezone: "Europe/Istanbul", currency: "TRY", phone: "+905421234567" }); // RC.1A: CUST.1A's central phone canon now stores the Turkish local form in its canonical +90 form
 
     // 2 services (10 in 3 categories + one without)
     const svc = (await rpc.services(owner.id, salon.id, TEN_SERVICES))[0]!.r;
@@ -563,7 +563,7 @@ describe("STAFF — roster without any login", () => {
       from staff_members sm where sm.tenant_id = ${t.id} order by sm.display_order`;
     expect(rows).toEqual([
       { full_name: "Ayse", tenant_membership_id: null, email: null, phone: null, linked: "1" },
-      { full_name: "Mehmet", tenant_membership_id: null, email: null, phone: "05331112233", linked: "1" },
+      { full_name: "Mehmet", tenant_membership_id: null, email: null, phone: "+905331112233", linked: "1" }, // RC.1A: canonical +90 form (CUST.1A phone canon)
     ]);
     const again = (await rpc.staff(o.id, t.id, [{ fullName: "AYSE" }, { fullName: "Yeni Kişi" }]))[0]!.r;
     expect(again).toMatchObject({ created: 1, skipped: 1 });

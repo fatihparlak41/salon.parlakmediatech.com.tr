@@ -238,7 +238,7 @@ describe("synthetic salon: 1 owner, 3 staff, 10 services in 3 categories", () =>
     expect(final.ready).toBe(true);
     expect(final.blockers).toEqual([]);
     expect(final.counts).toEqual({ services: 10, staff: 3, staffWithHours: 3, bookablePaths: cells });
-    expect(final.profile).toMatchObject({ timezone: "Asia/Nicosia", phone: "05421234567" });
+    expect(final.profile).toMatchObject({ timezone: "Asia/Nicosia", phone: "+905421234567" }); // RC.1A: canonical +90 form (CUST.1A phone canon)
     expect(stepProgress(final)).toEqual({ done: 6, total: 6 });
 
     // the categories, durations and prices survived exactly
