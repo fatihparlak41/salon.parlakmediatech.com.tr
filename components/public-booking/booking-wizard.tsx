@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { TurnstileWidget } from "@/components/public-booking/turnstile-widget";
 import { SalonContactHeader } from "@/components/public-booking/salon-contact-header";
 import { AccountEntry } from "@/components/public-booking/account-entry";
+import { ServiceCard, ServiceInfoPanel, type ServicePartsLabels } from "@/components/public-booking/service-parts";
 import {
   fetchPublicEligibleStaff,
   fetchPublicAvailabilitySlots,
@@ -17,6 +18,7 @@ import {
   type PublicBookingStaffOption,
   type GuestBookingConfirmation,
 } from "@/lib/modules/public-booking/client-queries";
+import { hasServiceInfo, isDirectlyBookable, priceLine, resolveStaffStep } from "@/lib/modules/public-booking/service-presentation";
 import { submitGuestBookingAction } from "@/lib/modules/public-booking/actions";
 import { isValidSingleEmail } from "@/lib/modules/public-booking/email-validation";
 import { PUBLIC_BOOKING_HORIZON_DAYS } from "@/lib/modules/public-booking/constants";
@@ -24,9 +26,13 @@ import { tenantLocalToUtcIso, formatTenantLocalDateTime, getTenantTodayRangeUtc 
 
 const WEEKDAY_LABELS_TR = ["Paz", "Pzt", "Sal", "Çar", "Per", "Cum", "Cmt"]; // Sunday-first, matches Date#getUTCDay()
 
-type Step = "branch" | "service" | "staff" | "date" | "time" | "contact" | "confirm" | "success";
+// "info" is the optional service-information step (Faz BEAUTY.1A); it is not part of the progress bar or stepOrder.
+type Step = "branch" | "service" | "info" | "staff" | "date" | "time" | "contact" | "confirm" | "success";
 
-type Labels = {
+type Labels = ServicePartsLabels & {
+  noEligibleStaff: string;
+  summaryPrepNote: string;
+
   unavailableTitle: string;
   unavailableBody: string;
   backHome: string;
@@ -101,7 +107,7 @@ function StepHeader({ current, steps, labels }: { current: Step; steps: Step[]; 
   };
   // Collapse date+time into one visual "Tarih & Saat" progress dot.
   const visualSteps: Step[] = steps.filter((s): s is Step => s !== "time" && s !== "confirm");
-  const currentVisual: Step = current === "time" ? "date" : current;
+  const currentVisual: Step = current === "time" ? "date" : current === "info" ? "service" : current;
   const currentIndex = visualSteps.indexOf(currentVisual);
 
   return (
@@ -176,6 +182,9 @@ export function BookingWizard({
 
   const [staffOptions, setStaffOptions] = useState<PublicBookingStaffOption[]>([]);
   const [staffLoading, setStaffLoading] = useState(false);
+  // Faz BEAUTY.1A - true when exactly one eligible person exists and was selected for the customer (the staff step is skipped).
+  const [staffAuto, setStaffAuto] = useState(false);
+  const [noStaffNotice, setNoStaffNotice] = useState(false);
   const [slots, setSlots] = useState<string[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -196,6 +205,7 @@ export function BookingWizard({
 
   const branch = branches.find((b) => b.id === branchId) ?? null;
   const service = branch?.services.find((s) => s.id === serviceId) ?? null;
+  const shownPrice = service ? priceLine(service) : ({ kind: "none" } as const);
 
   const todayStr = useMemo(() => getTenantTodayRangeUtc(tenantTimezone).today, [tenantTimezone]);
   const dateOptions = useMemo(
@@ -221,6 +231,15 @@ export function BookingWizard({
     if (i >= 0 && i < stepOrder.length - 1) goTo(stepOrder[i + 1]!);
   }
   function goBack() {
+    if (step === "info") {
+      goTo("service");
+      return;
+    }
+    // exactly one eligible person was selected for the customer: there is no staff step to go back to
+    if (step === "date" && staffAuto) {
+      goTo(service && hasServiceInfo(service) ? "info" : "service");
+      return;
+    }
     const i = stepOrder.indexOf(step);
     if (i > 0) goTo(stepOrder[i - 1]!);
   }
@@ -231,24 +250,43 @@ export function BookingWizard({
     goNext();
   }
 
-  function selectService(id: string) {
-    setServiceId(id);
-    setStaffChoice(null);
-    goNext();
+  /** Faz BEAUTY.1A - after the service (and its information, if any): who performs it. Exactly one eligible person ->
+   * selected automatically and the staff step is skipped; several -> the normal choice; none -> not bookable. */
+  async function proceedToStaff(sid: string) {
+    if (!branchId) return;
+    setNoStaffNotice(false);
+    setStaffLoading(true);
+    const options = await fetchPublicEligibleStaff(tenantSlug, branchId, sid);
+    setStaffLoading(false);
+    setStaffOptions(options);
+    const next = resolveStaffStep(options);
+    if (next.kind === "auto") {
+      setStaffChoice(next.staffId);
+      setStaffAuto(true);
+      goTo("date");
+    } else if (next.kind === "choose") {
+      setStaffAuto(false);
+      goTo("staff");
+    } else {
+      setStaffAuto(false);
+      setNoStaffNotice(true);
+    }
   }
 
-  useEffect(() => {
-    if (step !== "staff" || !branchId || !serviceId) return;
-    // Deferred one tick so the initial setState doesn't run synchronously
-    // within the effect body (react-hooks/set-state-in-effect).
-    const timer = setTimeout(() => {
-      setStaffLoading(true);
-      fetchPublicEligibleStaff(tenantSlug, branchId, serviceId)
-        .then(setStaffOptions)
-        .finally(() => setStaffLoading(false));
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [step, tenantSlug, branchId, serviceId]);
+  function selectService(id: string) {
+    const picked = branch?.services.find((s) => s.id === id);
+    if (!picked) return;
+    setServiceId(id);
+    setStaffChoice(null);
+    setStaffAuto(false);
+    setNoStaffNotice(false);
+    // an inquiry service never reaches the booking steps; a direct one with information shows it first
+    if (!isDirectlyBookable(picked) || hasServiceInfo(picked)) {
+      goTo("info");
+      return;
+    }
+    void proceedToStaff(id);
+  }
 
   function selectStaff(choice: string | "any") {
     setStaffChoice(choice);
@@ -329,6 +367,8 @@ export function BookingWizard({
     setBranchId(singleBranch?.id ?? null);
     setServiceId(null);
     setStaffChoice(null);
+    setStaffAuto(false);
+    setNoStaffNotice(false);
     setDateStr(null);
     setTimeStr(null);
     setCustomerFullName(prefill?.fullName ?? "");
@@ -374,7 +414,7 @@ export function BookingWizard({
         }}
       />
 
-      {step !== "success" && <StepHeader current={step} steps={stepOrder} labels={labels} />}
+      {step !== "success" && <StepHeader current={step} steps={staffAuto ? stepOrder.filter((s) => s !== "staff") : stepOrder} labels={labels} />}
 
       {step === "branch" && (
         <section className="flex flex-col gap-3">
@@ -400,17 +440,27 @@ export function BookingWizard({
           <h1 className="text-lg font-semibold">{labels.chooseServiceTitle}</h1>
           <div className="flex flex-col gap-2">
             {branch.services.map((s: PublicBookingService) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => selectService(s.id)}
-                className="hover:border-primary hover:bg-primary/5 focus-visible:ring-ring rounded-xl border p-4 text-left focus-visible:ring-2 focus-visible:outline-none"
-              >
-                <div className="font-medium">{s.name}</div>
-                {s.category && <div className="text-muted-foreground mt-0.5 text-sm">{s.category}</div>}
-              </button>
+              <ServiceCard key={s.id} service={s} labels={labels} onSelect={() => selectService(s.id)} />
             ))}
           </div>
+          {staffLoading && <p className="text-muted-foreground text-sm">…</p>}
+          {noStaffNotice && (
+            <p className="text-sm" role="alert">
+              {labels.noEligibleStaff}
+            </p>
+          )}
+        </section>
+      )}
+
+      {step === "info" && service && (
+        <section className="flex flex-col gap-3">
+          <ServiceInfoPanel service={service} branch={branch} labels={labels} onBook={() => void proceedToStaff(service.id)} />
+          {staffLoading && <p className="text-muted-foreground text-sm">…</p>}
+          {noStaffNotice && (
+            <p className="text-sm" role="alert">
+              {labels.noEligibleStaff}
+            </p>
+          )}
         </section>
       )}
 
@@ -550,7 +600,18 @@ export function BookingWizard({
                 {dateStr} {timeStr}
               </span>
             </div>
+            {shownPrice.kind === "price" && (
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground">{labels.summaryPrice}</span>
+                <span className="font-medium tabular-nums">{shownPrice.text}</span>
+              </div>
+            )}
           </div>
+          {service.preparationNote && (
+            <p className="bg-muted rounded-lg px-3 py-2 text-sm" data-testid="prep-note">
+              <span className="font-medium">{labels.summaryPrepNote}</span> {service.preparationNote}
+            </p>
+          )}
           <TurnstileWidget
             siteKey={turnstileSiteKey}
             onVerify={handleTurnstileVerify}
@@ -574,6 +635,11 @@ export function BookingWizard({
           <p className="text-muted-foreground text-sm">{labels.confirmedBody}</p>
           {confirmation.claimIssued && (
             <p className="bg-muted rounded-lg px-3 py-2 text-sm">{labels.claimPendingNote}</p>
+          )}
+          {service?.preparationNote && (
+            <p className="bg-muted rounded-lg px-3 py-2 text-left text-sm" data-testid="prep-note">
+              <span className="font-medium">{labels.summaryPrepNote}</span> {service.preparationNote}
+            </p>
           )}
           <div className="mt-2 flex w-full flex-col gap-2 rounded-xl border p-4 text-left text-sm">
             <div className="flex justify-between gap-2">

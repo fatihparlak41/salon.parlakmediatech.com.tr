@@ -125,6 +125,18 @@ export default async function BookingPage({
           newBooking: t("newBooking"),
           requiredField: t("requiredField"),
           todayLabel: t("todayLabel"),
+          priceInquiry: t("priceInquiry"),
+          inquiryAction: t("inquiryAction"),
+          bookAction: t("bookAction"),
+          aboutService: t("aboutService"),
+          beforeAppointment: t("beforeAppointment"),
+          afterAppointment: t("afterAppointment"),
+          importantInfo: t("importantInfo"),
+          inquiryIntro: t("inquiryIntro"),
+          noContactConfigured: t("noContactConfigured"),
+          contactCall: t("contactCall"),
+          noEligibleStaff: t("noEligibleStaff"),
+          summaryPrepNote: t("summaryPrepNote"),
         }}
       />
     </div>

@@ -230,12 +230,12 @@ export async function getServicesForBranch(tenantId: string, branchId: string): 
   const supabase = await createClient();
   const { data } = await supabase
     .from("service_branches")
-    .select("services!inner(id, name, duration_minutes, price, status, tenant_id, deleted_at)")
+    .select("services!inner(id, name, duration_minutes, price, status, booking_mode, tenant_id, deleted_at)")
     .eq("branch_id", branchId);
 
   return (data ?? [])
     .map((r) => r.services)
-    .filter((s): s is NonNullable<typeof s> => !!s && s.tenant_id === tenantId && s.status === "active" && !s.deleted_at)
+    .filter((s): s is NonNullable<typeof s> => !!s && s.tenant_id === tenantId && s.status === "active" && s.booking_mode === "direct" && !s.deleted_at)
     .map((s) => ({ id: s.id, name: s.name, durationMinutes: s.duration_minutes, price: String(s.price) }));
 }
 
