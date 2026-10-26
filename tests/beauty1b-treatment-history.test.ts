@@ -742,6 +742,7 @@ describe("closeout: day boundaries, upcoming appointments, quick-rebook eligibil
     const c = await customer(emel, "Rol Degisimi");
     const v = await visit(emel, c, await dayOffset(-11), [["Emel Kaynakkan", "Kaş Alımı"]], "completed");
     const r = await register(emel, temp.id, v.itemIds[0]!);
+    await putObject(r.path); // the object exists (uploaded while the role still allowed it)
     await testDb`delete from role_permissions where role_id = ${roleId} and permission_id = (select id from permissions where key = 'customers.update')`;
     expect(await attemptAs(temp.id, (sql) => sql`insert into storage.objects (bucket_id, name, metadata) values ('treatment-media', ${r.path}, '{}'::jsonb)`)).toMatchObject({ ok: false });
     const seen = await asAuthenticatedUser(temp.id, (sql) => sql<{ n: string }[]>`select count(*)::text as n from storage.objects where bucket_id = 'treatment-media' and name = ${r.path}`);
