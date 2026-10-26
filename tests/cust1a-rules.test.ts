@@ -222,17 +222,28 @@ describe("history — the finer rules (synthetic customer, Emel Beauty Bar model
     } finally {
       await testDb`update appointments set customer_id = ${twin} where id = ${foreignAppt}`;
     }
-    const [own] = await testDb<{ id: string }[]>`select ai.id from appointment_items ai join appointments a on a.id = ai.appointment_id where a.id = ${discounted}`;
-    const stamped = await testDb`update appointment_items set tenant_id = ${f2.t.id} where id = ${own!.id}`.then(() => true, () => false);
+    const [own] = await testDb<{ id: string }[]>`select ai.id from appointment_items ai join appointments a on a.id = ai.appointment_id where a.customer_id = ${c} and a.status = 'scheduled'`; // an item without an actual performer: the composite same-salon key does not protect it
+    await testDb`update appointment_items set tenant_id = ${f2.t.id} where id = ${own!.id}`;
     try {
-      if (stamped) {
-        const h = await history(owner.id, c);
-        const disc = h.past.find((p) => p.status === "completed" && p.items.length === 0);
-        expect(disc, "an item stamped with another salon is not listed").toBeTruthy();
-      }
+      const h = await history(owner.id, c);
+      expect(h.past.find((p) => p.status === "scheduled")!.items, "an item stamped with another salon is not listed").toEqual([]);
     } finally {
-      if (stamped) await testDb`update appointment_items set tenant_id = ${fx.t.id} where id = ${own!.id}`;
+      await testDb`update appointment_items set tenant_id = ${fx.t.id} where id = ${own!.id}`;
     }
+  });
+});
+
+describe("history — who may read it", () => {
+  it("needs BOTH customers.view and appointments.view: a role with only one of them is refused (CH002)", async () => {
+    const c = await customer(fx.t.id, "Sentetik Yetki", "0538 700 00 05");
+    for (const [label, keys] of [["only customers", ["customers.view"]], ["only appointments", ["appointments.view"]]] as const) {
+      const u = await newUser(`h-${label.replace(/W/g, "")}`);
+      await addMembership(fx.t.id, u.id, await createCustomRole(fx.t.id, `Gecmis ${label}`, [...keys]));
+      expect(await attemptAs(u.id, (sql) => sql`select public.get_customer_history(${c}, 10)`), label).toMatchObject({ ok: false, code: "CH002" });
+    }
+    const both = await newUser("h-both");
+    await addMembership(fx.t.id, both.id, await createCustomRole(fx.t.id, "Gecmis ikisi", ["customers.view", "appointments.view"]));
+    expect(await attemptAs(both.id, (sql) => sql`select public.get_customer_history(${c}, 10)`)).toEqual({ ok: true });
   });
 });
 
