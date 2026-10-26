@@ -33,8 +33,8 @@ import {
 } from "@/components/dashboard/today-schedule";
 import { PersonalDashboard } from "@/components/dashboard/personal-dashboard";
 import { SetupCard } from "@/components/onboarding/setup-card";
-import { shouldOfferOnboarding, type OnboardingStatus } from "@/lib/modules/onboarding/model";
-import { getOnboardingStatus } from "@/lib/modules/onboarding/queries";
+import { remainingSetupTasks, shouldOfferOnboarding, type OnboardingStatus } from "@/lib/modules/onboarding/model";
+import { getOnboardingStatus, getPendingSchedulingServiceNames } from "@/lib/modules/onboarding/queries";
 import { DailyOwnerOverview } from "@/components/dashboard/daily-owner-overview";
 import { getDailyOwnerOverview } from "@/lib/modules/finance-daily/queries";
 import type { DailyOverview } from "@/lib/modules/finance-daily/model";
@@ -228,6 +228,10 @@ export default async function TenantAppPage({
       // holds finance.view is asked (the database re-checks); everyone else gets no finance block at all.
       canViewFinance ? getDailyOwnerOverview(tenantId) : Promise.resolve<DailyOverview | null>(null),
     ]);
+  // RC.1C: while the salon is still being set up, name what is left (hours, calendar durations, opening online booking). Derived next
+  // to - never instead of - the one readiness answer; read only for a salon that is offered the setup card.
+  const pendingSchedulingNames = onboardingStatus && shouldOfferOnboarding(onboardingStatus) ? await getPendingSchedulingServiceNames(tenantId) : [];
+  const setupAlmost = onboardingStatus ? remainingSetupTasks(onboardingStatus, pendingSchedulingNames) : { tasks: [], almost: false };
   const kpis = computeTodayKpis(todayAppointments);
   const { inProgress, next } = selectNextAppointment(
     todayAppointments,
@@ -322,8 +326,8 @@ export default async function TenantAppPage({
           status={onboardingStatus}
           href={`/app/${tenantSlug}/setup`}
           labels={{
-            title: tSetup("dashboardCard.title"),
-            body: tSetup("dashboardCard.body"),
+            title: setupAlmost.almost ? tSetup("dashboardCard.almostTitle") : tSetup("dashboardCard.title"),
+            body: setupAlmost.almost && setupAlmost.tasks.length > 0 ? tSetup("dashboardCard.almostBody", { tasks: setupAlmost.tasks.map((task) => (task.key === "hours" ? tSetup("dashboardCard.taskHours") : task.key === "booking" ? tSetup("dashboardCard.taskBooking") : tSetup("dashboardCard.taskDurations", { count: task.names?.length ?? 0 }))).join(", ") }) : tSetup("dashboardCard.body"),
             cta: tSetup("dashboardCard.cta"),
             progress: (done, total) => tSetup("progress", { done, total }),
           }}

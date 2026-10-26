@@ -16,7 +16,7 @@ export async function getOnboardingStatus(tenantId: string): Promise<OnboardingS
 
 export type OnboardingWorkspace = {
   branch: { phone: string; address: string };
-  services: { id: string; name: string; category: string | null; durationMinutes: number; price: string }[];
+  services: { id: string; name: string; category: string | null; durationMinutes: number; price: string; pricingMode?: string; bookingMode?: string }[];
   staff: { id: string; fullName: string; hasHours: boolean }[];
   /** `${staffId}:${serviceId}` for every existing staff ↔ service pair */
   pairs: string[];
@@ -29,7 +29,7 @@ export async function getOnboardingWorkspace(tenantId: string): Promise<Onboardi
     getOwnerManagedBranches(tenantId),
     supabase
       .from("services")
-      .select("id, name, category, duration_minutes, price")
+      .select("id, name, category, duration_minutes, price, pricing_mode, booking_mode")
       .eq("tenant_id", tenantId)
       .eq("status", "active")
       .is("deleted_at", null)
@@ -52,6 +52,8 @@ export async function getOnboardingWorkspace(tenantId: string): Promise<Onboardi
     category: s.category,
     durationMinutes: s.duration_minutes,
     price: String(s.price),
+    pricingMode: s.pricing_mode,
+    bookingMode: s.booking_mode,
   }));
   const staffRows = staffRes.data ?? [];
   const withHours = new Set((hoursRes.data ?? []).map((h) => h.staff_member_id));
@@ -75,4 +77,18 @@ export async function getOnboardingWorkspace(tenantId: string): Promise<Onboardi
     staff: staffRows.map((s) => ({ id: s.id, fullName: s.full_name, hasHours: withHours.has(s.id) })),
     pairs,
   };
+}
+
+/** Names of the fixed-price services still waiting for a real calendar duration (RLS scopes the read to the caller's salon). */
+export async function getPendingSchedulingServiceNames(tenantId: string): Promise<string[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("services")
+    .select("name, pricing_mode, booking_mode")
+    .eq("tenant_id", tenantId)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .order("display_order", { ascending: true })
+    .order("name", { ascending: true });
+  return (data ?? []).filter((s) => s.pricing_mode === "fixed" && s.booking_mode === "inquiry").map((s) => s.name);
 }

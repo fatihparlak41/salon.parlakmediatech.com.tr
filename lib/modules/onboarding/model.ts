@@ -124,6 +124,29 @@ export function stepProgress(status: OnboardingStatus): { done: number; total: n
 }
 
 /** The dashboard offers the wizard only to a salon that is not ready AND has never taken an appointment. */
+/**
+ * RC.1C - a fixed-price service that is still contact-only ("inquiry") has not been opened for booking: the owner still has to say how
+ * long it takes in the calendar. A salon provisioned from a known catalogue carries exactly these (a technical placeholder length is
+ * stored, but nothing can be scheduled until the owner enters the real one). This is a DERIVED list shown next to the readiness answer;
+ * it never changes it.
+ */
+export function pendingSchedulingServices<T extends { pricingMode?: string; bookingMode?: string }>(services: T[]): T[] {
+  return services.filter((s) => s.pricingMode === "fixed" && s.bookingMode === "inquiry");
+}
+
+export type RemainingTask = { key: "hours" | "durations" | "booking"; names?: string[] };
+
+/** Only what is still open, in the order the owner should do it. "Almost ready" = the salon's own facts are in, only these remain. */
+export function remainingSetupTasks(status: OnboardingStatus, pendingNames: string[]): { tasks: RemainingTask[]; almost: boolean } {
+  const done = (k: OnboardingStepKey) => status.steps.find((s) => s.key === k)?.done === true;
+  const tasks: RemainingTask[] = [];
+  if (!done("hours")) tasks.push({ key: "hours" });
+  if (pendingNames.length > 0) tasks.push({ key: "durations", names: pendingNames });
+  if (!status.onlineBookingEnabled && status.bookingEngineReady) tasks.push({ key: "booking" });
+  const almost = !status.ready && done("profile") && done("services") && done("staff") && done("mapping");
+  return { tasks, almost };
+}
+
 export function shouldOfferOnboarding(status: OnboardingStatus | null): boolean {
   return status !== null && !status.ready && !status.hasAppointments;
 }

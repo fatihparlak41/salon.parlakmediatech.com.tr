@@ -225,7 +225,28 @@
     "dashboardCard": {
       "title": "Kurulumu tamamlayın",
       "body": "Salonunuz online rezervasyona henüz hazır değil.",
-      "cta": "Kuruluma devam et"
+      "cta": "Kuruluma devam et",
+      "almostTitle": "Salonunuz neredeyse hazır",
+      "almostBody": "Bilgileriniz hazır. Kalan işler: {tasks}.",
+      "taskHours": "çalışma günleri ve saatleri",
+      "taskDurations": "{count} hizmetin takvim süresi",
+      "taskBooking": "online randevuyu açmak"
+    },
+    "almost": {
+      "title": "Salonunuz neredeyse hazır",
+      "body": "Bilgileriniz hazır, yalnızca aşağıdaki işler kaldı. Bitince online randevuyu siz açarsınız.",
+      "taskHours": "Çalışma günleri ve saatleri",
+      "taskDurations": "Takvim süresi: {names}",
+      "taskBooking": "Online randevuyu açın",
+      "durationsTitle": "Takvim süresi",
+      "durationsBody": "Her hizmetin takvimde ne kadar yer kaplayacağını dakika olarak girin. Süreyi girip kaydettiğiniz hizmet online randevuya açılır.",
+      "durationsOwnerOnly": "Bu süreleri salon sahibi girebilir.",
+      "minutesPlaceholder": "örn. 45",
+      "minutesLabel": "{name} takvim süresi (dakika)",
+      "minutesUnit": "dk",
+      "save": "Kaydet",
+      "saving": "Kaydediliyor…",
+      "invalid": "Süreyi dakika olarak, 5 ile 600 arasında girin"
     }
   },
   "TenantApp": {

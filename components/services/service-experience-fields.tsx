@@ -61,6 +61,11 @@ export function ServiceExperienceFields({
                 <option value="direct">Online randevu alınabilir</option>
                 <option value="inquiry">Yalnızca bilgi al (randevu salonla netleşir)</option>
               </select>
+              {value.bookingMode === "inquiry" ? (
+                <p className={`${hint} text-amber-700 dark:text-amber-400`}>
+                  Bu hizmet şu an yalnızca bilgi alma olarak görünüyor ve takvime yazılamaz. Gerçek takvim süresini girip “Online randevu alınabilir” seçtiğinizde randevuya açılır; süreyi siz girene kadar Takvim Süresi alanındaki değer geçicidir.
+                </p>
+              ) : null}
             </div>
             <label className="flex items-center gap-2 text-sm">
               <Checkbox checked={value.pricePublic} onCheckedChange={() => set({ pricePublic: !value.pricePublic })} />

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { SchedulingTasks } from "@/components/onboarding/scheduling-tasks";
 import { useTranslations } from "next-intl";
 import { useRouter } from "@/lib/i18n/navigation";
 import { CheckCircle2, Circle, Plus, Trash2 } from "lucide-react";
@@ -31,6 +32,8 @@ import {
   type OnboardingStatus,
   type OnboardingStepKey,
   type ServiceRow,
+  pendingSchedulingServices,
+  remainingSetupTasks,
 } from "@/lib/modules/onboarding/model";
 import { SUPPORTED_CURRENCIES } from "@/lib/modules/onboarding/schemas";
 import type { OnboardingWorkspace } from "@/lib/modules/onboarding/queries";
@@ -91,6 +94,8 @@ export function SetupWizard(props: SetupWizardProps) {
   const mappingKey = `${props.workspace.staff.map((st) => st.id).join(",")}|${props.workspace.services.map((sv) => sv.id).join(",")}|${props.workspace.pairs.join(",")}`;
 
   const progress = stepProgress(status);
+  const pending = pendingSchedulingServices(props.workspace.services);
+  const remaining = remainingSetupTasks(status, pending.map((s) => s.name));
 
   // A confirmation ("2 kişi eklendi") belongs to the step that was just saved; a save without its own message clears it, so it
   // never lingers under a later, unrelated step.
@@ -108,8 +113,8 @@ export function SetupWizard(props: SetupWizardProps) {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-6 sm:px-6 sm:py-8">
       <header className="flex flex-col gap-1">
-        <h1 className="font-heading text-xl font-semibold tracking-tight sm:text-2xl">{t("title")}</h1>
-        <p className="text-muted-foreground text-sm">{t("subtitle")}</p>
+        <h1 className="font-heading text-xl font-semibold tracking-tight sm:text-2xl">{remaining.almost ? t("almost.title") : t("title")}</h1>
+        <p className="text-muted-foreground text-sm">{remaining.almost ? t("almost.body") : t("subtitle")}</p>
         <div className="mt-2 flex items-center gap-3">
           <div
             className="bg-muted h-2 flex-1 overflow-hidden rounded-full"
@@ -123,6 +128,19 @@ export function SetupWizard(props: SetupWizardProps) {
           <span className="text-muted-foreground text-xs tabular-nums">{t("progress", { done: progress.done, total: progress.total })}</span>
         </div>
       </header>
+
+      {remaining.almost && remaining.tasks.length > 0 ? (
+        <ul className="flex flex-col gap-1 rounded-lg border p-3 text-sm" aria-label={t("almost.title")}>
+          {remaining.tasks.map((task) => (
+            <li key={task.key} className="flex gap-2">
+              <Circle className="text-muted-foreground mt-0.5 size-4 shrink-0" aria-hidden />
+              <span>{task.key === "hours" ? t("almost.taskHours") : task.key === "booking" ? t("almost.taskBooking") : t("almost.taskDurations", { names: (task.names ?? []).join(", ") })}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      <SchedulingTasks tenantSlug={props.tenantSlug} services={pending.map((s) => ({ id: s.id, name: s.name, price: s.price }))} canManage={props.can.services} />
 
       <ol className="flex flex-col gap-2" aria-label={t("title")}>
         {status.steps.map((step) => {

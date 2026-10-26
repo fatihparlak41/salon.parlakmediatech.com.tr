@@ -229,3 +229,34 @@ export async function updateServiceStaffAction(
   revalidatePath(`/app/${input.tenantSlug}/staff`);
   return ok(null);
 }
+
+export type SetServiceCalendarDurationInput = { tenantSlug: string; serviceId: string; durationMinutes: number };
+
+/**
+ * RC.1C - the owner's answer to "how long does this take in the calendar?" for a fixed-price service that was waiting for it:
+ * stores the real duration and opens the service for booking. Touches nothing else (name, price, texts stay); RLS decides who
+ * may (services.manage); an inquiry-priced service is never opened this way.
+ */
+export async function setServiceCalendarDurationAction(
+  _prevState: ActionResult<null> | null,
+  input: SetServiceCalendarDurationInput,
+): Promise<ActionResult<null>> {
+  await requireUser();
+  const minutes = Number(input.durationMinutes);
+  if (!Number.isInteger(minutes) || minutes < 5 || minutes > 600) {
+    return fail("VALIDATION", "Süreyi dakika olarak, 5 ile 600 arasında girin");
+  }
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("services")
+    .update({ duration_minutes: minutes, booking_mode: "direct" })
+    .eq("id", input.serviceId)
+    .eq("pricing_mode", "fixed")
+    .select("id");
+  if (error) return mapWriteError(error);
+  if (!data || data.length === 0) return fail("UNAUTHORIZED", "Bu hizmeti güncelleme yetkiniz yok veya hizmet bulunamadı");
+  revalidatePath(`/app/${input.tenantSlug}`);
+  revalidatePath(`/app/${input.tenantSlug}/setup`);
+  revalidatePath(`/app/${input.tenantSlug}/services`);
+  return ok(null);
+}
