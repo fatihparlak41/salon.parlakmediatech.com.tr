@@ -115,6 +115,13 @@ describe("answer parsers (strict)", () => {
     expect(parseTreatmentHistory(hist({ canSeeValue: false }, [item({ value: null })]))).not.toBeNull();
   });
 
+  it("a history row without the staff-name field, and rebook defaults without the branch field, are refused (a missing field is not the same as null)", () => {
+    const row = { itemId: I, appointmentId: M, date: "2026-10-10", serviceId: T, serviceName: "A", value: null, note: null, media: [], rebook: null };
+    expect(parseTreatmentHistory({ today: "2026-10-26", timezone: "Europe/Nicosia", canSeeValue: false, hasMore: false, items: [row] })).toBeNull();
+    expect(parseTreatmentHistory({ today: "2026-10-26", timezone: "Europe/Nicosia", canSeeValue: false, hasMore: false, items: [{ ...row, staffName: null }] })).not.toBeNull();
+    expect(parseRebookDefaults({ serviceId: T, serviceName: "A", staffId: null })).toBeNull();
+  });
+
   it("rebook defaults and photo access: required fields only; access refuses a non-image type", () => {
     expect(parseRebookDefaults({ serviceId: T, serviceName: "A", branchId: null, staffId: null, junk: 1 })).toEqual({ serviceId: T, serviceName: "A", branchId: null, staffId: null });
     expect(parseRebookDefaults({ serviceId: T })).toBeNull();
@@ -129,6 +136,8 @@ describe("wording: no health claim, no guarantee; intervals from the data", () =
     expect(intervalText(28, 56)).toBe("4–8 hafta");
     expect(intervalText(21, 35)).toBe("3–5 hafta");
     expect(intervalText(30, 45)).toBe("30–45 gün");
+    expect(intervalText(28, 45)).toBe("28–45 gün"); // only the minimum is a whole number of weeks
+    expect(intervalText(30, 56)).toBe("30–56 gün");
     expect(intervalText(14, 14)).toBe("2 hafta");
     expect(intervalText(10, null)).toBe("10 gün");
   });
@@ -206,6 +215,12 @@ describe("upload: register -> upload -> confirm, and it cleans up after itself",
     expect(calls[1]!.args).toEqual(["treatment-media", [`${T}/${M}.jpg`]]);
     calls.length = 0;
     rpcResults.delete_treatment_photo = { data: null, error: { code: "BH002", message: "x" } };
+    expect(await deleteTreatmentPhoto(T, M)).toBe("Bu işlem için yetkiniz yok");
+    expect(calls.map((c) => c.op)).toEqual(["rpc:delete_treatment_photo"]);
+  });
+
+  it("a delete the database refused never touches the stored object, even if an answer carried a path", async () => {
+    rpcResults.delete_treatment_photo = { data: { path: `${T}/${M}.jpg` }, error: { code: "BH002", message: "x" } };
     expect(await deleteTreatmentPhoto(T, M)).toBe("Bu işlem için yetkiniz yok");
     expect(calls.map((c) => c.op)).toEqual(["rpc:delete_treatment_photo"]);
   });
