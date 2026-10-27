@@ -2942,6 +2942,23 @@ export type Database = {
           status: string
         }[]
       }
+      list_team_members: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          can_reactivate: boolean
+          can_remove: boolean
+          can_suspend: boolean
+          display_name: string
+          email: string
+          is_last_unrestricted_holder: boolean
+          is_self: boolean
+          linked_staff_name: string
+          membership_id: string
+          role_id: string
+          role_name: string
+          status: string
+        }[]
+      }
       log_team_invitation_email_delivery: {
         Args: {
           p_actor_user_id: string

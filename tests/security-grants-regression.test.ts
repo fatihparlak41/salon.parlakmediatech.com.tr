@@ -282,6 +282,10 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   "public.resend_team_invitation",
   "public.revoke_team_invitation",
   "public.accept_team_invitation",
+  // Faz SAAS.1A (20261101090000) — the Team member read model: staff.manage holders of the asked tenant only (the
+  // function itself refuses everyone else), authenticated only, never anon. Returns the e-mail of TEAM MEMBERS to
+  // the people who manage them and no auth user id; its dedicated security review is in the migration header.
+  "public.list_team_members",
   // Faz SAAS.1E.1 (20260921113330) — appointment-scoped customer display.
   // Authenticated only, never anon: gated internally by appointments.view in
   // the requested tenant, returns (appointment_id, customer_display_name)

@@ -196,3 +196,23 @@ no grant on an existing object, no data.
   immutable), only while a switch is ON, and live until the appointment ended plus the retention window.
 - Release order: migration first, application second. Rollback: `LAUNCH-1B-ROLLBACK.sql` (reference, proven on a scratch
   database to restore main's catalog exactly; it deletes only the new notification types' rows).
+
+## Team member access read model (Faz SAAS.1A)
+
+`20261101090000_team_member_access_read_model.sql` adds ONE read function pair and changes nothing that exists.
+
+- **`public.list_team_members(p_tenant_id)`** (wrapper over `private.list_team_members`, `SECURITY DEFINER`, empty
+  `search_path`, `STABLE`, writes nothing). Gate: `staff.manage` in the asked tenant, i.e. the caller's own active
+  membership and live role; a non-member and a member without the permission get the same refusal. It returns the ACTIVE and
+  SUSPENDED members (never a removed one) with display name, **e-mail** (auth.users is not reachable through PostgREST), role,
+  state, a self flag, the linked staff NAME, a last-unrestricted-holder flag and advisory `can_suspend` / `can_reactivate` /
+  `can_remove` computed by the same `private.membership_authority_decision` the mutations use plus the last-holder rule.
+  Never returned: the auth user id, a phone number, secrets.
+- The flags are ADVISORY. `suspend_membership`, `reactivate_membership` and `remove_membership_access` (SAAS.1E.0) stay the
+  only enforcement point; `tests/saas1a-account-lifecycle.test.ts` (ML8) pins every flag to what the RPCs really accept.
+- Grants: `authenticated` only (revoked from `public` and `anon`); the private function is executable by no client role.
+  Pinned in `tests/security-grants-regression.test.ts`. No `service_role` function is added.
+- The member e-mail is shown only to people who hold `staff.manage` in that same tenant, who already manage these accounts and
+  already see the e-mail of every pending invitation (`list_team_invitations`). Dedicated security review: migration header.
+- Release order: migration first, application second (the new Team page reads this function). Rollback: drop the public
+  wrapper, then the private function.
