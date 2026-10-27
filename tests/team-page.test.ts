@@ -109,14 +109,16 @@ describe("getTeamMembers (1, 3, 4, 5, 6)", () => {
     const members = await getTeamMembers(ownerAClient, tenantA.id);
     expect(members.length).toBeGreaterThanOrEqual(2);
 
-    const owner = members.find((m) => m.userId === ownerA.id);
+    // Faz SAAS.1A: the member list no longer carries the auth user id (privacy); a member is found by the e-mail the
+    // list now shows to staff.manage holders.
+    const owner = members.find((m) => m.email === ownerA.email.toLowerCase());
     expect(owner).toBeDefined();
     // createTestTenant clones the SALON_OWNER role_template, whose own
     // display name is "Salon Sahibi" (supabase/migrations/20260815120006).
     expect(owner!.roleName).toBe("Salon Sahibi");
     expect(owner!.linkedStaffName).toBeNull();
 
-    const manager = members.find((m) => m.userId === managerA.id);
+    const manager = members.find((m) => m.email === managerA.email.toLowerCase());
     expect(manager).toBeDefined();
     expect(manager!.roleName).toBe("Sınırlı Rol");
     expect(manager!.linkedStaffName).toBe("Linked Staff");
@@ -131,7 +133,7 @@ describe("getTeamMembers (1, 3, 4, 5, 6)", () => {
 
   it("3. tenant isolation — tenantB members never appear in tenantA's list", async () => {
     const members = await getTeamMembers(ownerAClient, tenantA.id);
-    expect(members.some((m) => m.userId === outsiderB.id)).toBe(false);
+    expect(members.some((m) => m.email === outsiderB.email.toLowerCase())).toBe(false);
   });
 });
 

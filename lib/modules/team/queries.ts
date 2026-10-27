@@ -36,63 +36,47 @@ import { getStaffManagementDetails } from "@/lib/modules/staff/management-detail
 
 type AnySupabaseClient = SupabaseClient<Database>;
 
+/** Faz SAAS.1A — one row of the Team member list. Deliberately has NO auth user id: the opaque membership id is the
+ * handle the mutation RPCs take, and everything else is what a person reads (name, e-mail, role, state). The can*
+ * flags are the database's own ADVISORY answer to "may this caller do that to this member?" so the page shows only
+ * controls that can work; the RPCs behind them remain the enforcement point. */
 export type TeamMemberRow = {
   membershipId: string;
-  userId: string;
   displayName: string;
+  /** Null only when the account has no e-mail address on record. */
+  email: string | null;
+  roleId: string;
   roleName: string;
-  status: string;
+  status: "active" | "suspended";
+  isSelf: boolean;
   linkedStaffName: string | null;
+  isLastUnrestrictedHolder: boolean;
+  canSuspend: boolean;
+  canReactivate: boolean;
+  canRemove: boolean;
 };
 
-/** auth.users (and its email) isn't reachable via PostgREST — profiles is
- * the only client-safe source for a human-readable name, and it carries
- * no email column at all (confirmed against database.types.ts). Email is
- * therefore never shown for an existing member, only ever for a pending
- * invitation (team_invitations.email, via getTeamInvitations below) —
- * this is a real product gap, not an oversight, and is called out in the
- * phase report rather than worked around with an unsafe query. */
+/** Always through list_team_members (Faz SAAS.1A): a staff.manage-gated SECURITY DEFINER read model that returns the
+ * suspended members too and each member's e-mail (auth.users is not reachable through PostgREST), and never an auth
+ * user id. A failed read returns an empty list rather than throwing, like every other read on this page. */
 export async function getTeamMembers(supabase: AnySupabaseClient, tenantId: string): Promise<TeamMemberRow[]> {
-  const { data: memberships } = await supabase
-    .from("tenant_memberships")
-    .select("id, user_id, status, roles!tenant_memberships_role_id_fkey(name)")
-    .eq("tenant_id", tenantId)
-    .eq("status", "active")
-    .is("deleted_at", null)
-    .order("created_at", { ascending: true });
+  const { data, error } = await supabase.rpc("list_team_members", { p_tenant_id: tenantId });
+  if (error || !data) return [];
 
-  if (!memberships) return [];
-
-  const userIds = memberships.map((m) => m.user_id);
-  const { data: profiles } = userIds.length
-    ? await supabase.from("profiles").select("id, full_name").in("id", userIds)
-    : { data: [] as { id: string; full_name: string | null }[] };
-  const nameById = new Map((profiles ?? []).map((p) => [p.id, p.full_name]));
-
-  // Faz SAAS.1E.1: tenant_membership_id is no longer a selectable column
-  // directly (staff.view/staff.manage required, which the Team page's own
-  // nav gate already requires to reach here) — read through
-  // get_staff_management_details and cross-reference by staff id.
-  const [staffRes, details] = await Promise.all([
-    supabase.from("staff_members").select("id, full_name").eq("tenant_id", tenantId).is("deleted_at", null),
-    getStaffManagementDetails(supabase, tenantId),
-  ]);
-  const staffNameByMembershipId = new Map<string, string>();
-  for (const s of staffRes.data ?? []) {
-    const membershipId = details.get(s.id)?.tenantMembershipId;
-    if (membershipId) staffNameByMembershipId.set(membershipId, s.full_name);
-  }
-
-  return memberships
-    .filter((m): m is typeof m & { roles: { name: string } } => m.roles !== null)
-    .map((m) => ({
-      membershipId: m.id,
-      userId: m.user_id,
-      displayName: nameById.get(m.user_id) || "İsimsiz kullanıcı",
-      roleName: m.roles.name,
-      status: m.status,
-      linkedStaffName: staffNameByMembershipId.get(m.id) ?? null,
-    }));
+  return data.map((row) => ({
+    membershipId: row.membership_id,
+    displayName: row.display_name || "İsimsiz kullanıcı",
+    email: row.email || null,
+    roleId: row.role_id,
+    roleName: row.role_name,
+    status: row.status === "suspended" ? "suspended" : "active",
+    isSelf: row.is_self,
+    linkedStaffName: row.linked_staff_name,
+    isLastUnrestrictedHolder: row.is_last_unrestricted_holder,
+    canSuspend: row.can_suspend,
+    canReactivate: row.can_reactivate,
+    canRemove: row.can_remove,
+  }));
 }
 
 export type TeamInvitationRow = {

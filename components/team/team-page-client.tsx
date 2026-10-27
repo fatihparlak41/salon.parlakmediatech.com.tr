@@ -5,10 +5,15 @@ import { Plus, UsersRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { TeamMemberRow, TeamInvitationRow, EligibleStaffOption, RoleOption } from "@/lib/modules/team/queries";
 import type { CreateTeamInvitationResultData } from "@/lib/modules/team/actions";
-import { TeamMembersSection } from "@/components/team/team-members-section";
+import { TeamMembersSection, type TeamMembersLabels } from "@/components/team/team-members-section";
 import { TeamInvitationsSection } from "@/components/team/team-invitations-section";
 import { CreateInvitationDialog } from "@/components/team/create-invitation-dialog";
 import { RevokeInvitationDialog } from "@/components/team/revoke-invitation-dialog";
+import {
+  MemberConfirmDialog,
+  type MemberAccessAction,
+  type MemberConfirmLabels,
+} from "@/components/team/member-confirm-dialog";
 
 type Labels = {
   title: string;
@@ -16,12 +21,11 @@ type Labels = {
   inviteCta: string;
   membersSectionTitle: string;
   invitationsSectionTitle: string;
-  membersTable: {
-    nameColumn: string;
-    roleColumn: string;
-    staffLinkColumn: string;
-    unlinkedLabel: string;
-  };
+  membersTable: Omit<TeamMembersLabels, "actions">;
+  memberActions: TeamMembersLabels["actions"];
+  memberDialog: MemberConfirmLabels;
+  memberActionDone: Record<MemberAccessAction, string>;
+  expiredInvitationHint: string;
   invitationsTable: {
     emailColumn: string;
     roleColumn: string;
@@ -84,7 +88,13 @@ export function TeamPageClient({
 }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [revokeInvitationId, setRevokeInvitationId] = useState<string | null>(null);
+  const [memberTarget, setMemberTarget] = useState<{ member: TeamMemberRow; action: MemberAccessAction } | null>(null);
   const [banner, setBanner] = useState<{ tone: "success" | "warning"; message: string } | null>(null);
+
+  function handleMemberDone(action: MemberAccessAction) {
+    setMemberTarget(null);
+    setBanner({ tone: "success", message: labels.memberActionDone[action] });
+  }
 
   function handleCreated(outcome: CreateTeamInvitationResultData["outcome"]) {
     setCreateOpen(false);
@@ -126,7 +136,11 @@ export function TeamPageClient({
         {initialMembers.length === 0 ? (
           <p className="text-muted-foreground py-6 text-center text-sm">{labels.noMembersTitle}</p>
         ) : (
-          <TeamMembersSection members={initialMembers} labels={labels.membersTable} />
+          <TeamMembersSection
+            members={initialMembers}
+            labels={{ ...labels.membersTable, actions: labels.memberActions }}
+            onAction={(member, action) => setMemberTarget({ member, action })}
+          />
         )}
       </section>
 
@@ -154,6 +168,9 @@ export function TeamPageClient({
             onRevoke={(invitationId) => setRevokeInvitationId(invitationId)}
           />
         )}
+        {initialInvitations.some((inv) => inv.effectiveStatus === "expired" || inv.effectiveStatus === "revoked") ? (
+          <p className="text-muted-foreground text-xs">{labels.expiredInvitationHint}</p>
+        ) : null}
       </section>
 
       <CreateInvitationDialog
@@ -166,6 +183,24 @@ export function TeamPageClient({
         onCreated={handleCreated}
         labels={labels.createDialog}
       />
+
+      {memberTarget ? (
+        // Keyed on the member AND the action, so every confirmation is a fresh dialog with fresh state.
+        <MemberConfirmDialog
+          key={`${memberTarget.member.membershipId}:${memberTarget.action}`}
+          open
+          onOpenChange={(open) => {
+            if (!open) setMemberTarget(null);
+          }}
+          tenantId={tenantId}
+          tenantSlug={tenantSlug}
+          membershipId={memberTarget.member.membershipId}
+          displayName={memberTarget.member.displayName}
+          action={memberTarget.action}
+          onDone={handleMemberDone}
+          labels={labels.memberDialog}
+        />
+      ) : null}
 
       <RevokeInvitationDialog
         open={revokeInvitationId !== null}

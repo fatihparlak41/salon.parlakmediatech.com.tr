@@ -131,6 +131,55 @@ export function mapRevokeInvitationError(error: { message: string }): ActionResu
   return fail("UNEXPECTED", "Davet iptal edilemedi, lütfen tekrar deneyin");
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// Faz SAAS.1A — member access management (suspend / reactivate / remove).
+// ---------------------------------------------------------------------------------------------------------------------
+
+export const MEMBER_NOT_FOUND_MESSAGE = "Bu üye bulunamadı";
+export const MEMBER_SELF_ACTION_MESSAGE = "Kendi hesabınızın erişimini değiştiremezsiniz";
+export const MEMBER_NOT_MANAGEABLE_MESSAGE = "Bu üyenin erişimini yönetme yetkiniz yok";
+export const MEMBER_STATE_CHANGED_MESSAGE = "Bu üyenin durumu değişmiş. Sayfayı yenileyip tekrar deneyin";
+export const LAST_OWNER_MESSAGE = "Salonun en az bir aktif sahibi olmalı. Son salon sahibinin erişimi durdurulamaz veya kaldırılamaz";
+export const MEMBER_ROLE_GONE_MESSAGE = "Bu üyenin rolü artık mevcut değil, bu yüzden erişim yeniden açılamıyor";
+
+/** Exact live RPC error codes — private.suspend_membership / reactivate_membership / remove_membership_access
+ * (20260921061657, 20260921132660) and the helpers they call. Stable snake_case codes, matched as substrings of the
+ * raised message. Nothing about WHY the database refused is decided here; this only words it. */
+export function mapMemberManagementError(error: { message: string }): ActionResult<never> {
+  const msg = error.message;
+  if (msg.includes("authentication_required") || msg.includes("authentication required")) {
+    return fail("UNAUTHENTICATED", "Oturum açmanız gerekiyor");
+  }
+  // The caller is not an active member of the tenant at all, or the membership id is not in it: the same answer, so an id
+  // can never be probed across tenants.
+  if (msg.includes("membership_not_found") || msg.includes("membership not found")) {
+    return fail("NOT_FOUND", MEMBER_NOT_FOUND_MESSAGE);
+  }
+  if (msg.includes("staff_manage_required") || msg.includes("staff.manage required")) {
+    return fail("UNAUTHORIZED", "Bu işlem için yetkiniz yok");
+  }
+  if (msg.includes("cannot_manage_self")) {
+    return fail("UNAUTHORIZED", MEMBER_SELF_ACTION_MESSAGE);
+  }
+  if (msg.includes("insufficient_authority")) {
+    return fail("UNAUTHORIZED", MEMBER_NOT_MANAGEABLE_MESSAGE);
+  }
+  if (msg.includes("tenant_would_lose_last_unrestricted_holder")) {
+    return fail("CONFLICT", LAST_OWNER_MESSAGE);
+  }
+  if (msg.includes("membership_not_active") || msg.includes("membership_not_suspended")) {
+    return fail("CONFLICT", MEMBER_STATE_CHANGED_MESSAGE);
+  }
+  if (msg.includes("role_not_found")) {
+    return fail("CONFLICT", MEMBER_ROLE_GONE_MESSAGE);
+  }
+  // Staged-release gate (Wave-1-only window): not a state that can occur once the gate is open.
+  if (msg.includes("non_owner_roles_not_yet_available")) {
+    return fail("UNAUTHORIZED", "Bu rol için işlem henüz kullanıma açılmadı, lütfen daha sonra tekrar deneyin");
+  }
+  return fail("UNEXPECTED", "İşlem gerçekleştirilemedi, lütfen tekrar deneyin");
+}
+
 export function buildAcceptUrl(rawToken: string): string {
   return `${getSiteUrl()}/accept-invite?token=${encodeURIComponent(rawToken)}`;
 }
