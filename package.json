@@ -19,7 +19,8 @@
     "db:link": "npx --yes supabase@latest link --project-ref mfkzdgfyshlvvtuqoals",
     "db:push": "npx --yes supabase@latest db push",
     "db:types": "npx --yes supabase@latest gen types typescript --linked > lib/supabase/database.types.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:hosted": "vitest run --config vitest.hosted-acceptance.config.mts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
