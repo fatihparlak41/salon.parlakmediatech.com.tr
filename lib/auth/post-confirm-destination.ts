@@ -1,4 +1,4 @@
-import { resolveSafeNext } from "@/app/auth/confirm/route";
+import { isPlainSitePath, resolveSafeNext } from "@/lib/auth/safe-redirect";
 import { TEAM_INVITATION_ROUTE_PATH } from "@/lib/auth/team-invitation-token";
 
 /**
@@ -77,12 +77,6 @@ export function readPostConfirmHint(userMetadata: unknown, siteOrigin: string): 
   return validatedAllowlistedRoute((userMetadata as Record<string, unknown>)[POST_CONFIRM_NEXT_METADATA_KEY], siteOrigin);
 }
 
-/** An ordinary same-site path: exactly one leading "/", never "//" (protocol-relative, and "///" is read the same way) and never "/\"
- * (a backslash is read as a slash). */
-function isPlainLocalPath(path: string): boolean {
-  return path.startsWith("/") && !path.startsWith("//") && !path.startsWith("/\\");
-}
-
 export type ConfirmationDestinationSource = "explicit" | "metadata" | "default";
 
 export type ConfirmationDestination = {
@@ -111,7 +105,7 @@ export function chooseConfirmationDestination(input: {
   // more to the off-site "//evil.example". Its output is therefore still used only when
   // it is a plain local path; anything else counts as "no explicit destination".
   const normalized = resolveSafeNext(input.pendingNext, input.siteOrigin);
-  const explicit = isPlainLocalPath(normalized) ? normalized : "/";
+  const explicit = isPlainSitePath(normalized) ? normalized : "/";
   const hint = readPostConfirmHint(input.userMetadata, input.siteOrigin);
 
   if (explicit !== "/") return { destination: explicit, source: "explicit" };

@@ -5,7 +5,7 @@ import {
   readPostConfirmHint,
   resolvePostConfirmHintForWrite,
 } from "@/lib/auth/post-confirm-destination";
-import { resolveSafeNext } from "@/app/auth/confirm/route";
+import { resolveSafeNext } from "@/lib/auth/safe-redirect";
 
 /**
  * SAAS.1D confirmation-continuity, Part A — the pure rules for the
@@ -363,14 +363,17 @@ describe("open-redirect hardening: the destination is always a plain same-site p
 
 describe("defense in depth: the destination stays a plain same-site path even if resolveSafeNext regressed to its 747ea33 behavior", () => {
   afterEach(() => {
-    vi.doUnmock("@/app/auth/confirm/route");
+    vi.doUnmock("@/lib/auth/safe-redirect");
     vi.resetModules();
   });
 
   /** A fresh copy of the destination module whose resolveSafeNext IS the 747ea33 one. */
   async function withRegressedGuard(): Promise<DestinationModule> {
     vi.resetModules();
-    vi.doMock("@/app/auth/confirm/route", () => ({ resolveSafeNext: legacyResolveSafeNext }));
+    vi.doMock("@/lib/auth/safe-redirect", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/lib/auth/safe-redirect")>()),
+      resolveSafeNext: legacyResolveSafeNext,
+    }));
     return import("@/lib/auth/post-confirm-destination");
   }
 

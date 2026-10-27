@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isStaleSessionError } from "@/lib/auth/session-errors";
-import { resolveSafeNext } from "@/app/auth/confirm/route";
+import { resolveSafeNext } from "@/lib/auth/safe-redirect";
 import {
   admin,
   anonClient,

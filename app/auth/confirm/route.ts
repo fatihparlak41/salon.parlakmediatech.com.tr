@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { setPendingConfirmation } from "@/lib/auth/pending-confirmation";
+import { resolveSafeNext } from "@/lib/auth/safe-redirect";
 
 /**
  * Prefetch-safe by design — this GET NEVER calls verifyOtp() and never
  * changes auth state. It only stores the token server-side (HttpOnly
  * cookie, see lib/auth/pending-confirmation.ts) and redirects to a
- * token-free URL. Verification only happens on the explicit POST from
- * /confirm-email's button (lib/modules/auth/actions.ts,
- * confirmEmailAction).
+ * token-free URL. Verification only happens on an explicit POST: the
+ * button on /confirm-email (lib/modules/auth/actions.ts,
+ * confirmEmailAction) or, for a password-recovery link, the new-password
+ * form on /reset-password (resetPasswordAction).
  *
  * This replaces an earlier version of this route that called verifyOtp()
  * directly on GET — which worked, but meant an automated link scanner
@@ -21,11 +23,12 @@ import { setPendingConfirmation } from "@/lib/auth/pending-confirmation";
  * the next-intl proxy matcher, see proxy.ts) — not a page a user browses
  * to directly, Supabase's email template links straight to it.
  *
- * /auth/callback is untouched and stays in place for OAuth / future PKCE
- * flows; this route is only for email OTP links (signup confirmation
- * today, and any future recovery/magic-link/email-change flows that
- * reuse the same token_hash + verifyOtp() mechanism).
+ * /auth/callback is untouched in purpose and stays in place for OAuth / future PKCE
+ * flows; this route is only for email OTP links (signup confirmation,
+ * customer magic links and, since Faz SAAS.1A, password recovery).
  */
+
+// The one sanitizer lives in lib/auth/safe-redirect.ts (a route file may export only HTTP handlers).
 
 const KNOWN_EMAIL_OTP_TYPES = new Set<EmailOtpType>([
   "signup",
@@ -42,89 +45,31 @@ function parseEmailOtpType(value: string | null): EmailOtpType | null {
     : null;
 }
 
-const MAX_ESCAPE_FOLD_ROUNDS = 5;
-
-/** Control characters (and DEL) never belong in a redirect target. */
-function hasControlCharacter(value: string): boolean {
-  for (let index = 0; index < value.length; index++) {
-    const code = value.charCodeAt(index);
-    if (code <= 0x1f || code === 0x7f) return true;
-  }
-  return false;
-}
-
-/** The same characters percent-encoded (%00-%1f, %7f) — e.g. an encoded CR/LF
- * that a downstream decoder could turn into a header break. */
-const ENCODED_CONTROL_CHARACTER = /%(?:[01][0-9a-f]|7f)/i;
-
-/**
- * True for an ordinary same-site path: "/" itself, or exactly one leading "/"
- * followed by a character that is neither "/" nor "\". Checked again after
- * folding the escapes an intermediary might decode (%2f, %5c, %25 for double
- * encoding) and the tab/CR/LF the URL parser silently drops, so a value that
- * only BECOMES "//host" or "/\host" once decoded is refused as well. A value
- * that is still changing after a few rounds is too deeply encoded to vouch for.
- */
-function isPlainLocalPath(pathname: string): boolean {
-  let current = pathname;
-  for (let round = 0; round < MAX_ESCAPE_FOLD_ROUNDS; round++) {
-    if (!(current === "/" || /^\/[^\/\\]/.test(current))) return false;
-    const folded = current
-      .replace(/%(?:09|0a|0d)/gi, "")
-      .replace(/%2f/gi, "/")
-      .replace(/%5c/gi, "\\")
-      .replace(/%25/gi, "%");
-    if (folded === current) return true;
-    current = folded;
-  }
-  return false;
-}
-
-/** Open-redirect guard — see the same check in the old callback route for
- * why this resolves against `origin` rather than a bare startsWith("/"):
- * Supabase's `{{ .RedirectTo }}` template variable is a full URL.
- *
- * The result is ALWAYS either "/" or a plain same-site path (one leading
- * "/", never "//", "///" or "/\"), with no control characters, raw or
- * encoded — and applying the function to its own result changes nothing
- * (idempotent), so it stays safe however many times a value is normalized
- * on its way through a page, a hidden form field, a cookie and an action.
- * Faz SAAS.1D release review (F4): it used to return `pathname + search +
- * hash` for ANY same-origin URL, and URL normalization can make that
- * pathname start with "//" — via dot segments ("/.//evil.com"), a
- * same-site absolute URL ("https://<site>//evil.com") or slash/backslash
- * mixes — which a redirect treats as the off-site "//evil.com". Anything
- * that would not be a plain path now falls back to "/".
- *
- * Exported for direct unit testing (Faz 2G.3.1A) — a pure function, safe
- * to import, matching this project's established "test the real
- * function directly" style rather than driving it through an HTTP
- * request this test suite has no harness for. */
-export function resolveSafeNext(next: string, origin: string): string {
-  if (typeof next !== "string" || hasControlCharacter(next)) return "/";
-  try {
-    const resolved = new URL(next, origin);
-    if (resolved.origin !== origin) return "/";
-    const path = `${resolved.pathname}${resolved.search}${resolved.hash}`;
-    return isPlainLocalPath(resolved.pathname) && !ENCODED_CONTROL_CHARACTER.test(path) ? path : "/";
-  } catch {
-    return "/";
-  }
-}
-
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const tokenHash = searchParams.get("token_hash");
   const type = parseEmailOtpType(searchParams.get("type"));
 
+  // Faz SAAS.1A: a password-recovery link goes to the reset-password form,
+  // never to /confirm-email, and it ignores any `next` entirely: the only
+  // destination after a reset is the staff login, decided by the server
+  // action, so a crafted link cannot steer where the person ends up. Still
+  // prefetch-safe: this handler only PARKS the token, exactly like the
+  // signup / magic-link branch; the form's POST is what verifies it.
+  const destination = type === "recovery" ? "/reset-password" : "/confirm-email";
+
   if (tokenHash && type) {
-    const next = resolveSafeNext(searchParams.get("next") ?? "/", origin);
+    const next = type === "recovery" ? "/" : resolveSafeNext(searchParams.get("next") ?? "/", origin);
     await setPendingConfirmation({ tokenHash, type, next });
   }
-  // No token_hash/type at all: nothing to store. /confirm-email will
-  // correctly render its "no pending confirmation" state either way —
-  // no error branch needed here, since this handler never attempts
-  // verification and so has nothing that can fail.
+  // No token_hash/type at all: nothing to store. The destination page
+  // renders its own "no pending link" state either way — no error branch
+  // needed here, since this handler never attempts verification and so has
+  // nothing that can fail.
 
-  return NextResponse.redirect(`${origin}/confirm-email`);
+  const response = NextResponse.redirect(`${origin}${destination}`);
+  // A redirect that carries Set-Cookie for a single-use credential must never
+  // be served from a shared cache to anyone else.
+  response.headers.set("Cache-Control", "no-store");
+  return response;
 }

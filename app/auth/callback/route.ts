@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { resolveSafeNext } from "@/lib/auth/safe-redirect";
 
 /**
  * Outside app/[locale] on purpose — this is the fixed URL Supabase's own
@@ -10,10 +11,12 @@ import { createClient } from "@/lib/supabase/server";
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/";
 
-  // Open-redirect guard: only ever redirect to a relative, same-origin path.
-  const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  // Open-redirect guard: the ONE sanitizer every auth return path uses
+  // (lib/auth/safe-redirect.ts, Faz SAAS.1A). This route used to carry its own
+  // weaker hand-rolled prefix check; the result is now always "/" or a plain
+  // same-site path, never a protocol-relative, backslash or control-character value.
+  const safeNext = resolveSafeNext(searchParams.get("next") ?? "/", origin);
 
   if (code) {
     const supabase = await createClient();

@@ -1,6 +1,6 @@
 import { getTranslations } from "next-intl/server";
 import { MagicLinkForm } from "@/components/customer-account/magic-link-form";
-import { resolveSafeNext } from "@/app/auth/confirm/route";
+import { resolveSafeNext } from "@/lib/auth/safe-redirect";
 import { getSiteUrl } from "@/lib/site-url";
 
 /**

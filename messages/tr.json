@@ -15,7 +15,38 @@
       "submit": "Giriş yap",
       "submitting": "Giriş yapılıyor…",
       "noAccount": "Hesabınız yok mu?",
-      "signUpLink": "Kayıt olun"
+      "signUpLink": "Kayıt olun",
+      "forgotLink": "Şifremi unuttum",
+      "resetSuccess": "Şifreniz güncellendi. Yeni şifrenizle giriş yapabilirsiniz.",
+      "resendConfirmation": "Doğrulama e-postasını tekrar gönder",
+      "resendConfirmationSending": "Gönderiliyor…",
+      "resendConfirmationDone": "Bu e-posta adresi kayıtlıysa, yeni bir doğrulama bağlantısı gönderildi."
+    },
+    "forgotPassword": {
+      "title": "Şifrenizi mi unuttunuz?",
+      "description": "E-posta adresinizi yazın; şifrenizi yenilemeniz için bir bağlantı gönderelim.",
+      "emailLabel": "E-posta",
+      "submit": "Şifre yenileme bağlantısı gönder",
+      "submitting": "Gönderiliyor…",
+      "successTitle": "E-postanızı kontrol edin",
+      "successDescription": "Eğer bu e-posta ile kayıtlı bir hesabınız varsa, şifre yenileme bağlantısı gönderildi.",
+      "successHint": "Mesaj birkaç dakika içinde gelmezse gereksiz posta (spam) klasörünüze de bakın. Bağlantı yalnızca kısa bir süre geçerlidir.",
+      "resendCta": "Bağlantıyı yeniden gönder",
+      "resendWait": "Yeniden göndermek için {seconds} sn bekleyin",
+      "backToLogin": "Giriş sayfasına dön"
+    },
+    "resetPassword": {
+      "title": "Yeni şifre belirleyin",
+      "description": "Hesabınız için yeni bir şifre seçin. En az 8 karakter olmalı.",
+      "passwordLabel": "Yeni şifre",
+      "passwordHint": "En az 8 karakter",
+      "confirmLabel": "Yeni şifre (tekrar)",
+      "submit": "Şifreyi güncelle",
+      "submitting": "Güncelleniyor…",
+      "invalidTitle": "Bu bağlantı kullanılamıyor",
+      "invalidDescription": "Şifre yenileme bağlantısının süresi dolmuş veya daha önce kullanılmış olabilir. Yeni bir bağlantı isteyebilirsiniz.",
+      "requestNew": "Yeni bağlantı iste",
+      "backToLogin": "Giriş sayfasına dön"
     },
     "signUp": {
       "title": "Kayıt ol",
@@ -490,14 +521,54 @@
     "title": "Ekip ve Yetkiler",
     "description": "Salonunuza erişebilen kullanıcıları ve bekleyen davetleri yönetin.",
     "inviteCta": "Yeni Davet",
-    "membersSectionTitle": "Aktif Ekip Üyeleri",
+    "membersSectionTitle": "Ekip Üyeleri",
     "invitationsSectionTitle": "Davetler",
     "membersTable": {
       "nameColumn": "Kullanıcı",
+      "emailColumn": "E-posta",
       "roleColumn": "Rol",
+      "statusColumn": "Durum",
       "staffLinkColumn": "Personel Bağlantısı",
-      "unlinkedLabel": "Bağlantı yok"
+      "actionsColumn": "İşlemler",
+      "unlinkedLabel": "Bağlantı yok",
+      "noEmail": "—",
+      "statusActive": "Aktif",
+      "statusSuspended": "Erişimi durdurulmuş",
+      "selfBadge": "Siz",
+      "lastOwnerNote": "Son salon sahibi: erişimi durdurulamaz veya kaldırılamaz."
     },
+    "memberActions": {
+      "suspend": "Erişimi durdur",
+      "reactivate": "Erişimi aç",
+      "remove": "Ekipten çıkar"
+    },
+    "memberDialog": {
+      "cancel": "Vazgeç",
+      "suspend": {
+        "title": "Erişimi durdur?",
+        "description": "{name} bu salona giriş yapamayacak. Randevular, ödemeler, komisyon ve diğer geçmiş kayıtlar olduğu gibi kalır. Erişimi daha sonra yeniden açabilirsiniz.",
+        "confirm": "Erişimi Durdur",
+        "pending": "Durduruluyor…"
+      },
+      "reactivate": {
+        "title": "Erişimi yeniden aç?",
+        "description": "{name} yeniden bu salona giriş yapabilecek ve rolünün izinlerini kullanabilecek.",
+        "confirm": "Erişimi Aç",
+        "pending": "Açılıyor…"
+      },
+      "remove": {
+        "title": "Ekipten çıkarılsın mı?",
+        "description": "{name} ekipten çıkarılacak ve bu salona erişemeyecek. Randevular, ödemeler, komisyon ve diğer geçmiş kayıtlar silinmez; varsa personel kaydı korunur, yalnızca hesapla bağlantısı kalkar. Kişiyi yeniden eklemek için yeni bir davet göndermeniz gerekir.",
+        "confirm": "Ekipten Çıkar",
+        "pending": "Çıkarılıyor…"
+      }
+    },
+    "memberActionDone": {
+      "suspend": "Erişim durduruldu.",
+      "reactivate": "Erişim yeniden açıldı.",
+      "remove": "Üye ekipten çıkarıldı."
+    },
+    "expiredInvitationHint": "Süresi dolan veya iptal edilen davetler yeniden gönderilemez; aynı e-posta için yeni bir davet oluşturabilirsiniz.",
     "invitationsTable": {
       "emailColumn": "E-posta",
       "roleColumn": "Rol",

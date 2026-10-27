@@ -10,7 +10,7 @@ import {
   pendingTeamInvitationCookieOptions,
 } from "@/lib/auth/team-invitation-token";
 import { acceptTeamInvitationCore } from "@/lib/modules/team/accept-invitation";
-import { resolveSafeNext } from "@/app/auth/confirm/route";
+import { resolveSafeNext } from "@/lib/auth/safe-redirect";
 import { getSiteUrl } from "@/lib/site-url";
 import {
   cleanupTenants,

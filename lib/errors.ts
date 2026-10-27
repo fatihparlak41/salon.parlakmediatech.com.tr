@@ -7,6 +7,9 @@
  */
 export type AppErrorCode =
   | "UNAUTHENTICATED"
+  // Faz SAAS.1A — a sign-in refused ONLY because the (correct) credentials belong to an account whose e-mail
+  // address is not confirmed yet; the login form then offers to resend the confirmation e-mail.
+  | "EMAIL_NOT_CONFIRMED"
   | "UNAUTHORIZED"
   | "NOT_FOUND"
   | "VALIDATION"

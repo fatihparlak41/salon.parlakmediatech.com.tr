@@ -7,7 +7,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getSiteUrl } from "@/lib/site-url";
 import { authErrorLogFields } from "@/lib/auth/session-errors";
 import { getBookingClaimSecretCookie, clearBookingClaimSecretCookie, isValidClaimRef } from "@/lib/auth/booking-claim-cookie";
-import { resolveSafeNext } from "@/app/auth/confirm/route";
+import { resolveSafeNext } from "@/lib/auth/safe-redirect";
 import type { ActionResult } from "@/lib/errors";
 import { fail, ok } from "@/lib/errors";
 import { accountMagicLinkSchema, updateAccountProfileSchema } from "./schemas";

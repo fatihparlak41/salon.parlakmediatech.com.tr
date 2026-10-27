@@ -177,7 +177,8 @@ describe("customer confirmations keep their explicit destination", () => {
       h.jar.clear();
       pending(type, stored);
       install({});
-      expect(await run(() => confirmEmailAction()), type).toEqual({ kind: "redirected", url: "/" });
+      // Faz SAAS.1A: a recovery link is not verified by this button at all; it is sent to the reset form (never off-site).
+      expect(await run(() => confirmEmailAction()), type).toEqual({ kind: "redirected", url: type === "recovery" ? "/reset-password" : "/" });
     }
 
     // An invited sign-up whose link carries such a next still returns to the invitation, never off-site.
@@ -199,7 +200,8 @@ describe("customer confirmations keep their explicit destination", () => {
       h.jar.clear();
       pending(type, "/");
       install(hinted);
-      expect(await run(() => confirmEmailAction()), type).toEqual({ kind: "redirected", url: "/" });
+      // Faz SAAS.1A: a recovery link goes to the reset form, so it can never inherit the hint either.
+      expect(await run(() => confirmEmailAction()), type).toEqual({ kind: "redirected", url: type === "recovery" ? "/reset-password" : "/" });
     }
   });
 

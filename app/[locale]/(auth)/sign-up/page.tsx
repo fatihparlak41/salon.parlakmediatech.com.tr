@@ -1,7 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import { Link } from "@/lib/i18n/navigation";
 import { SignUpForm } from "@/components/auth/sign-up-form";
-import { resolveSafeNext } from "@/app/auth/confirm/route";
+import { resolveSafeNext } from "@/lib/auth/safe-redirect";
 import { getSiteUrl } from "@/lib/site-url";
 
 /** Faz SAAS.1D.2 — same validated optional ?next= as the login page (see

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GET as authConfirmGet, resolveSafeNext } from "@/app/auth/confirm/route";
+import { GET as authConfirmGet } from "@/app/auth/confirm/route";
+import { resolveSafeNext } from "@/lib/auth/safe-redirect";
 import { confirmEmailAction, signInAction, signOutAction, signUpAction } from "@/lib/modules/auth/actions";
 import { requestAccountMagicLinkAction } from "@/lib/modules/customer-account/actions";
 import LoginPage from "@/app/[locale]/(auth)/login/page";
@@ -547,14 +548,15 @@ describe("real sink: /auth/confirm GET -> confirmEmailAction (the post-confirmat
   const confirmVia = async (type: string, rawNext: string, userMetadata: Record<string, unknown> = {}) => {
     install(userMetadata);
     const response = await authConfirmGet(new Request(`${SITE}/auth/confirm?token_hash=hash-for-tests&type=${type}&next=${encodeURIComponent(rawNext)}`));
-    expect(new URL(response.headers.get("location")!).pathname).toBe("/confirm-email");
+    // Faz SAAS.1A: a recovery link has its own surface (the reset form) and ignores `next` entirely.
+    expect(new URL(response.headers.get("location")!).pathname).toBe(type === "recovery" ? "/reset-password" : "/confirm-email");
     return run(() => confirmEmailAction());
   };
 
   it.each(sinkPayloads)("a crafted confirmation link (%s) lands on-site, for every confirmation type", async (_label, raw) => {
     for (const type of ["signup", "magiclink", "recovery", "email_change", "invite", "email"]) {
       h.jar.clear();
-      expect(await confirmVia(type, raw), `${type} ${raw}`).toEqual({ kind: "redirected", url: "/" });
+      expect(await confirmVia(type, raw), `${type} ${raw}`).toEqual({ kind: "redirected", url: type === "recovery" ? "/reset-password" : "/" });
     }
   });
 
