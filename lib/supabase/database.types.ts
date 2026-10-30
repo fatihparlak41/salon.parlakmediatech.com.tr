@@ -2582,6 +2582,53 @@ export type Database = {
           tenant_id: string
         }[]
       }
+      admin_dashboard_summary: {
+        Args: never
+        Returns: Json
+      }
+      admin_list_tenants: {
+        Args: {
+          p_filter?: string
+          p_limit?: number
+          p_offset?: number
+          p_search?: string
+          p_sort?: string
+        }
+        Returns: {
+          account_status: string
+          appointment_count: number
+          booking_enabled: boolean
+          created_at: string
+          customer_count: number
+          health: Json
+          health_level: string
+          last_activity_at: string
+          lifecycle: string
+          name: string
+          owner_count: number
+          primary_owner_email: string
+          primary_owner_name: string
+          service_count: number
+          setup_complete: boolean
+          slug: string
+          staff_count: number
+          tenant_id: string
+          total_count: number
+        }[]
+      }
+      admin_tenant_audit: {
+        Args: { p_limit?: number; p_tenant_id: string }
+        Returns: {
+          action: string
+          actor_type: string
+          entity_type: string
+          occurred_at: string
+        }[]
+      }
+      admin_tenant_detail: {
+        Args: { p_tenant_id: string }
+        Returns: Json
+      }
       begin_customer_notification_send: {
         Args: { p_job_id: string; p_lock_token: string }
         Returns: boolean

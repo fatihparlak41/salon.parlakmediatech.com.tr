@@ -1088,18 +1088,286 @@
     }
   },
   "SuperAdmin": {
-    "title": "Süper Admin",
-    "tenantsHeading": "Salonlar",
-    "columns": {
-      "name": "Ad",
-      "slug": "Adres",
-      "status": "Durum",
-      "createdAt": "Oluşturulma"
+    "title": "SalonOS Yönetim",
+    "readOnlyNote": "Bu ekran salt okunurdur: salonların verisi burada değiştirilemez.",
+    "nav": {
+      "dashboard": "Panel",
+      "salons": "Salonlar"
     },
-    "empty": "Henüz kayıtlı salon yok.",
-    "statusActions": {
-      "activate": "Aktifleştir",
-      "suspend": "Askıya al"
+    "dashboard": {
+      "title": "Platform paneli",
+      "subtitle": "SalonOS'taki tüm salonların operasyonel durumu.",
+      "stats": {
+        "salons": "Toplam salon",
+        "active": "Aktif",
+        "setup": "Kurulumu tamamlanmamış",
+        "inactive": "Hareketsiz",
+        "suspended": "Askıda veya iptal",
+        "booking": "Online randevusu açık",
+        "owners": "Salon sahibi",
+        "users": "Aktif kullanıcı",
+        "staff": "Personel",
+        "today": "Bugünkü randevu",
+        "week": "Son 7 günün randevusu",
+        "critical": "Kritik sorun",
+        "warning": "Uyarı"
+      },
+      "recent": "Yeni açılan salonlar",
+      "attention": "İlgi gerektiren salonlar",
+      "noAttention": "Şu anda ilgi gerektiren salon yok.",
+      "noSalons": "Henüz kayıtlı salon yok.",
+      "viewAll": "Tüm salonlar"
+    },
+    "salons": {
+      "title": "Salonlar",
+      "subtitle": "Platformdaki tüm salonlar. Bir salona tıklayarak ayrıntılarını görün.",
+      "searchLabel": "Ara",
+      "searchPlaceholder": "Salon adı, adres, sahip adı veya e-posta",
+      "searchButton": "Ara",
+      "clear": "Temizle",
+      "filterLabel": "Filtre",
+      "filters": {
+        "all": "Tümü",
+        "active": "Aktif",
+        "setup": "Kurulumda",
+        "inactive": "Hareketsiz",
+        "suspended": "Askıda",
+        "booking_on": "Randevu açık",
+        "booking_off": "Randevu kapalı",
+        "new": "Yeni (14 gün)",
+        "quiet": "Hareketsiz (14 gün)",
+        "attention": "İlgi gerektiren"
+      },
+      "sortLabel": "Sırala",
+      "sorts": {
+        "created_desc": "En yeni",
+        "created_asc": "En eski",
+        "name_asc": "Ada göre",
+        "activity_desc": "Son hareket",
+        "attention_desc": "Önem sırası"
+      },
+      "columns": {
+        "salon": "Salon",
+        "owner": "Sahip",
+        "status": "Durum",
+        "setup": "Kurulum",
+        "booking": "Online randevu",
+        "staff": "Personel",
+        "customers": "Müşteri",
+        "appointments": "Randevu",
+        "created": "Oluşturulma",
+        "lastActivity": "Son hareket"
+      },
+      "emptyFiltered": "Bu ölçütlere uyan salon yok.",
+      "emptyAll": "Henüz kayıtlı salon yok.",
+      "results": "{count} salon",
+      "pageOf": "Sayfa {page} / {pages}",
+      "previous": "Önceki",
+      "next": "Sonraki",
+      "setupComplete": "Tamam",
+      "setupIncomplete": "Eksik",
+      "bookingOn": "Açık",
+      "bookingOff": "Kapalı",
+      "never": "Hiç",
+      "today": "Bugün",
+      "yesterday": "Dün",
+      "daysAgo": "{n} gün önce",
+      "noOwner": "Sahip yok",
+      "unknownOwner": "Adsız"
+    },
+    "lifecycle": {
+      "setup": "Kurulumda",
+      "active": "Aktif",
+      "inactive": "Hareketsiz",
+      "suspended": "Askıda",
+      "canceled": "İptal"
+    },
+    "accountStatus": {
+      "trial": "Deneme",
+      "active": "Aktif",
+      "suspended": "Askıda",
+      "canceled": "İptal"
+    },
+    "health": {
+      "levels": {
+        "critical": "Kritik",
+        "warning": "Uyarı",
+        "info": "Bilgi",
+        "ok": "Sorun yok"
+      },
+      "codes": {
+        "no_owner": "Salonu yöneten kimse yok",
+        "booking_broken": "Online randevu açık ama randevu alınamıyor",
+        "setup_stalled": "Kurulum günlerdir tamamlanmadı",
+        "owner_never_signed_in": "Sahip hiç giriş yapmadı",
+        "no_recent_activity": "Uzun süredir hareket yok",
+        "invite_pending": "Davet günlerdir bekliyor",
+        "new_salon": "Yeni salon, kuruluyor",
+        "no_appointments_yet": "Henüz randevu yok",
+        "booking_off": "Online randevu kapalı",
+        "trial_ending": "Deneme süresi bitiyor",
+        "suspended": "Salon askıda",
+        "canceled": "Salon iptal edilmiş"
+      }
+    },
+    "detail": {
+      "back": "Salonlara dön",
+      "notFound": "Bu salon bulunamadı.",
+      "sections": {
+        "overview": "Genel bakış",
+        "owners": "Sahip ve üyeler",
+        "usage": "Kullanım",
+        "booking": "Online randevu",
+        "system": "Sistem",
+        "audit": "Yönetim geçmişi"
+      },
+      "overview": {
+        "name": "Salon adı",
+        "slug": "Adres",
+        "accountStatus": "Hesap durumu",
+        "lifecycle": "Yaşam döngüsü",
+        "timezone": "Saat dilimi",
+        "currency": "Para birimi",
+        "created": "Oluşturulma",
+        "trialEnds": "Deneme bitişi",
+        "bookingLink": "Randevu bağlantısı",
+        "subscription": "Abonelik",
+        "subscriptionPending": "Faturalandırma henüz tanımlı değil",
+        "setupHeading": "Kurulum durumu",
+        "blockersHeading": "Eksikler",
+        "noBlockers": "Eksik yok: salon randevu almaya hazır.",
+        "profileMissingPrefix": "Profilde eksik"
+      },
+      "steps": {
+        "profile": "Salon profili",
+        "services": "Hizmetler",
+        "staff": "Personel",
+        "hours": "Çalışma saatleri",
+        "mapping": "Personel ve hizmet eşleşmesi",
+        "booking": "Online randevu anahtarı",
+        "ready": "Hazır"
+      },
+      "blockers": {
+        "tenant_inactive": "Salon askıda veya iptal",
+        "salon_profile_missing": "Salon profili eksik",
+        "no_working_hours": "Çalışma saati yok",
+        "no_services": "Hizmet yok",
+        "no_staff": "Personel yok",
+        "no_bookable_staff": "Randevu verilebilen personel yok",
+        "public_booking_disabled": "Online randevu kapalı",
+        "no_available_slot": "Önümüzdeki günlerde boş saat yok"
+      },
+      "profileMissing": {
+        "name": "ad",
+        "timezone": "saat dilimi",
+        "currency": "para birimi",
+        "branch": "şube",
+        "phone": "telefon"
+      },
+      "owners": {
+        "ownersHeading": "Salon sahipleri",
+        "membersHeading": "Tüm üyeler",
+        "name": "Ad",
+        "email": "E-posta",
+        "phone": "Telefon",
+        "role": "Rol",
+        "access": "Erişim",
+        "staff": "Personel bağlantısı",
+        "lastSignIn": "Son giriş",
+        "active": "Aktif",
+        "suspended": "Durdurulmuş",
+        "linked": "Bağlı",
+        "notLinked": "Bağlantı yok",
+        "noOwners": "Aktif salon sahibi yok",
+        "unnamed": "Adsız kullanıcı"
+      },
+      "usage": {
+        "staff": "Personel",
+        "members": "Üye",
+        "services": "Hizmet",
+        "customers": "Müşteri",
+        "appointments": "Toplam randevu",
+        "today": "Bugünkü randevu",
+        "week": "Son 7 gün",
+        "photos": "Tedavi fotoğrafı",
+        "commission": "Komisyon kuralı",
+        "invitations": "Bekleyen davet",
+        "customersNote": "Müşteriler yalnızca sayılır; kişisel bilgileri bu ekranda gösterilmez."
+      },
+      "booking": {
+        "publicBooking": "Online randevu",
+        "engine": "Randevu altyapısı",
+        "engineReady": "Çalışıyor",
+        "engineNotReady": "Çalışmıyor",
+        "staffWithHours": "Çalışma saati olan personel",
+        "bookablePaths": "Randevu verilebilen personel-hizmet çifti",
+        "direct": "Doğrudan randevulu hizmet",
+        "inquiry": "Teklif usulü hizmet",
+        "firstSlot": "İlk boş saat",
+        "noSlot": "Boş saat bulunamadı"
+      },
+      "system": {
+        "lastActivity": "Son hareket",
+        "ownerNeverSignedIn": "Sahip hiç giriş yapmadı",
+        "oldestInvitation": "En eski bekleyen davet",
+        "health": "Sağlık",
+        "noSignals": "Sorun görünmüyor."
+      },
+      "actions": {
+        "openBooking": "Randevu sayfasını aç",
+        "copyLink": "Bağlantıyı kopyala",
+        "copyId": "Salon kimliğini kopyala",
+        "copied": "Kopyalandı"
+      },
+      "audit": {
+        "description": "Salonun son yönetim olayları: ne, ne zaman, kim tarafından. İçerik gösterilmez.",
+        "when": "Zaman",
+        "what": "Olay",
+        "actor": "Yapan",
+        "empty": "Kayıtlı olay yok.",
+        "actors": {
+          "user": "Salon kullanıcısı",
+          "platform_admin": "Platform yöneticisi",
+          "system": "Sistem"
+        },
+        "actions": {
+          "tenant": { "created": "Salon oluşturuldu" },
+          "onboarding": { "profile_updated": "Salon profili güncellendi" },
+          "settings": {
+            "online_booking_changed": "Online randevu ayarı değişti",
+            "customer_notification_changed": "Müşteri bildirim ayarı değişti"
+          },
+          "role": {
+            "provisioned": "Roller hazırlandı",
+            "template_synced": "Rol şablonu eşitlendi"
+          },
+          "team_invitation": {
+            "created": "Davet oluşturuldu",
+            "email_sent": "Davet e-postası gönderildi",
+            "accepted": "Davet kabul edildi"
+          },
+          "membership": {
+            "suspended": "Üye erişimi durduruldu",
+            "reactivated": "Üye erişimi açıldı",
+            "removed": "Üye ekipten çıkarıldı"
+          },
+          "staff_member": {
+            "created": "Personel eklendi",
+            "updated": "Personel güncellendi"
+          },
+          "service": {
+            "created": "Hizmet eklendi",
+            "updated": "Hizmet güncellendi"
+          },
+          "customer": { "created": "Müşteri eklendi" },
+          "appointment": {
+            "created": "Randevu oluşturuldu",
+            "cancelled": "Randevu iptal edildi",
+            "rescheduled": "Randevu ertelendi",
+            "status_changed": "Randevu durumu değişti"
+          }
+        }
+      }
     }
   },
   "NotFound": {

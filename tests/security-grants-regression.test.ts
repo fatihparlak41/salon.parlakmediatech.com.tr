@@ -286,6 +286,13 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   // function itself refuses everyone else), authenticated only, never anon. Returns the e-mail of TEAM MEMBERS to
   // the people who manage them and no auth user id; its dedicated security review is in the migration header.
   "public.list_team_members",
+  // Faz SAAS.1B (20261102090000) — the Super Admin READ model: four functions, each beginning with private.admin_require()
+  // (an active platform_admins row for auth.uid(), nothing else), authenticated only, never anon or service_role. They return
+  // aggregates and operational facts; customers are only counted. Dedicated security review in the migration header.
+  "public.admin_dashboard_summary",
+  "public.admin_list_tenants",
+  "public.admin_tenant_detail",
+  "public.admin_tenant_audit",
   // Faz SAAS.1E.1 (20260921113330) — appointment-scoped customer display.
   // Authenticated only, never anon: gated internally by appointments.view in
   // the requested tenant, returns (appointment_id, customer_display_name)
