@@ -195,7 +195,7 @@ export default async function SuperAdminSalonDetailPage({ params }: PageProps<"/
           suspended: t("health.codes.suspended"),
           canceled: t("health.codes.canceled"),
         },
-        relative: { never: t("salons.never"), today: t("salons.today"), yesterday: t("salons.yesterday"), daysAgo: t("salons.daysAgo") },
+        relative: { never: t("salons.never"), today: t("salons.today"), yesterday: t("salons.yesterday"), daysAgo: t.raw("salons.daysAgo") as string },
       }}
     />
   );

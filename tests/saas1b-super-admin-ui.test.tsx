@@ -31,10 +31,25 @@ vi.mock("@/lib/i18n/navigation", () => ({
   ),
 }));
 vi.mock("next-intl/server", () => ({
-  getTranslations: async (namespace: string) => (key: string) => {
-    let node: unknown = trMessages;
-    for (const part of `${namespace}.${key}`.split(".")) node = (node as Record<string, unknown>)?.[part];
-    return typeof node === "string" ? node : `${namespace}.${key}`;
+  // Faithful to next-intl: a message with {placeholders} formatted WITHOUT values fails and yields the key path (this is what the real
+  // browser showed for t("daysAgo")); t.raw() returns the unformatted template.
+  getTranslations: async (namespace: string) => {
+    const find = (key: string): unknown => {
+      let node: unknown = trMessages;
+      for (const part of `${namespace}.${key}`.split(".")) node = (node as Record<string, unknown>)?.[part];
+      return node;
+    };
+    const t = (key: string, values?: Record<string, string | number>) => {
+      const node = find(key);
+      if (typeof node !== "string") return `${namespace}.${key}`;
+      if (node.includes("{")) {
+        if (!values) return `${namespace}.${key}`;
+        return node.replace(/\{(\w+)\}/g, (_, k: string) => String(values[k]));
+      }
+      return node;
+    };
+    t.raw = (key: string) => find(key);
+    return t;
   },
 }));
 
@@ -506,5 +521,21 @@ describe("CB copy button and PU pure helpers", () => {
     expect(relativeDays("2026-10-29T20:30:00Z", now)).toEqual({ kind: "yesterday" }); // 23:30 in Istanbul on the 29th: the previous LOCAL day
     expect(relativeDays("2026-10-29T21:30:00Z", now)).toEqual({ kind: "today" }); // 00:30 in Istanbul on the 30th: the same local day
     expect(relativeDays("2026-10-27T10:00:00Z", now)).toEqual({ kind: "days", n: 3 });
+  });
+});
+
+describe("UI message keys", () => {
+  it("UI21 no page ever shows a raw message key (a templated message without values would, with the real translator)", async () => {
+    route();
+    for (const [name, element] of [
+      ["dashboard", await SuperAdminDashboardPage()],
+      ["list", await SuperAdminSalonsPage({ searchParams: Promise.resolve({}) } as never)],
+      ["list page 2", await SuperAdminSalonsPage({ searchParams: Promise.resolve({ page: "2" }) } as never)],
+      ["detail", await SuperAdminSalonDetailPage({ params: Promise.resolve({ tenantId: TENANT }) } as never)],
+    ] as const) {
+      const { container, unmount } = render(element);
+      expect(container.textContent, name).not.toMatch(/SuperAdmin\.[a-zA-Z]/);
+      unmount();
+    }
   });
 });

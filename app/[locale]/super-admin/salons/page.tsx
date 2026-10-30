@@ -77,7 +77,7 @@ export default async function SuperAdminSalonsPage({ searchParams }: PageProps<"
     bookingOff: t("bookingOff"),
     noOwner: t("noOwner"),
     unknownOwner: t("unknownOwner"),
-    relative: { never: t("never"), today: t("today"), yesterday: t("yesterday"), daysAgo: t("daysAgo") },
+    relative: { never: t("never"), today: t("today"), yesterday: t("yesterday"), daysAgo: t.raw("daysAgo") as string },
   };
 
   const filtered = params.search !== "" || params.filter !== "all";
@@ -96,7 +96,7 @@ export default async function SuperAdminSalonsPage({ searchParams }: PageProps<"
       ) : (
         <>
           <SalonTable rows={rows} labels={tableLabels} now={new Date()} />
-          <Pager params={params} total={total} pageSize={pageSize} labels={{ previous: t("previous"), next: t("next"), pageOf: t("pageOf"), results: t("results") }} />
+          <Pager params={params} total={total} pageSize={pageSize} labels={{ previous: t("previous"), next: t("next"), pageOf: t.raw("pageOf") as string, results: t.raw("results") as string }} />
         </>
       )}
     </div>
