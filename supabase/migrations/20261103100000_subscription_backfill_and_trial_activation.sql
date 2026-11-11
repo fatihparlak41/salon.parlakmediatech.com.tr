@@ -284,7 +284,7 @@ begin
   if v_currency not in ('TRY', 'EUR', 'USD', 'GBP') then
     raise exception 'invalid currency' using errcode = 'OB012';
   end if;
-  if p_timezone is null or not exists (select 1 from rig.tz_names z where z.name = p_timezone) then
+  if p_timezone is null or not exists (select 1 from pg_catalog.pg_timezone_names z where z.name = p_timezone) then
     raise exception 'invalid timezone' using errcode = 'OB012';
   end if;
   if v_phone is null or char_length(v_phone) not between 7 and 20 then

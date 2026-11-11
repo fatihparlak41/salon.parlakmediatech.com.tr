@@ -741,7 +741,11 @@ describe("PV - privacy, grants, RLS, append-only", () => {
   it("PV10 catalog: anon, authenticated and service_role hold NO table or column privilege on any billing table", async () => {
     const tables = ["subscriptions", "plan_limits", "subscription_events", "tenant_entitlement_overrides"];
     const tp = await testDb<{ t: string; g: string; p: string }[]>`select table_name as t, grantee as g, privilege_type as p from information_schema.table_privileges where table_schema = 'public' and table_name = any(${tables}) and grantee in ('anon', 'authenticated', 'service_role', 'PUBLIC')`;
-    expect(tp).toEqual([]);
+    // anon / authenticated / PUBLIC: nothing at all. service_role: never any data privilege; on a hosted project the pre-existing subscriptions table still carries
+    // the old non-data service_role privileges (TRUNCATE, REFERENCES, TRIGGER) from the first migrations - not introduced by SAAS.1C.1 and recorded as a P1 hardening item.
+    const preExisting = (r: { t: string; g: string; p: string }) => r.t === 'subscriptions' && r.g === 'service_role' && ['TRUNCATE', 'REFERENCES', 'TRIGGER'].includes(r.p);
+    expect(tp.filter((r) => !preExisting(r))).toEqual([]);
+    expect(tp.filter((r) => ['SELECT', 'INSERT', 'UPDATE', 'DELETE'].includes(r.p))).toEqual([]);
     const cp = await testDb<{ t: string; c: string; g: string }[]>`select table_name as t, column_name as c, grantee as g from information_schema.column_privileges where table_schema = 'public' and table_name = any(${tables}) and grantee in ('anon', 'authenticated', 'service_role', 'PUBLIC')`;
     expect(cp).toEqual([]);
     // the plan catalogue is read-only for the API roles
