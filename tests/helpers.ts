@@ -267,14 +267,15 @@ export async function cleanupTenants(tenantIds: string[]): Promise<void> {
   await testDb`alter table tenant_memberships disable trigger tenant_memberships_unrestricted_holder_guard`;
   await testDb`alter table role_permissions disable trigger role_permissions_unrestricted_holder_guard`;
   // Faz SAAS.1C.1: subscription_events is append-only; a full test teardown is the only legitimate delete
-  await testDb`alter table subscription_events disable trigger subscription_events_append_only`;
+  const appendOnlyTrigger = await testDb`select 1 as x from pg_trigger where tgname = 'subscription_events_append_only' and tgrelid = 'public.subscription_events'::regclass`;
+  if (appendOnlyTrigger.length > 0) await testDb`alter table subscription_events disable trigger subscription_events_append_only`;
 
   try {
     await cleanupTenantsInner(tenantIds);
   } finally {
     await testDb`alter table tenant_memberships enable trigger tenant_memberships_unrestricted_holder_guard`;
     await testDb`alter table role_permissions enable trigger role_permissions_unrestricted_holder_guard`;
-    await testDb`alter table subscription_events enable trigger subscription_events_append_only`;
+    if (appendOnlyTrigger.length > 0) await testDb`alter table subscription_events enable trigger subscription_events_append_only`;
   }
 }
 

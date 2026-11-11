@@ -57,9 +57,11 @@ async function mkTenant(slug: string, ownerLabel: string): Promise<TestTenant> {
 /** subscription_events is append-only; only a full test teardown may remove rows (same exception the shared cleanup helper makes). */
 async function purgeEvents(tenantId: string) {
   await testDb.begin(async (sql) => {
-    await sql`alter table subscription_events disable trigger subscription_events_append_only`;
+    // tolerant of a missing trigger on purpose: PV8 must fail by ITS OWN assertion, not because the fixture setup crashed first
+    const [trg] = await sql`select 1 as x from pg_trigger where tgname = 'subscription_events_append_only' and tgrelid = 'public.subscription_events'::regclass`;
+    if (trg) await sql`alter table subscription_events disable trigger subscription_events_append_only`;
     await sql`delete from subscription_events where tenant_id = ${tenantId}`;
-    await sql`alter table subscription_events enable trigger subscription_events_append_only`;
+    if (trg) await sql`alter table subscription_events enable trigger subscription_events_append_only`;
   });
 }
 
@@ -746,11 +748,13 @@ describe("PV - privacy, grants, RLS, append-only", () => {
     const preExisting = (r: { t: string; g: string; p: string }) => r.t === 'subscriptions' && r.g === 'service_role' && ['TRUNCATE', 'REFERENCES', 'TRIGGER'].includes(r.p);
     expect(tp.filter((r) => !preExisting(r))).toEqual([]);
     expect(tp.filter((r) => ['SELECT', 'INSERT', 'UPDATE', 'DELETE'].includes(r.p))).toEqual([]);
-    const cp = await testDb<{ t: string; c: string; g: string }[]>`select table_name as t, column_name as c, grantee as g from information_schema.column_privileges where table_schema = 'public' and table_name = any(${tables}) and grantee in ('anon', 'authenticated', 'service_role', 'PUBLIC')`;
-    expect(cp).toEqual([]);
+    const cp = await testDb<{ t: string; c: string; g: string; p: string }[]>`select table_name as t, column_name as c, grantee as g, privilege_type as p from information_schema.column_privileges where table_schema = 'public' and table_name = any(${tables}) and grantee in ('anon', 'authenticated', 'service_role', 'PUBLIC')`;
+    // column view of the same table-level grants: only the pre-existing service_role REFERENCES on subscriptions may appear, never a data privilege
+    expect(cp.filter((r) => !(r.t === 'subscriptions' && r.g === 'service_role' && r.p === 'REFERENCES'))).toEqual([]);
     // the plan catalogue is read-only for the API roles
-    const cat = await testDb<{ t: string; p: string }[]>`select table_name as t, privilege_type as p from information_schema.table_privileges where table_schema = 'public' and table_name in ('plans', 'features', 'plan_features') and grantee in ('anon', 'authenticated', 'service_role') and privilege_type <> 'SELECT'`;
-    expect(cat).toEqual([]);
+    const cat = await testDb<{ t: string; g: string; p: string }[]>`select table_name as t, grantee as g, privilege_type as p from information_schema.table_privileges where table_schema = 'public' and table_name in ('plans', 'features', 'plan_features') and grantee in ('anon', 'authenticated', 'service_role') and privilege_type <> 'SELECT'`;
+    expect(cat.filter((r) => r.g !== 'service_role')).toEqual([]); // anon / authenticated: read-only at most
+    expect(cat.filter((r) => ['INSERT', 'UPDATE', 'DELETE'].includes(r.p))).toEqual([]); // nobody holds a write privilege (service_role keeps only the old non-data ones)
   });
 
   it("PV9 RLS is enabled on every new table and none of them has a policy", async () => {
@@ -865,6 +869,12 @@ describe("AD - Super Admin billing read model", () => {
     const over = await mk("s1c-ad-over", "own6", { plan: "salon", mode: "paid", status: "active" });
     for (let i = 0; i < 6; i++) await createStaffMember(over.id, `Fazla ${i}`);
     await mk("s1c-ad-nosub", "ownT", null);
+    // exactly at the soft staff limit (5 of 5) with its one branch, and one branch only: the hard branch limit of 1 must never raise the flag
+    const atLimit = await mk("s1c-ad-atlimit", "ownW", { plan: "salon", mode: "complimentary", status: "active" });
+    await createBranch(atLimit.id, "Merkez");
+    for (let i = 0; i < 5; i++) await createStaffMember(atLimit.id, `Sinirda ${i}`);
+    const oneBranch = await mk("s1c-ad-onebranch", "ownX", { plan: "salon", mode: "complimentary", status: "active" });
+    await createBranch(oneBranch.id, "Merkez");
     await mk("s1c-ad-notready", "ownV", { mode: "paid", status: "trialing" });
     // a salon that is READY by the canonical definition but whose trial never started (edited through plain inserts, not the wizard)
     const ready = await mk("s1c-ad-ready", "ownU", { mode: "paid", status: "trialing" });
@@ -891,7 +901,7 @@ describe("AD - Super Admin billing read model", () => {
     expect(slugsOf(await list("over_limit"))).toEqual(["s1c-ad-over"]);
     expect(slugsOf(await list("ready_not_started"))).toEqual(["s1c-ad-ready"]);
     expect(slugsOf(await list("trial"))).toEqual(["s1c-ad-ending", "s1c-ad-grace", "s1c-ad-readonly", "s1c-ad-ready", "s1c-ad-notready"].sort());
-    expect(slugsOf(await list("all", "s1c-ad-")).length).toBe(9);
+    expect(slugsOf(await list("all", "s1c-ad-")).length).toBe(11);
   });
 
   it("AD2 rows carry plan, mode, state, days and flags; a salon with no subscription shows as full/no_subscription", async () => {
@@ -902,7 +912,10 @@ describe("AD - Super Admin billing read model", () => {
     expect(by("s1c-ad-grace")).toMatchObject({ accessMode: "grace", accessReason: "trial_expired_grace" });
     expect(by("s1c-ad-readonly")).toMatchObject({ accessMode: "read_only" });
     expect(by("s1c-ad-pilot")).toMatchObject({ accessMode: "full", accessReason: "pilot" });
-    expect(by("s1c-ad-over")).toMatchObject({ overLimit: true });
+    expect(by("s1c-ad-over")).toMatchObject({ overLimit: true, atLimit: false });
+    expect(by("s1c-ad-atlimit")).toMatchObject({ atLimit: true, overLimit: false }); // 5 of 5 soft staff
+    expect(by("s1c-ad-onebranch")).toMatchObject({ atLimit: false, overLimit: false }); // the hard branch limit of 1 is not a flag
+    expect(by("s1c-ad-pilot")).toMatchObject({ atLimit: false });
     expect(by("s1c-ad-nosub")).toMatchObject({ planKey: null, billingMode: null, accessMode: "full", accessReason: "no_subscription" });
     expect(by("s1c-ad-ready")).toMatchObject({ readyTrialNotStarted: true, accessReason: "trial_not_started" });
   });

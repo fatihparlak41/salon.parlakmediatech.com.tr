@@ -300,7 +300,8 @@ as $function$
          b.acc ->> 'mode', b.acc ->> 'reason', (b.acc ->> 'daysRemaining')::integer, coalesce((b.acc ->> 'trialEnding')::boolean, false),
          b.trial_ends_at, b.grace_ends_at,
          exists (select 1 from jsonb_array_elements(b.lim) e where e ->> 'state' = 'over'),
-         exists (select 1 from jsonb_array_elements(b.lim) e where e ->> 'state' = 'at_limit'),
+         -- only a SOFT limit being reached is worth a flag: every salon has exactly one branch, which is the hard design limit of 1 and always 'at_limit'
+         exists (select 1 from jsonb_array_elements(b.lim) e where e ->> 'state' = 'at_limit' and e ->> 'enforcement' = 'soft'),
          case when b.sub_status = 'trialing' and b.billing_mode = 'paid' and b.trial_started_at is null
               then coalesce((private.onboarding_status(b.id) ->> 'ready')::boolean, false)
               else false end
