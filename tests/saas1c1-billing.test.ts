@@ -412,6 +412,11 @@ describe("ST - subscription on create, trial start on first onboarding completio
       expect(r!.b).toBe(false);
       expect(await subRow(t.id)).toMatchObject({ trial_started_at: null, trial_ends_at: null });
     }
+    for (const mode of ["pilot", "internal", "complimentary"]) {
+      await setSub(t.id, { mode, status: "trialing" });
+      expect((await testDb<{ b: boolean }[]>`select private.billing_start_trial(${t.id}) as b`)[0]!.b, mode).toBe(false);
+      expect(await subRow(t.id)).toMatchObject({ trial_started_at: null, trial_ends_at: null });
+    }
     await setSub(t.id, { mode: "paid", status: "active" });
     expect((await testDb<{ b: boolean }[]>`select private.billing_start_trial(${t.id}) as b`)[0]!.b).toBe(false);
     await setSub(t.id, { mode: "paid", status: "trialing" });
@@ -430,6 +435,21 @@ describe("ST - subscription on create, trial start on first onboarding completio
     await setSub(t.id, { mode: "paid", status: "trialing" });
     const results = await Promise.all(Array.from({ length: 6 }, () => testDb<{ b: boolean }[]>`select private.billing_start_trial(${t.id}) as b`));
     expect(results.filter((r) => r[0]!.b).length).toBe(1);
+    expect((await eventTypes(t.id)).filter((e) => e === "trial_started").length).toBe(1);
+  });
+
+  it("ST7b the start takes a row lock: a second transaction waits for the first, then finds the trial already started", async () => {
+    const t = await mkTenant("s1c-st7b", "own6");
+    await setSub(t.id, { mode: "paid", status: "trialing" });
+    let second: Promise<boolean> | undefined;
+    const first = await testDb.begin(async (sql) => {
+      const [a] = await sql<{ b: boolean }[]>`select private.billing_start_trial(${t.id}) as b`;
+      second = testDb.begin(async (sql2) => (await sql2<{ b: boolean }[]>`select private.billing_start_trial(${t.id}) as b`)[0]!.b);
+      await new Promise((r) => setTimeout(r, 400)); // the second one is now either blocked on the row lock (correct) or already past it (no lock)
+      return a!.b;
+    });
+    expect(first).toBe(true);
+    expect(await second).toBe(false);
     expect((await eventTypes(t.id)).filter((e) => e === "trial_started").length).toBe(1);
   });
 
@@ -463,6 +483,7 @@ describe("UL - usage and limits (measured, never enforced)", () => {
     await testDb`update staff_members set deleted_at = now() where id = ${del.id}`;
     await createCustomer(t.id, "Musteri A");
     await createCustomer(t.id, "Musteri B");
+    await testDb`insert into branches (tenant_id, name, deleted_at) values (${t.id}, 'Kapanan Sube', now())`;
     void a;
     const [r] = await testDb<{ u: Loose }[]>`select private.tenant_usage(${t.id}) as u`;
     expect(r!.u).toMatchObject({ activeStaff: 2, branches: 1, services: 1, customers: 2, activeMembers: 1, appointmentsTotal: 0, treatmentPhotos: 0, treatmentPhotoBytes: 0, emailsSent30d: 0 });
@@ -717,6 +738,17 @@ describe("PV - privacy, grants, RLS, append-only", () => {
     await expect(testDb`delete from subscription_events where id = ${e!.id}`).rejects.toThrow(/append-only/);
   });
 
+  it("PV10 catalog: anon, authenticated and service_role hold NO table or column privilege on any billing table", async () => {
+    const tables = ["subscriptions", "plan_limits", "subscription_events", "tenant_entitlement_overrides"];
+    const tp = await testDb<{ t: string; g: string; p: string }[]>`select table_name as t, grantee as g, privilege_type as p from information_schema.table_privileges where table_schema = 'public' and table_name = any(${tables}) and grantee in ('anon', 'authenticated', 'service_role', 'PUBLIC')`;
+    expect(tp).toEqual([]);
+    const cp = await testDb<{ t: string; c: string; g: string }[]>`select table_name as t, column_name as c, grantee as g from information_schema.column_privileges where table_schema = 'public' and table_name = any(${tables}) and grantee in ('anon', 'authenticated', 'service_role', 'PUBLIC')`;
+    expect(cp).toEqual([]);
+    // the plan catalogue is read-only for the API roles
+    const cat = await testDb<{ t: string; p: string }[]>`select table_name as t, privilege_type as p from information_schema.table_privileges where table_schema = 'public' and table_name in ('plans', 'features', 'plan_features') and grantee in ('anon', 'authenticated', 'service_role') and privilege_type <> 'SELECT'`;
+    expect(cat).toEqual([]);
+  });
+
   it("PV9 RLS is enabled on every new table and none of them has a policy", async () => {
     for (const table of ["plan_limits", "subscription_events", "tenant_entitlement_overrides"]) {
       const [r] = await testDb<{ rls: boolean; pol: number }[]>`select c.relrowsecurity as rls, (select count(*)::int from pg_policy p where p.polrelid = c.oid) as pol from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relname = ${table}`;
@@ -829,6 +861,7 @@ describe("AD - Super Admin billing read model", () => {
     const over = await mk("s1c-ad-over", "own6", { plan: "salon", mode: "paid", status: "active" });
     for (let i = 0; i < 6; i++) await createStaffMember(over.id, `Fazla ${i}`);
     await mk("s1c-ad-nosub", "ownT", null);
+    await mk("s1c-ad-notready", "ownV", { mode: "paid", status: "trialing" });
     // a salon that is READY by the canonical definition but whose trial never started (edited through plain inserts, not the wizard)
     const ready = await mk("s1c-ad-ready", "ownU", { mode: "paid", status: "trialing" });
     const branchId = await createBranch(ready.id, "Merkez");
@@ -853,8 +886,8 @@ describe("AD - Super Admin billing read model", () => {
     expect(slugsOf(await list("internal"))).toEqual(["s1c-ad-internal"]);
     expect(slugsOf(await list("over_limit"))).toEqual(["s1c-ad-over"]);
     expect(slugsOf(await list("ready_not_started"))).toEqual(["s1c-ad-ready"]);
-    expect(slugsOf(await list("trial"))).toEqual(["s1c-ad-ending", "s1c-ad-grace", "s1c-ad-readonly", "s1c-ad-ready"].sort());
-    expect(slugsOf(await list("all", "s1c-ad-")).length).toBe(8);
+    expect(slugsOf(await list("trial"))).toEqual(["s1c-ad-ending", "s1c-ad-grace", "s1c-ad-readonly", "s1c-ad-ready", "s1c-ad-notready"].sort());
+    expect(slugsOf(await list("all", "s1c-ad-")).length).toBe(9);
   });
 
   it("AD2 rows carry plan, mode, state, days and flags; a salon with no subscription shows as full/no_subscription", async () => {
@@ -895,15 +928,26 @@ describe("AD - Super Admin billing read model", () => {
     }
   });
 
+  it("AD6 readyTrialNotStarted is true only for a salon that is really ready (detail and list agree)", async () => {
+    const detail = async (id: string) => (await asAuthenticatedUser(u.admin!.id, (sql) => sql<{ s: Loose }[]>`select public.admin_tenant_billing(${id}) as s`))[0]!.s;
+    expect((await detail(made["s1c-ad-ready"]!.id)).readyTrialNotStarted).toBe(true);
+    expect((await detail(made["s1c-ad-notready"]!.id)).readyTrialNotStarted).toBe(false);
+    expect((await detail(made["s1c-ad-pilot"]!.id)).readyTrialNotStarted).toBe(false);
+    const rows = await list("all", "s1c-ad-");
+    expect(rows.find((r) => r.slug === "s1c-ad-notready")!.readyTrialNotStarted).toBe(false);
+  });
+
   it("AD5 detail: usage and limits are tenant-scoped; at most 20 events, newest first", async () => {
     const t = made["s1c-ad-over"]!;
-    for (let i = 0; i < 25; i++) await testDb`insert into subscription_events (tenant_id, event_type, reason) values (${t.id}, 'note', ${`n${i}`})`;
+    for (let i = 0; i < 25; i++) await testDb`insert into subscription_events (tenant_id, event_type, reason, created_at) values (${t.id}, 'note', ${`n${i}`}, now() - interval '1 day' + ${i} * interval '1 minute')`;
     const [d] = await asAuthenticatedUser(u.admin!.id, (sql) => sql<{ s: Loose }[]>`select public.admin_tenant_billing(${t.id}) as s`);
     expect(d!.s.usage.activeStaff).toBe(6);
     expect(d!.s.limits.find((l: Loose) => l.key === "max_active_staff")).toMatchObject({ state: "over", limit: 5 });
     expect(d!.s.events.length).toBe(20);
-    const times = d!.s.events.map((e: Loose) => e.at);
-    expect([...times].sort().reverse()).toEqual(times);
+    const reasons = d!.s.events.map((e: Loose) => e.reason);
+    expect(reasons[0]).toBe("n24"); // the newest first
+    expect(reasons[19]).toBe("n5"); // and the 20 newest, not the 20 oldest
+    expect(reasons).not.toContain("n0");
   });
 });
 
