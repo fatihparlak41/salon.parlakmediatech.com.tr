@@ -878,6 +878,12 @@ describe("AD - Super Admin billing read model", () => {
     const over = await mk("h-s1c-ad-over", "own6", { plan: "salon", mode: "paid", status: "active" });
     for (let i = 0; i < 6; i++) await createStaffMember(over.id, `Fazla ${i}`);
     await mk("h-s1c-ad-nosub", "ownT", null);
+    // exactly at the soft staff limit (5 of 5) with its one branch, and one branch only: the hard branch limit of 1 must never raise the flag
+    const atLimit = await mk("h-s1c-ad-atlimit", "ownW", { plan: "salon", mode: "complimentary", status: "active" });
+    await createBranch(atLimit.id, "Merkez");
+    for (let i = 0; i < 5; i++) await createStaffMember(atLimit.id, `Sinirda ${i}`);
+    const oneBranch = await mk("h-s1c-ad-onebranch", "ownX", { plan: "salon", mode: "complimentary", status: "active" });
+    await createBranch(oneBranch.id, "Merkez");
     await mk("h-s1c-ad-notready", "ownV", { mode: "paid", status: "trialing" });
     // a salon that is READY by the canonical definition but whose trial never started (edited through plain inserts, not the wizard)
     const ready = await mk("h-s1c-ad-ready", "ownU", { mode: "paid", status: "trialing" });
@@ -904,7 +910,7 @@ describe("AD - Super Admin billing read model", () => {
     expect(slugsOf(await list("over_limit"))).toEqual(["h-s1c-ad-over"]);
     expect(slugsOf(await list("ready_not_started"))).toEqual(["h-s1c-ad-ready"]);
     expect(slugsOf(await list("trial"))).toEqual(["h-s1c-ad-ending", "h-s1c-ad-grace", "h-s1c-ad-readonly", "h-s1c-ad-ready", "h-s1c-ad-notready"].sort());
-    expect(slugsOf(await list("all", "h-s1c-ad-")).length).toBe(9);
+    expect(slugsOf(await list("all", "h-s1c-ad-")).length).toBe(11);
   });
 
   it("AD2 rows carry plan, mode, state, days and flags; a salon with no subscription shows as full/no_subscription", async () => {
@@ -915,7 +921,10 @@ describe("AD - Super Admin billing read model", () => {
     expect(by("h-s1c-ad-grace")).toMatchObject({ accessMode: "grace", accessReason: "trial_expired_grace" });
     expect(by("h-s1c-ad-readonly")).toMatchObject({ accessMode: "read_only" });
     expect(by("h-s1c-ad-pilot")).toMatchObject({ accessMode: "full", accessReason: "pilot" });
-    expect(by("h-s1c-ad-over")).toMatchObject({ overLimit: true });
+    expect(by("h-s1c-ad-over")).toMatchObject({ overLimit: true, atLimit: false });
+    expect(by("h-s1c-ad-atlimit")).toMatchObject({ atLimit: true, overLimit: false }); // 5 of 5 soft staff
+    expect(by("h-s1c-ad-onebranch")).toMatchObject({ atLimit: false, overLimit: false }); // the hard branch limit of 1 is not a flag
+    expect(by("h-s1c-ad-pilot")).toMatchObject({ atLimit: false });
     expect(by("h-s1c-ad-nosub")).toMatchObject({ planKey: null, billingMode: null, accessMode: "full", accessReason: "no_subscription" });
     expect(by("h-s1c-ad-ready")).toMatchObject({ readyTrialNotStarted: true, accessReason: "trial_not_started" });
   });
