@@ -91,8 +91,9 @@ describe("SEC the admin area never holds privilege", () => {
     for (const file of ADMIN_FILES) {
       for (const m of readFileSync(file, "utf8").matchAll(/<form\b[^>]*>/g)) forms.push(`${rel(file)} ${m[0]}`);
     }
-    expect(forms).toHaveLength(1);
-    expect(forms[0]).toContain('method="get"');
+    // SAAS.1C.1: the billing overview adds a second plain GET search form; still no form of any other kind.
+    expect(forms).toHaveLength(2);
+    for (const f of forms) expect(f).toContain('method="get"');
     const clientFiles = ADMIN_FILES.filter((f) => /^\s*["']use client["']/.test(readFileSync(f, "utf8")));
     expect(clientFiles.map(rel)).toEqual(["components/super-admin/copy-button.tsx"]);
     const client = readFileSync(clientFiles[0]!, "utf8");

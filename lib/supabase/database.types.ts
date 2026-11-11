@@ -879,6 +879,7 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          is_available: boolean
           key: string
           name: string
         }
@@ -887,6 +888,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          is_available?: boolean
           key: string
           name: string
         }
@@ -895,6 +897,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          is_available?: boolean
           key?: string
           name?: string
         }
@@ -1415,6 +1418,35 @@ export type Database = {
           },
           {
             foreignKeyName: "plan_features_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plan_limits: {
+        Row: {
+          enforcement: string
+          limit_key: string
+          limit_value: number
+          plan_id: string
+        }
+        Insert: {
+          enforcement: string
+          limit_key: string
+          limit_value: number
+          plan_id: string
+        }
+        Update: {
+          enforcement?: string
+          limit_key?: string
+          limit_value?: number
+          plan_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_limits_plan_id_fkey"
             columns: ["plan_id"]
             isOneToOne: false
             referencedRelation: "plans"
@@ -2161,12 +2193,89 @@ export type Database = {
           },
         ]
       }
+      subscription_events: {
+        Row: {
+          actor_user_id: string | null
+          created_at: string
+          event_type: string
+          from_plan_id: string | null
+          from_status: string | null
+          id: string
+          metadata: Json
+          reason: string | null
+          subscription_id: string | null
+          tenant_id: string
+          to_plan_id: string | null
+          to_status: string | null
+        }
+        Insert: {
+          actor_user_id?: string | null
+          created_at?: string
+          event_type: string
+          from_plan_id?: string | null
+          from_status?: string | null
+          id?: string
+          metadata?: Json
+          reason?: string | null
+          subscription_id?: string | null
+          tenant_id: string
+          to_plan_id?: string | null
+          to_status?: string | null
+        }
+        Update: {
+          actor_user_id?: string | null
+          created_at?: string
+          event_type?: string
+          from_plan_id?: string | null
+          from_status?: string | null
+          id?: string
+          metadata?: Json
+          reason?: string | null
+          subscription_id?: string | null
+          tenant_id?: string
+          to_plan_id?: string | null
+          to_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_events_from_plan_id_fkey"
+            columns: ["from_plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_events_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_events_to_plan_id_fkey"
+            columns: ["to_plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscriptions: {
         Row: {
+          billing_mode: string
+          cancel_at_period_end: boolean
           canceled_at: string | null
           created_at: string
           current_period_end: string | null
           current_period_start: string | null
+          grace_ends_at: string | null
           id: string
           plan_id: string
           provider: string | null
@@ -2175,13 +2284,17 @@ export type Database = {
           status: string
           tenant_id: string
           trial_ends_at: string | null
+          trial_started_at: string | null
           updated_at: string
         }
         Insert: {
+          billing_mode?: string
+          cancel_at_period_end?: boolean
           canceled_at?: string | null
           created_at?: string
           current_period_end?: string | null
           current_period_start?: string | null
+          grace_ends_at?: string | null
           id?: string
           plan_id: string
           provider?: string | null
@@ -2190,13 +2303,17 @@ export type Database = {
           status?: string
           tenant_id: string
           trial_ends_at?: string | null
+          trial_started_at?: string | null
           updated_at?: string
         }
         Update: {
+          billing_mode?: string
+          cancel_at_period_end?: boolean
           canceled_at?: string | null
           created_at?: string
           current_period_end?: string | null
           current_period_start?: string | null
+          grace_ends_at?: string | null
           id?: string
           plan_id?: string
           provider?: string | null
@@ -2205,6 +2322,7 @@ export type Database = {
           status?: string
           tenant_id?: string
           trial_ends_at?: string | null
+          trial_started_at?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -2307,6 +2425,51 @@ export type Database = {
           },
           {
             foreignKeyName: "team_invitations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_entitlement_overrides: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          feature_id: string
+          granted_by: string | null
+          reason: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          enabled: boolean
+          feature_id: string
+          granted_by?: string | null
+          reason: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          feature_id?: string
+          granted_by?: string | null
+          reason?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_entitlement_overrides_feature_id_fkey"
+            columns: ["feature_id"]
+            isOneToOne: false
+            referencedRelation: "features"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_entitlement_overrides_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -2582,6 +2745,11 @@ export type Database = {
           tenant_id: string
         }[]
       }
+      admin_billing_dashboard: { Args: never; Returns: Json }
+      admin_billing_list: {
+        Args: { p_filter: string; p_search: string }
+        Returns: Json
+      }
       admin_dashboard_summary: {
         Args: never
         Returns: Json
@@ -2625,6 +2793,7 @@ export type Database = {
           occurred_at: string
         }[]
       }
+      admin_tenant_billing: { Args: { p_tenant_id: string }; Returns: Json }
       admin_tenant_detail: {
         Args: { p_tenant_id: string }
         Returns: Json
@@ -2816,6 +2985,7 @@ export type Database = {
       get_customer_notification_health: { Args: { p_tenant_id: string }; Returns: Json }
       get_customer_notification_settings: { Args: { p_tenant_id: string }; Returns: Json }
       get_my_appointments: { Args: never; Returns: Json }
+      get_my_billing_summary: { Args: { p_tenant_id: string }; Returns: Json }
       get_my_link_salon_context: {
         Args: { p_tenant_slug: string }
         Returns: Json

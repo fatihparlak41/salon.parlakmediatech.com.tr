@@ -4,6 +4,10 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminSalonAudit, getAdminSalonDetail, UUID_RE } from "@/lib/modules/platform/admin";
 import { getSiteUrl } from "@/lib/site-url";
 import { SalonDetailView } from "@/components/super-admin/salon-detail-view";
+import { getAdminTenantBilling } from "@/lib/modules/billing/queries";
+import { AdminBillingSection } from "@/components/billing/billing-views";
+import { loadBillingLabels } from "@/components/billing/labels";
+import { adminSectionLabels } from "@/components/billing/page-labels";
 
 /**
  * One salon, read-only: overview and setup readiness (the canonical onboarding steps), Owner(s) and members, usage counts, booking readiness,
@@ -15,7 +19,7 @@ export default async function SuperAdminSalonDetailPage({ params }: PageProps<"/
   if (!UUID_RE.test(tenantId)) notFound();
 
   const supabase = await createClient();
-  const [detail, audit] = await Promise.all([getAdminSalonDetail(supabase, tenantId), getAdminSalonAudit(supabase, tenantId, 50)]);
+  const [detail, audit, billing] = await Promise.all([getAdminSalonDetail(supabase, tenantId), getAdminSalonAudit(supabase, tenantId, 50), getAdminTenantBilling(supabase, tenantId)]);
   if (!detail.ok) {
     if (detail.reason === "forbidden") redirect("/");
     if (detail.reason === "not_found") notFound();
@@ -25,7 +29,10 @@ export default async function SuperAdminSalonDetailPage({ params }: PageProps<"/
   const t = await getTranslations("SuperAdmin");
   const siteUrl = getSiteUrl().replace(/\/+$/, "");
 
+  const billingNode = billing.ok ? <AdminBillingSection billing={billing.data} labels={await loadBillingLabels("SuperAdmin.billing")} t={await adminSectionLabels()} /> : null;
+
   return (
+    <div className="flex flex-col gap-10">
     <SalonDetailView
       detail={detail.data}
       audit={audit.ok ? audit.data : []}
@@ -198,5 +205,7 @@ export default async function SuperAdminSalonDetailPage({ params }: PageProps<"/
         relative: { never: t("salons.never"), today: t("salons.today"), yesterday: t("salons.yesterday"), daysAgo: t.raw("salons.daysAgo") as string },
       }}
     />
+    {billingNode}
+    </div>
   );
 }

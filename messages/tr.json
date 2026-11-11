@@ -1092,7 +1092,154 @@
     "readOnlyNote": "Bu ekran salt okunurdur: salonların verisi burada değiştirilemez.",
     "nav": {
       "dashboard": "Panel",
-      "salons": "Salonlar"
+      "salons": "Salonlar",
+      "billing": "Faturalandırma"
+    },
+    "billing": {
+      "nav": "Faturalandırma",
+      "title": "Abonelik ve faturalandırma",
+      "subtitle": "Planlar, deneme süreleri ve kullanım. Bu ekran salt okunurdur.",
+      "enforcementOff": "Zorlama kapalı: erişim durumu yalnızca hesaplanır ve gösterilir, hiçbir kullanıcının erişimi kısıtlanmaz.",
+      "enforcementOn": "Zorlama açık.",
+      "stats": {
+        "total": "Toplam salon",
+        "trialNotStarted": "Deneme başlamadı",
+        "trialActive": "Deneme sürüyor",
+        "trialEnding": "Deneme 7 gün içinde bitiyor",
+        "grace": "Ek süre",
+        "readOnly": "Salt okunur durumda",
+        "paidActive": "Ücretli ve aktif",
+        "pilot": "Pilot",
+        "complimentary": "Ücretsiz",
+        "internal": "Dahili",
+        "overLimit": "Planı aşan",
+        "readyNotStarted": "Hazır ama deneme başlamadı",
+        "noSubscription": "Aboneliksiz"
+      },
+      "filters": {
+        "all": "Tümü",
+        "trial": "Deneme",
+        "trial_ending": "Deneme bitiyor",
+        "grace": "Ek süre",
+        "read_only": "Salt okunur",
+        "paid": "Ücretli",
+        "pilot": "Pilot",
+        "internal": "Dahili",
+        "over_limit": "Planı aşan",
+        "ready_not_started": "Hazır, deneme başlamadı"
+      },
+      "search": "Salon adı veya adres kısaltması",
+      "searchButton": "Ara",
+      "empty": "Bu filtreyle eşleşen salon yok.",
+      "columns": {
+        "salon": "Salon",
+        "plan": "Plan",
+        "mode": "Ödeme türü",
+        "status": "Durum",
+        "access": "Erişim",
+        "days": "Kalan gün",
+        "trialEnd": "Deneme bitişi",
+        "limits": "Limit"
+      },
+      "overLimit": "Aşıyor",
+      "atLimit": "Sınırda",
+      "noPlan": "Plan yok",
+      "noDate": "—",
+      "detail": {
+        "heading": "Abonelik ve plan",
+        "notFound": "Bu salonun abonelik bilgisi okunamadı.",
+        "noSubscription": "Bu salonun abonelik kaydı yok; tam erişimi var.",
+        "plan": "Plan",
+        "price": "Plan fiyatı",
+        "priceUnset": "Henüz tanımlı değil",
+        "billingMode": "Ödeme türü",
+        "status": "Abonelik durumu",
+        "access": "Erişim durumu",
+        "reason": "Sebep",
+        "trialStarted": "Deneme başlangıcı",
+        "trialEnds": "Deneme bitişi",
+        "graceEnds": "Ek süre bitişi",
+        "daysRemaining": "Kalan gün",
+        "cancelAtPeriodEnd": "Dönem sonunda iptal",
+        "yes": "Evet",
+        "no": "Hayır",
+        "readyNotStarted": "Kurulum tamam görünüyor ama deneme henüz başlamadı (sihirbaz dışından yapılmış olabilir).",
+        "usage": "Kullanım ve sınırlar",
+        "limits": "Plan sınırları",
+        "events": "Abonelik geçmişi",
+        "noEvents": "Kayıtlı olay yok.",
+        "eventTypes": {
+          "created": "Oluşturuldu",
+          "backfilled": "Mevcut salon için tanımlandı",
+          "trial_started": "Deneme başladı",
+          "status_changed": "Durum değişti",
+          "plan_changed": "Plan değişti",
+          "billing_mode_changed": "Ödeme türü değişti",
+          "override_changed": "İstisna değişti",
+          "note": "Not"
+        }
+      },
+      "reasons": {
+        "no_subscription": "Abonelik kaydı yok (tam erişim)",
+        "pilot": "Pilot düzenleme (süre sınırı yok)",
+        "internal": "Dahili salon (süre sınırı yok)",
+        "complimentary": "Ücretsiz hesap (süre sınırı yok)",
+        "trial_not_started": "Deneme henüz başlamadı (kurulum tamamlanınca başlar)",
+        "trial_active": "Deneme sürüyor",
+        "trial_expired_grace": "Deneme bitti, ek süre sürüyor",
+        "trial_expired": "Deneme ve ek süre bitti",
+        "active": "Aktif abonelik",
+        "cancel_scheduled": "Dönem sonunda iptal planlı",
+        "renewal_overdue": "Yenileme gecikmiş, ek süre sürüyor",
+        "period_ended_canceled": "Dönem bitti, iptal edilmiş",
+        "renewal_overdue_expired": "Yenileme gecikmesi ek süreyi aştı",
+        "past_due": "Ödeme gecikmiş",
+        "past_due_expired": "Ödeme gecikmesi ek süreyi aştı",
+        "canceled": "İptal edilmiş",
+        "expired": "Süresi dolmuş",
+        "suspended_by_platform": "Platform tarafından askıda",
+        "tenant_canceled": "Salon iptal edilmiş",
+        "tenant_deleted": "Salon silinmiş"
+      },
+      "modes": {
+        "full": "Tam erişim",
+        "grace": "Ek süre",
+        "read_only": "Salt okunur",
+        "blocked": "Engelli"
+      },
+      "statuses": {
+        "trialing": "Deneme",
+        "active": "Aktif",
+        "past_due": "Ödeme gecikmiş",
+        "canceled": "İptal edildi",
+        "expired": "Süresi doldu"
+      },
+      "billingModes": {
+        "paid": "Ücretli",
+        "pilot": "Pilot",
+        "internal": "Dahili",
+        "complimentary": "Ücretsiz"
+      },
+      "limitState": {
+        "ok": "Sınır içinde",
+        "at_limit": "Sınırda",
+        "over": "Sınırı aşıyor"
+      },
+      "usage": {
+        "activeStaff": "Aktif personel",
+        "branches": "Şube",
+        "services": "Hizmet",
+        "customers": "Müşteri",
+        "activeMembers": "Aktif üye",
+        "appointmentsTotal": "Toplam randevu",
+        "appointmentsCreated30d": "Son 30 günde oluşturulan randevu",
+        "treatmentPhotos": "Tedavi fotoğrafı",
+        "emailsSent30d": "Son 30 günde gönderilen e-posta"
+      },
+      "limitKeys": {
+        "max_active_staff": "Aktif personel sınırı",
+        "max_branches": "Şube sınırı"
+      }
     },
     "dashboard": {
       "title": "Platform paneli",
@@ -1368,6 +1515,101 @@
           }
         }
       }
+    }
+  },
+  "Billing": {
+    "title": "Plan ve kullanım",
+    "description": "Planınız, deneme süreniz ve kullanımınız. Bu sayfa yalnızca bilgi içindir: hiçbir özelliğiniz bu bilgiye göre kapatılmaz.",
+    "plan": "Plan",
+    "status": "Durum",
+    "access": "Erişim",
+    "billingMode": "Ödeme türü",
+    "usageHeading": "Kullanım",
+    "limitsHeading": "Plan sınırları",
+    "softNote": "Personel sınırı uyarı amaçlıdır; personel eklemenizi engellemez.",
+    "hardNote": "Bu sınır planın yapısından gelir.",
+    "limitOf": "{used} / {limit}",
+    "noLimits": "Planınızda gösterilecek bir sınır yok.",
+    "trial": {
+      "notStarted": "Deneme süreniz kurulumu tamamladığınızda başlar (30 gün, kart gerekmez).",
+      "active": "Deneme süreniz {date} tarihinde bitiyor ({days} gün kaldı).",
+      "grace": "Deneme süreniz sona erdi. {date} tarihine kadar normal şekilde kullanmaya devam edebilirsiniz.",
+      "expired": "Deneme süreniz sona erdi. Şu an hiçbir özelliğiniz kısıtlanmıyor; plan konusunda sizinle iletişime geçeceğiz.",
+      "noExpiry": "Bu hesabın bitiş tarihi yok."
+    },
+    "unavailable": "Plan bilgisi şu an gösterilemiyor.",
+    "notice": {
+      "trial_ending": "Deneme süreniz {days} gün içinde bitiyor.",
+      "grace": "Deneme süreniz sona erdi; {days} gün daha normal şekilde kullanabilirsiniz.",
+      "expired": "Deneme süreniz sona erdi. Şu an hiçbir özelliğiniz kısıtlanmıyor; plan konusunda sizinle iletişime geçeceğiz.",
+      "cta": "Plan ve kullanım"
+    },
+    "staffLimit": {
+      "at": "Planınızdaki aktif personel sınırına ({limit}) ulaştınız.",
+      "over": "Planınızdaki aktif personel sınırını aştınız ({used} / {limit}). Personel eklemeye devam edebilirsiniz; plan konusunda sizinle iletişime geçeceğiz."
+    },
+    "settingsLink": "Plan ve kullanım",
+    "settingsLinkHint": "Planınız, deneme süreniz ve kullanımınız (yalnızca bilgi).",
+    "reasons": {
+      "no_subscription": "Abonelik kaydı yok (tam erişim)",
+      "pilot": "Pilot düzenleme (süre sınırı yok)",
+      "internal": "Dahili salon (süre sınırı yok)",
+      "complimentary": "Ücretsiz hesap (süre sınırı yok)",
+      "trial_not_started": "Deneme henüz başlamadı (kurulum tamamlanınca başlar)",
+      "trial_active": "Deneme sürüyor",
+      "trial_expired_grace": "Deneme bitti, ek süre sürüyor",
+      "trial_expired": "Deneme ve ek süre bitti",
+      "active": "Aktif abonelik",
+      "cancel_scheduled": "Dönem sonunda iptal planlı",
+      "renewal_overdue": "Yenileme gecikmiş, ek süre sürüyor",
+      "period_ended_canceled": "Dönem bitti, iptal edilmiş",
+      "renewal_overdue_expired": "Yenileme gecikmesi ek süreyi aştı",
+      "past_due": "Ödeme gecikmiş",
+      "past_due_expired": "Ödeme gecikmesi ek süreyi aştı",
+      "canceled": "İptal edilmiş",
+      "expired": "Süresi dolmuş",
+      "suspended_by_platform": "Platform tarafından askıda",
+      "tenant_canceled": "Salon iptal edilmiş",
+      "tenant_deleted": "Salon silinmiş"
+    },
+    "modes": {
+      "full": "Tam erişim",
+      "grace": "Ek süre",
+      "read_only": "Salt okunur",
+      "blocked": "Engelli"
+    },
+    "statuses": {
+      "trialing": "Deneme",
+      "active": "Aktif",
+      "past_due": "Ödeme gecikmiş",
+      "canceled": "İptal edildi",
+      "expired": "Süresi doldu"
+    },
+    "billingModes": {
+      "paid": "Ücretli",
+      "pilot": "Pilot",
+      "internal": "Dahili",
+      "complimentary": "Ücretsiz"
+    },
+    "limitState": {
+      "ok": "Sınır içinde",
+      "at_limit": "Sınırda",
+      "over": "Sınırı aşıyor"
+    },
+    "usage": {
+      "activeStaff": "Aktif personel",
+      "branches": "Şube",
+      "services": "Hizmet",
+      "customers": "Müşteri",
+      "activeMembers": "Aktif üye",
+      "appointmentsTotal": "Toplam randevu",
+      "appointmentsCreated30d": "Son 30 günde oluşturulan randevu",
+      "treatmentPhotos": "Tedavi fotoğrafı",
+      "emailsSent30d": "Son 30 günde gönderilen e-posta"
+    },
+    "limitKeys": {
+      "max_active_staff": "Aktif personel sınırı",
+      "max_branches": "Şube sınırı"
     }
   },
   "NotFound": {

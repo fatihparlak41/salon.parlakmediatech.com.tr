@@ -57,6 +57,10 @@ export default async function SettingsPage({
             <span className="text-muted-foreground text-xs">Tamamlanan hizmetlerden doğan komisyonu görün, kural tanımlayın.</span>
           </Link>
         ) : null}
+        <Link href={`/app/${tenantSlug}/billing`} className="flex flex-col gap-0.5 p-3 hover:bg-muted/50">
+          <span className="font-medium">Plan ve kullanım</span>
+          <span className="text-muted-foreground text-xs">Planınız, deneme süreniz ve kullanımınız (yalnızca bilgi).</span>
+        </Link>
         <Link href={`/app/${tenantSlug}/account#notifications`} className="flex flex-col gap-0.5 p-3 hover:bg-muted/50">
           <span className="font-medium">Hesabım ve kişisel bildirimler</span>
           <span className="text-muted-foreground text-xs">Adınız, şifreniz ve bu cihazdaki bildirimler.</span>

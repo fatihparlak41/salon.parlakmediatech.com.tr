@@ -266,16 +266,23 @@ export async function cleanupTenants(tenantIds: string[]): Promise<void> {
   // privileged), so it can do this; DEV-only, same as testDb itself.
   await testDb`alter table tenant_memberships disable trigger tenant_memberships_unrestricted_holder_guard`;
   await testDb`alter table role_permissions disable trigger role_permissions_unrestricted_holder_guard`;
+  // Faz SAAS.1C.1: subscription_events is append-only; a full test teardown is the only legitimate delete
+  await testDb`alter table subscription_events disable trigger subscription_events_append_only`;
 
   try {
     await cleanupTenantsInner(tenantIds);
   } finally {
     await testDb`alter table tenant_memberships enable trigger tenant_memberships_unrestricted_holder_guard`;
     await testDb`alter table role_permissions enable trigger role_permissions_unrestricted_holder_guard`;
+    await testDb`alter table subscription_events enable trigger subscription_events_append_only`;
   }
 }
 
 async function cleanupTenantsInner(tenantIds: string[]): Promise<void> {
+  // Faz SAAS.1C.1: billing rows (events reference the subscription, so they go first)
+  await testDb`delete from subscription_events where tenant_id in ${testDb(tenantIds)}`;
+  await testDb`delete from tenant_entitlement_overrides where tenant_id in ${testDb(tenantIds)}`;
+  await testDb`delete from subscriptions where tenant_id in ${testDb(tenantIds)}`;
   // notification_delivery_targets (Faz NOTIF.2E.2): FKs into
   // notification_deliveries (deleted next, below) — must go first. Has
   // its own tenant_id column, so no separate id-collection step is

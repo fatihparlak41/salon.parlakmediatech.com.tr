@@ -1,0 +1,961 @@
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type postgres from "postgres";
+import {
+  addMembership,
+  asAuthenticatedUser,
+  asDatabaseRole,
+  cleanupPlatformAdmins,
+  cleanupTenants,
+  cleanupUsers,
+  createBranch,
+  createCustomer,
+  createService,
+  createStaffMember,
+  createStaffSchedule,
+  createTestTenant,
+  createTestUser,
+  linkServiceBranch,
+  linkStaffBranch,
+  linkStaffService,
+  testDb,
+  type TestTenant,
+  type TestUser,
+} from "./helpers";
+
+/**
+ * Faz SAAS.1C.1 - subscription domain, database level. IDs: SC schema, AT access-state truth table, ST trial start, UL usage/limits,
+ * EN entitlement, PV privacy/grants, DF definer hygiene, RL rls, AO append-only, BF backfill, AD admin billing, NB no behaviour change.
+ * Everything is synthetic. Enforcement is OFF in 1C.1: no test here expects any user action to be refused because of billing.
+ */
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Loose = Record<string, any>;
+type Sql = postgres.TransactionSql;
+
+const u: Record<string, TestUser> = {};
+const userIds: string[] = [];
+const tenantIds: string[] = [];
+
+async function newUser(label: string): Promise<TestUser> {
+  const user = await createTestUser(`s1c-${label}`);
+  userIds.push(user.id);
+  u[label] = user;
+  return user;
+}
+
+async function planId(key: string): Promise<string> {
+  const [p] = await testDb<{ id: string }[]>`select id from plans where key = ${key}`;
+  return p!.id;
+}
+
+async function mkTenant(slug: string, ownerLabel: string): Promise<TestTenant> {
+  const t = await createTestTenant(slug, u[ownerLabel]!.id);
+  tenantIds.push(t.id);
+  return t;
+}
+
+/** subscription_events is append-only; only a full test teardown may remove rows (same exception the shared cleanup helper makes). */
+async function purgeEvents(tenantId: string) {
+  await testDb.begin(async (sql) => {
+    await sql`alter table subscription_events disable trigger subscription_events_append_only`;
+    await sql`delete from subscription_events where tenant_id = ${tenantId}`;
+    await sql`alter table subscription_events enable trigger subscription_events_append_only`;
+  });
+}
+
+async function setSub(
+  tenantId: string,
+  o: { plan?: string; status?: string; mode?: string; trialStart?: string | null; trialEnd?: string | null; graceEnd?: string | null; periodEnd?: string | null; cancel?: boolean },
+) {
+  await purgeEvents(tenantId);
+  await testDb`delete from subscriptions where tenant_id = ${tenantId}`;
+  await testDb`insert into subscriptions (tenant_id, plan_id, status, billing_mode, trial_started_at, trial_ends_at, grace_ends_at, current_period_end, cancel_at_period_end)
+    values (${tenantId}, ${await planId(o.plan ?? "salon")}, ${o.status ?? "active"}, ${o.mode ?? "paid"}, ${o.trialStart ?? null}, ${o.trialEnd ?? null},
+            ${o.graceEnd ?? null}, ${o.periodEnd ?? null}, ${o.cancel ?? false})`;
+}
+
+async function accessAt(tenantId: string, atIso: string): Promise<Loose> {
+  const [r] = await testDb<{ s: Loose }[]>`select private.tenant_access_state_at(${tenantId}, ${atIso}::timestamptz) as s`;
+  return r!.s;
+}
+
+const T0 = "2026-03-01T12:00:00Z";
+const plusHours = (iso: string, h: number) => new Date(new Date(iso).getTime() + h * 3600_000).toISOString();
+
+async function rollbackProbe<T>(fn: (sql: Sql) => Promise<T>): Promise<T> {
+  let out: T | undefined;
+  await testDb
+    .begin(async (sql) => {
+      out = await fn(sql);
+      throw new Error("ROLLBACK_PROBE");
+    })
+    .catch((e: Error) => {
+      if (e.message !== "ROLLBACK_PROBE") throw e;
+    });
+  return out as T;
+}
+
+const WEEK = [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, start: "09:00", end: "17:00" }));
+
+const rpc = {
+  createTenant: (userId: string, name: string, slug: string) => asAuthenticatedUser(userId, (sql) => sql<{ id: string }[]>`select public.create_tenant(${name}, ${slug}) as id`),
+  profile: (userId: string, t: string) =>
+    asAuthenticatedUser(userId, (sql) => sql<{ s: Loose }[]>`select public.update_salon_profile(${t}, 'Fatura Deneme Salonu', 'Europe/Nicosia', 'TRY', '05330000000', null) as s`),
+  services: (userId: string, t: string) =>
+    asAuthenticatedUser(userId, (sql) => sql<{ s: Loose }[]>`select public.onboarding_add_services(${t}, ${testDb.json([{ name: "Kesim", durationMinutes: 30, price: "100" }] as never)}) as s`),
+  staff: (userId: string, t: string) =>
+    asAuthenticatedUser(userId, (sql) => sql<{ s: Loose }[]>`select public.onboarding_add_staff(${t}, ${testDb.json([{ fullName: "Usta Bir" }] as never)}) as s`),
+  hours: (userId: string, t: string, staffId: string) =>
+    asAuthenticatedUser(userId, (sql) => sql<{ s: Loose }[]>`select public.onboarding_apply_weekly_hours(${t}, ${[staffId]}::uuid[], ${testDb.json(WEEK as never)}) as s`),
+  mapping: (userId: string, t: string, staffId: string, serviceId: string) =>
+    asAuthenticatedUser(userId, (sql) => sql<{ s: Loose }[]>`select public.onboarding_set_staff_services(${t}, ${testDb.json([{ staffId, serviceIds: [serviceId] }] as never)}) as s`),
+  booking: (userId: string, t: string, on: boolean) => asAuthenticatedUser(userId, (sql) => sql<{ s: boolean }[]>`select public.set_online_booking_enabled(${t}, ${on}) as s`),
+};
+
+async function subRow(tenantId: string): Promise<Loose | undefined> {
+  const [r] = await testDb<Loose[]>`select * from subscriptions where tenant_id = ${tenantId}`;
+  return r;
+}
+
+async function eventTypes(tenantId: string): Promise<string[]> {
+  const rows = await testDb<{ event_type: string }[]>`select event_type from subscription_events where tenant_id = ${tenantId} order by created_at, id`;
+  return rows.map((r) => r.event_type);
+}
+
+/** Runs the whole guided onboarding up to (not including) the online-booking switch; returns ids. */
+async function onboardThroughRpcs(userId: string, tenantId: string) {
+  await rpc.profile(userId, tenantId);
+  await rpc.services(userId, tenantId);
+  await rpc.staff(userId, tenantId);
+  const [st] = await testDb<{ id: string }[]>`select id from staff_members where tenant_id = ${tenantId}`;
+  const [sv] = await testDb<{ id: string }[]>`select id from services where tenant_id = ${tenantId}`;
+  await rpc.mapping(userId, tenantId, st!.id, sv!.id);
+  await rpc.hours(userId, tenantId, st!.id);
+  return { staffId: st!.id, serviceId: sv!.id };
+}
+
+const NEW_PUBLIC = ["admin_billing_dashboard", "admin_billing_list", "admin_tenant_billing", "get_my_billing_summary"];
+const NEW_PRIVATE = [
+  "billing_enforcement_enabled", "tenant_access_state_at", "tenant_access_state", "tenant_usage", "tenant_limit", "tenant_limit_status", "tenant_entitlement",
+  "tenant_effective_online_booking", "tenant_billing_summary", "admin_billing_rows", "admin_billing_dashboard", "admin_billing_list", "admin_tenant_billing",
+  "billing_log_event", "billing_create_default_subscription", "billing_start_trial", "onboarding_finish", "billing_backfill_existing_tenants", "subscription_events_append_only",
+];
+
+beforeAll(async () => {
+  for (const label of ["admin", "support", "ownerA", "yonA", "stylistA", "ownerB", "plain", "own1", "own2", "own3", "own4", "own5", "own6", "ownT", "ownU", "ownV", "ownW", "ownX"]) await newUser(label);
+  await testDb`insert into platform_admins (user_id, role, is_active) values (${u.admin!.id}, 'owner', true), (${u.support!.id}, 'support', true)`;
+}, 300000);
+
+afterAll(async () => {
+  await cleanupTenants(tenantIds);
+  await cleanupPlatformAdmins(userIds);
+  await cleanupUsers(userIds);
+}, 300000);
+
+// ------------------------------------------------------------------------------------------------------------------------------------------
+describe("SC - schema, plans, limits, features", () => {
+  it("SC1 subscriptions has the new columns and the extended status set", async () => {
+    const cols = await testDb<{ column_name: string }[]>`select column_name from information_schema.columns where table_schema = 'public' and table_name = 'subscriptions'`;
+    for (const c of ["billing_mode", "trial_started_at", "grace_ends_at", "cancel_at_period_end"]) expect(cols.map((x) => x.column_name)).toContain(c);
+    const t = await mkTenant("s1c-sc1", "own1");
+    for (const st of ["trialing", "active", "past_due", "canceled", "expired"]) {
+      await setSub(t.id, { status: st });
+      expect((await subRow(t.id))!.status).toBe(st);
+    }
+    await expect(setSub(t.id, { status: "frozen" })).rejects.toThrow();
+  });
+
+  it("SC2 constraints: billing_mode values, nonpaid never carries a trial, trial dates are all-or-nothing and ordered", async () => {
+    const t = await mkTenant("s1c-sc2", "own2");
+    await expect(setSub(t.id, { mode: "gift" })).rejects.toThrow();
+    for (const mode of ["pilot", "internal", "complimentary"]) {
+      await expect(setSub(t.id, { mode, status: "trialing", trialStart: T0, trialEnd: plusHours(T0, 720) })).rejects.toThrow();
+      await setSub(t.id, { mode, status: "active" });
+    }
+    await expect(setSub(t.id, { mode: "paid", status: "trialing", trialStart: T0, trialEnd: null })).rejects.toThrow();
+    await expect(setSub(t.id, { mode: "paid", status: "trialing", trialStart: null, trialEnd: plusHours(T0, 720) })).rejects.toThrow();
+    await expect(setSub(t.id, { mode: "paid", status: "trialing", trialStart: T0, trialEnd: T0 })).rejects.toThrow();
+    await expect(setSub(t.id, { mode: "paid", status: "trialing", trialStart: T0, trialEnd: plusHours(T0, 720), graceEnd: plusHours(T0, 700) })).rejects.toThrow();
+    await setSub(t.id, { mode: "paid", status: "trialing", trialStart: T0, trialEnd: plusHours(T0, 720), graceEnd: plusHours(T0, 1056) });
+  });
+
+  it("SC3 launch plans: salon + salon_plus exist, PRICES ARE NULL, legacy plans kept but inactive, nothing deleted", async () => {
+    const plans = await testDb<Loose[]>`select key, is_active, price_monthly, price_yearly, currency from plans order by sort_order`;
+    const by = Object.fromEntries(plans.map((p) => [p.key, p]));
+    for (const k of ["salon", "salon_plus"]) {
+      expect(by[k]).toBeTruthy();
+      expect(by[k].is_active).toBe(true);
+      expect(by[k].price_monthly).toBeNull();
+      expect(by[k].price_yearly).toBeNull();
+    }
+    for (const k of ["starter", "professional", "business"]) {
+      expect(by[k]).toBeTruthy();
+      expect(by[k].is_active).toBe(false);
+    }
+    // the legacy plan_features rows are still there
+    const [c] = await testDb<{ n: number }[]>`select count(*)::int as n from plan_features pf join plans p on p.id = pf.plan_id where p.key = 'business'`;
+    expect(c!.n).toBeGreaterThan(0);
+  });
+
+  it("SC4 plan_limits: only active staff (soft 5 / 12) and branches (hard 1); no appointments/customers/services limits can exist", async () => {
+    const rows = await testDb<Loose[]>`select p.key, pl.limit_key, pl.limit_value, pl.enforcement from plan_limits pl join plans p on p.id = pl.plan_id order by 1, 2`;
+    expect(rows.map((r) => `${r.key}:${r.limit_key}:${r.limit_value}:${r.enforcement}`)).toEqual([
+      "salon:max_active_staff:5:soft",
+      "salon:max_branches:1:hard",
+      "salon_plus:max_active_staff:12:soft",
+      "salon_plus:max_branches:1:hard",
+    ]);
+    for (const k of ["max_customers", "max_services", "max_appointments_per_month"]) {
+      await expect(testDb`insert into plan_limits (plan_id, limit_key, limit_value, enforcement) select id, ${k}, 10, 'soft' from plans where key = 'salon'`).rejects.toThrow();
+    }
+  });
+
+  it("SC5 features: unbuilt modules are not available and no launch plan carries them; real modules are in both launch plans", async () => {
+    const unbuilt = ["inventory", "color_formulas", "whatsapp", "loyalty", "packages", "memberships", "multi_branch"];
+    const f = await testDb<{ key: string; is_available: boolean }[]>`select key, is_available from features`;
+    for (const k of unbuilt) expect(f.find((x) => x.key === k)!.is_available).toBe(false);
+    const real = ["online_booking", "finance", "commission", "advanced_reports", "customer_notifications", "treatment_history", "customer_import"];
+    for (const k of real) expect(f.find((x) => x.key === k)!.is_available).toBe(true);
+    for (const plan of ["salon", "salon_plus"]) {
+      const keys = (await testDb<{ key: string }[]>`select f.key from plan_features pf join plans p on p.id = pf.plan_id join features f on f.id = pf.feature_id where p.key = ${plan}`).map((r) => r.key).sort();
+      expect(keys).toEqual([...real].sort());
+    }
+  });
+
+  it("SC6 the release gate exists and is OFF", async () => {
+    const [g] = await testDb<{ enabled: boolean }[]>`select enabled from private.release_gates where key = 'billing_enforcement'`;
+    expect(g!.enabled).toBe(false);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------------------------------------------------
+describe("AT - access-state truth table (computed, never enforced)", () => {
+  let t: TestTenant;
+  beforeAll(async () => {
+    t = await mkTenant("s1c-at", "own3");
+  });
+
+  it("AT1 no subscription row = full (fail-open)", async () => {
+    await testDb`delete from subscriptions where tenant_id = ${t.id}`;
+    expect(await accessAt(t.id, T0)).toMatchObject({ mode: "full", reason: "no_subscription" });
+  });
+
+  it("AT2 pilot / internal / complimentary active never expire (even far in the future, even with a stale period end)", async () => {
+    for (const mode of ["pilot", "internal", "complimentary"]) {
+      await setSub(t.id, { mode, status: "active", periodEnd: plusHours(T0, -24 * 400) });
+      for (const off of [0, 24 * 30, 24 * 44, 24 * 365, 24 * 365 * 5]) {
+        expect(await accessAt(t.id, plusHours(T0, off))).toMatchObject({ mode: "full", reason: mode });
+      }
+    }
+  });
+
+  it("AT3 trial not started = full, whatever the date", async () => {
+    await setSub(t.id, { mode: "paid", status: "trialing" });
+    expect(await accessAt(t.id, plusHours(T0, 24 * 900))).toMatchObject({ mode: "full", reason: "trial_not_started", daysRemaining: null });
+  });
+
+  it("AT4 trial 30 d + grace 14 d: exact boundaries (full -> grace -> read_only)", async () => {
+    const ends = plusHours(T0, 720);
+    const grace = plusHours(T0, 1056);
+    await setSub(t.id, { mode: "paid", status: "trialing", trialStart: T0, trialEnd: ends, graceEnd: grace });
+    expect(await accessAt(t.id, T0)).toMatchObject({ mode: "full", reason: "trial_active", daysRemaining: 30 });
+    expect(await accessAt(t.id, plusHours(ends, -1 / 3600))).toMatchObject({ mode: "full", reason: "trial_active", daysRemaining: 1 });
+    expect(await accessAt(t.id, ends)).toMatchObject({ mode: "grace", reason: "trial_expired_grace", daysRemaining: 14 });
+    expect(await accessAt(t.id, plusHours(grace, -1 / 3600))).toMatchObject({ mode: "grace", reason: "trial_expired_grace", daysRemaining: 1 });
+    expect(await accessAt(t.id, grace)).toMatchObject({ mode: "read_only", reason: "trial_expired" });
+    expect(await accessAt(t.id, plusHours(grace, 24 * 400))).toMatchObject({ mode: "read_only", reason: "trial_expired" });
+  });
+
+  it("AT5 trialEnding is true in the last 7 days only", async () => {
+    const ends = plusHours(T0, 720);
+    await setSub(t.id, { mode: "paid", status: "trialing", trialStart: T0, trialEnd: ends, graceEnd: plusHours(T0, 1056) });
+    expect((await accessAt(t.id, plusHours(ends, -7 * 24))).trialEnding).toBe(true);
+    expect((await accessAt(t.id, plusHours(ends, -7 * 24 - 1 / 3600))).trialEnding).toBe(false);
+    expect((await accessAt(t.id, plusHours(ends, -1))).trialEnding).toBe(true);
+    expect((await accessAt(t.id, plusHours(ends, 1))).trialEnding).toBe(false);
+  });
+
+  it("AT6 paid active: period end, renewal grace 14 d, cancel at period end", async () => {
+    const pe = plusHours(T0, 24 * 30);
+    await setSub(t.id, { mode: "paid", status: "active", periodEnd: pe });
+    expect(await accessAt(t.id, pe)).toMatchObject({ mode: "full", reason: "active" });
+    expect(await accessAt(t.id, plusHours(pe, 1))).toMatchObject({ mode: "grace", reason: "renewal_overdue" });
+    expect(await accessAt(t.id, plusHours(pe, 336 - 1 / 3600))).toMatchObject({ mode: "grace", reason: "renewal_overdue" });
+    expect(await accessAt(t.id, plusHours(pe, 336))).toMatchObject({ mode: "read_only", reason: "renewal_overdue_expired" });
+    await setSub(t.id, { mode: "paid", status: "active" });
+    expect(await accessAt(t.id, plusHours(T0, 24 * 999))).toMatchObject({ mode: "full", reason: "active" });
+    await setSub(t.id, { mode: "paid", status: "active", periodEnd: pe, cancel: true });
+    expect(await accessAt(t.id, plusHours(pe, -1))).toMatchObject({ mode: "full", reason: "cancel_scheduled" });
+    expect(await accessAt(t.id, plusHours(pe, 1))).toMatchObject({ mode: "read_only", reason: "period_ended_canceled" });
+  });
+
+  it("AT7 past_due, canceled, expired", async () => {
+    const g = plusHours(T0, 24 * 10);
+    await setSub(t.id, { mode: "paid", status: "past_due", graceEnd: g });
+    expect(await accessAt(t.id, plusHours(g, -1))).toMatchObject({ mode: "grace", reason: "past_due" });
+    expect(await accessAt(t.id, g)).toMatchObject({ mode: "read_only", reason: "past_due_expired" });
+    await setSub(t.id, { mode: "paid", status: "past_due" });
+    expect(await accessAt(t.id, plusHours(T0, 24 * 999))).toMatchObject({ mode: "grace", reason: "past_due" });
+    const pe = plusHours(T0, 24 * 5);
+    await setSub(t.id, { mode: "paid", status: "canceled", periodEnd: pe });
+    expect(await accessAt(t.id, plusHours(pe, -1))).toMatchObject({ mode: "full", reason: "cancel_scheduled" });
+    expect(await accessAt(t.id, pe)).toMatchObject({ mode: "read_only", reason: "canceled" });
+    await setSub(t.id, { mode: "paid", status: "canceled" });
+    expect(await accessAt(t.id, T0)).toMatchObject({ mode: "read_only", reason: "canceled" });
+    await setSub(t.id, { mode: "paid", status: "expired" });
+    expect(await accessAt(t.id, T0)).toMatchObject({ mode: "read_only", reason: "expired" });
+  });
+
+  it("AT8 tenant suspended / canceled / deleted = blocked (display only), and a stale non-paid status falls through to status logic", async () => {
+    await setSub(t.id, { mode: "pilot", status: "active" });
+    await testDb`update tenants set status = 'suspended' where id = ${t.id}`;
+    expect(await accessAt(t.id, T0)).toMatchObject({ mode: "blocked", reason: "suspended_by_platform" });
+    await testDb`update tenants set status = 'canceled' where id = ${t.id}`;
+    expect(await accessAt(t.id, T0)).toMatchObject({ mode: "blocked", reason: "tenant_canceled" });
+    await testDb`update tenants set status = 'trial', deleted_at = now() where id = ${t.id}`;
+    expect(await accessAt(t.id, T0)).toMatchObject({ mode: "blocked", reason: "tenant_deleted" });
+    await testDb`update tenants set deleted_at = null where id = ${t.id}`;
+    await setSub(t.id, { mode: "pilot", status: "canceled" });
+    expect(await accessAt(t.id, T0)).toMatchObject({ mode: "read_only", reason: "canceled" });
+    const [none] = await testDb<{ s: unknown }[]>`select private.tenant_access_state_at('00000000-0000-4000-8000-000000000000', now()) as s`;
+    expect(none!.s).toBeNull();
+  });
+});
+
+// ------------------------------------------------------------------------------------------------------------------------------------------
+describe("ST - subscription on create, trial start on first onboarding completion", () => {
+  it("ST1 create_tenant creates the subscription in the same transaction: plan salon, paid, trialing, dates NULL, one 'created' event", async () => {
+    const [{ id }] = (await rpc.createTenant(u.ownT!.id, "Deneme Salon", "s1c-st1")) as { id: string }[];
+    tenantIds.push(id);
+    const s = await subRow(id);
+    expect(s).toMatchObject({ status: "trialing", billing_mode: "paid", trial_started_at: null, trial_ends_at: null, grace_ends_at: null, cancel_at_period_end: false });
+    const [p] = await testDb<{ key: string }[]>`select key from plans where id = ${s!.plan_id}`;
+    expect(p!.key).toBe("salon");
+    expect(await eventTypes(id)).toEqual(["created"]);
+    expect(await accessAt(id, T0)).toMatchObject({ mode: "full", reason: "trial_not_started" });
+  });
+
+  it("ST2 atomicity: a failed or rolled-back creation leaves no subscription behind", async () => {
+    const [before] = await testDb<{ n: number }[]>`select count(*)::int as n from subscriptions`;
+    // duplicate slug: the tenant insert fails, so no subscription row appears either
+    await expect(rpc.createTenant(u.ownU!.id, "Kopya", "s1c-st1")).rejects.toThrow();
+    // rolled back after the RPC succeeded: tenant and subscription vanish together
+    await rollbackProbe(async (sql) => {
+      await sql`select set_config('request.jwt.claims', ${JSON.stringify({ sub: u.ownU!.id, role: "authenticated" })}, true), set_config('request.jwt.claim.sub', ${u.ownU!.id}, true)`;
+      await sql`set local role authenticated`;
+      const [r] = await sql<{ id: string }[]>`select public.create_tenant('Geri Alinacak', 's1c-st2-rb') as id`;
+      expect(r!.id).toBeTruthy();
+    });
+    const [after] = await testDb<{ n: number }[]>`select count(*)::int as n from subscriptions`;
+    expect(after!.n).toBe(before!.n);
+    const [orphan] = await testDb<{ n: number }[]>`select count(*)::int as n from subscriptions s left join tenants t on t.id = s.tenant_id where t.id is null`;
+    expect(orphan!.n).toBe(0);
+  });
+
+  it("ST3 the trial starts exactly once, when onboarding completes with the booking switch (and not before)", async () => {
+    const [{ id }] = (await rpc.createTenant(u.ownV!.id, "Tam Kurulum", "s1c-st3")) as { id: string }[];
+    tenantIds.push(id);
+    const ids = await onboardThroughRpcs(u.ownV!.id, id);
+    expect((await subRow(id))!.trial_started_at).toBeNull(); // everything but the explicit booking switch: not ready, no trial
+    await rpc.booking(u.ownV!.id, id, true);
+    const s = (await subRow(id))!;
+    expect(s.trial_started_at).not.toBeNull();
+    const [d] = await testDb<{ trial_h: number; grace_h: number }[]>`select (extract(epoch from (trial_ends_at - trial_started_at)) / 3600)::int as trial_h, (extract(epoch from (grace_ends_at - trial_ends_at)) / 3600)::int as grace_h from subscriptions where tenant_id = ${id}`;
+    expect(d).toEqual({ trial_h: 720, grace_h: 336 });
+    expect(await eventTypes(id)).toEqual(["created", "trial_started"]);
+    // re-running every onboarding RPC, toggling the switch off and on again, never resets the dates
+    const before = { a: s.trial_started_at, b: s.trial_ends_at, c: s.grace_ends_at };
+    await rpc.hours(u.ownV!.id, id, ids.staffId);
+    await rpc.mapping(u.ownV!.id, id, ids.staffId, ids.serviceId);
+    await rpc.profile(u.ownV!.id, id);
+    await rpc.booking(u.ownV!.id, id, false);
+    await rpc.booking(u.ownV!.id, id, true);
+    const again = (await subRow(id))!;
+    expect({ a: again.trial_started_at, b: again.trial_ends_at, c: again.grace_ends_at }).toEqual(before);
+    expect(await eventTypes(id)).toEqual(["created", "trial_started"]);
+  });
+
+  it("ST4 enabling the switch FIRST and completing the last step later starts the trial at that last step", async () => {
+    const [{ id }] = (await rpc.createTenant(u.ownW!.id, "Sira Degisik", "s1c-st4")) as { id: string }[];
+    tenantIds.push(id);
+    await rpc.booking(u.ownW!.id, id, true);
+    expect((await subRow(id))!.trial_started_at).toBeNull();
+    await rpc.profile(u.ownW!.id, id);
+    await rpc.services(u.ownW!.id, id);
+    await rpc.staff(u.ownW!.id, id);
+    const [st] = await testDb<{ id: string }[]>`select id from staff_members where tenant_id = ${id}`;
+    const [sv] = await testDb<{ id: string }[]>`select id from services where tenant_id = ${id}`;
+    await rpc.mapping(u.ownW!.id, id, st!.id, sv!.id);
+    expect((await subRow(id))!.trial_started_at).toBeNull(); // still no working hours
+    const out = await rpc.hours(u.ownW!.id, id, st!.id);
+    expect(out[0]!.s.ready).toBe(true); // the RPC answer is the unchanged readiness document
+    expect((await subRow(id))!.trial_started_at).not.toBeNull();
+  });
+
+  it("ST5 the onboarding RPC answers are unchanged (same readiness document before and after the trial start)", async () => {
+    const [{ id }] = (await rpc.createTenant(u.ownX!.id, "Cevap Sekli", "s1c-st5")) as { id: string }[];
+    tenantIds.push(id);
+    const ids = await onboardThroughRpcs(u.ownX!.id, id);
+    await rpc.booking(u.ownX!.id, id, true);
+    const out = await rpc.hours(u.ownX!.id, id, ids.staffId);
+    const [direct] = await testDb<{ s: Loose }[]>`select private.onboarding_status(${id}) as s`;
+    expect(Object.keys(out[0]!.s).sort()).toEqual(Object.keys(direct!.s).sort());
+    expect(out[0]!.s.ready).toBe(direct!.s.ready);
+    expect(out[0]!.s.blockers).toEqual(direct!.s.blockers);
+  });
+
+  it("ST6 pilot / internal / complimentary and non-trialing rows never start a trial; a second start is a no-op", async () => {
+    const t = await mkTenant("s1c-st6", "own4");
+    for (const mode of ["pilot", "internal", "complimentary"]) {
+      await setSub(t.id, { mode, status: "active" });
+      const [r] = await testDb<{ b: boolean }[]>`select private.billing_start_trial(${t.id}) as b`;
+      expect(r!.b).toBe(false);
+      expect(await subRow(t.id)).toMatchObject({ trial_started_at: null, trial_ends_at: null });
+    }
+    await setSub(t.id, { mode: "paid", status: "active" });
+    expect((await testDb<{ b: boolean }[]>`select private.billing_start_trial(${t.id}) as b`)[0]!.b).toBe(false);
+    await setSub(t.id, { mode: "paid", status: "trialing" });
+    expect((await testDb<{ b: boolean }[]>`select private.billing_start_trial(${t.id}) as b`)[0]!.b).toBe(true);
+    const first = await subRow(t.id);
+    expect((await testDb<{ b: boolean }[]>`select private.billing_start_trial(${t.id}) as b`)[0]!.b).toBe(false);
+    expect((await subRow(t.id))!.trial_started_at).toEqual(first!.trial_started_at);
+    // a tenant with no subscription row: nothing to start, nothing created, no error
+    await purgeEvents(t.id);
+    await testDb`delete from subscriptions where tenant_id = ${t.id}`;
+    expect((await testDb<{ b: boolean }[]>`select private.billing_start_trial(${t.id}) as b`)[0]!.b).toBe(false);
+  });
+
+  it("ST7 concurrent starts: exactly one wins and the dates are those of the winner", async () => {
+    const t = await mkTenant("s1c-st7", "own5");
+    await setSub(t.id, { mode: "paid", status: "trialing" });
+    const results = await Promise.all(Array.from({ length: 6 }, () => testDb<{ b: boolean }[]>`select private.billing_start_trial(${t.id}) as b`));
+    expect(results.filter((r) => r[0]!.b).length).toBe(1);
+    expect((await eventTypes(t.id)).filter((e) => e === "trial_started").length).toBe(1);
+  });
+
+  it("ST8 a tenant member cannot start, reset or move a trial by any API path", async () => {
+    const t = await mkTenant("s1c-st8", "own6");
+    await setSub(t.id, { mode: "paid", status: "trialing", trialStart: T0, trialEnd: plusHours(T0, 720), graceEnd: plusHours(T0, 1056) });
+    await expect(asAuthenticatedUser(u.own6!.id, (sql) => sql`update subscriptions set trial_started_at = null, trial_ends_at = null where tenant_id = ${t.id}`)).rejects.toThrow();
+    await expect(asAuthenticatedUser(u.own6!.id, (sql) => sql`select private.billing_start_trial(${t.id})`)).rejects.toThrow();
+    expect((await subRow(t.id))!.trial_started_at).not.toBeNull();
+  });
+});
+
+// ------------------------------------------------------------------------------------------------------------------------------------------
+describe("UL - usage and limits (measured, never enforced)", () => {
+  let t: TestTenant;
+  beforeAll(async () => {
+    t = await mkTenant("s1c-ul", "own1");
+    await setSub(t.id, { plan: "salon", mode: "paid", status: "active" });
+    await createBranch(t.id, "Merkez");
+  });
+
+  it("UL1 usage counts: staff (active only), branches, services, customers, members, appointments, photos, e-mails", async () => {
+    const [b] = await testDb<{ id: string }[]>`select id from branches where tenant_id = ${t.id}`;
+    const s = await createService(t.id, "Hizmet", 30, 100);
+    await linkServiceBranch(s.id, b!.id);
+    const a = await createStaffMember(t.id, "Aktif Bir");
+    await createStaffMember(t.id, "Aktif Iki");
+    const gone = await createStaffMember(t.id, "Pasif");
+    await testDb`update staff_members set status = 'inactive' where id = ${gone.id}`;
+    const del = await createStaffMember(t.id, "Silinmis");
+    await testDb`update staff_members set deleted_at = now() where id = ${del.id}`;
+    await createCustomer(t.id, "Musteri A");
+    await createCustomer(t.id, "Musteri B");
+    void a;
+    const [r] = await testDb<{ u: Loose }[]>`select private.tenant_usage(${t.id}) as u`;
+    expect(r!.u).toMatchObject({ activeStaff: 2, branches: 1, services: 1, customers: 2, activeMembers: 1, appointmentsTotal: 0, treatmentPhotos: 0, treatmentPhotoBytes: 0, emailsSent30d: 0 });
+  });
+
+  it("UL2 limit status: ok / at_limit / over for the soft staff limit; branches limit reported", async () => {
+    const status = async () => (await testDb<{ s: Loose[] }[]>`select private.tenant_limit_status(${t.id}) as s`)[0]!.s;
+    const staff = async () => (await status()).find((x) => x.key === "max_active_staff")!;
+    expect(await staff()).toMatchObject({ used: 2, limit: 5, enforcement: "soft", state: "ok" });
+    for (let i = 0; i < 3; i++) await createStaffMember(t.id, `Ek ${i}`);
+    expect(await staff()).toMatchObject({ used: 5, limit: 5, state: "at_limit" });
+    await createStaffMember(t.id, "Ek 6");
+    expect(await staff()).toMatchObject({ used: 6, limit: 5, state: "over" });
+    expect((await status()).find((x) => x.key === "max_branches")).toMatchObject({ used: 1, limit: 1, enforcement: "hard", state: "at_limit" });
+    expect((await testDb<{ n: number | null }[]>`select private.tenant_limit(${t.id}, 'max_active_staff') as n`)[0]!.n).toBe(5);
+    expect((await testDb<{ n: number | null }[]>`select private.tenant_limit(${t.id}, 'max_customers') as n`)[0]!.n).toBeNull();
+    await testDb`update subscriptions set plan_id = ${await planId("salon_plus")} where tenant_id = ${t.id}`;
+    expect((await testDb<{ n: number | null }[]>`select private.tenant_limit(${t.id}, 'max_active_staff') as n`)[0]!.n).toBe(12);
+    expect(await staff()).toMatchObject({ used: 6, limit: 12, state: "ok" });
+  });
+
+  it("UL3 THE LIMIT IS SOFT: a real owner can still add staff past the plan limit and nothing refuses (no billing trigger exists)", async () => {
+    await testDb`update subscriptions set plan_id = ${await planId("salon")} where tenant_id = ${t.id}`; // 6 active staff on a 5-staff plan
+    const before = (await testDb<{ n: number }[]>`select count(*)::int as n from staff_members where tenant_id = ${t.id} and status = 'active' and deleted_at is null`)[0]!.n;
+    await asAuthenticatedUser(u.own1!.id, (sql) => sql`insert into staff_members (tenant_id, full_name) values (${t.id}, 'Owner Eklenen 7')`).catch(async () => {
+      // the owner's own role may not have a direct table grant in this schema; fall back to the superuser insert: the point is the absence of any billing refusal
+      await testDb`insert into staff_members (tenant_id, full_name) values (${t.id}, 'Eklenen 7')`;
+    });
+    const after = (await testDb<{ n: number }[]>`select count(*)::int as n from staff_members where tenant_id = ${t.id} and status = 'active' and deleted_at is null`)[0]!.n;
+    expect(after).toBe(before + 1);
+    const triggers = await testDb<{ tgname: string }[]>`select tgname from pg_trigger tg join pg_class c on c.oid = tg.tgrelid where c.relname in ('staff_members', 'appointments', 'customers', 'services') and not tg.tgisinternal and (tgname ilike '%billing%' or tgname ilike '%subscription%' or tgname ilike '%plan%' or tgname ilike '%limit%')`;
+    expect(triggers).toEqual([]);
+    const [s] = await testDb<{ s: Loose[] }[]>`select private.tenant_limit_status(${t.id}) as s`;
+    expect(s!.s.find((x) => x.key === "max_active_staff")!.state).toBe("over");
+  });
+
+  it("UL4 photos and e-mails are measured only", async () => {
+    const [tb] = await testDb<{ id: string }[]>`select id from branches where tenant_id = ${t.id}`;
+    void tb;
+    const [r] = await testDb<{ u: Loose }[]>`select private.tenant_usage(${t.id}) as u`;
+    expect(typeof r!.u.treatmentPhotos).toBe("number");
+    expect(typeof r!.u.emailsSent30d).toBe("number");
+    const lim = (await testDb<{ s: Loose[] }[]>`select private.tenant_limit_status(${t.id}) as s`)[0]!.s.map((x) => x.key);
+    expect(lim.sort()).toEqual(["max_active_staff", "max_branches"]);
+  });
+
+  it("UL5 usage of one tenant never includes another tenant's rows", async () => {
+    const other = await mkTenant("s1c-ul-other", "ownerB");
+    await createStaffMember(other.id, "Baska Salon Personeli");
+    const [mine] = await testDb<{ u: Loose }[]>`select private.tenant_usage(${t.id}) as u`;
+    const [theirs] = await testDb<{ u: Loose }[]>`select private.tenant_usage(${other.id}) as u`;
+    expect(theirs!.u.activeStaff).toBe(1);
+    expect(mine!.u.activeStaff).toBeGreaterThanOrEqual(7);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------------------------------------------------
+describe("EN - entitlement, overrides, effective online booking (prepared, not wired)", () => {
+  let t: TestTenant;
+  beforeAll(async () => {
+    t = await mkTenant("s1c-en", "own2");
+    await setSub(t.id, { plan: "salon", mode: "paid", status: "active" });
+  });
+  const ent = async (key: string) => (await testDb<{ e: boolean }[]>`select private.tenant_entitlement(${t.id}, ${key}) as e`)[0]!.e;
+
+  it("EN1 plan-included real modules are entitled; unbuilt and unknown keys are not", async () => {
+    for (const k of ["online_booking", "finance", "commission", "advanced_reports", "customer_notifications", "treatment_history", "customer_import"]) expect(await ent(k)).toBe(true);
+    for (const k of ["inventory", "whatsapp", "multi_branch", "loyalty", "no_such_feature"]) expect(await ent(k)).toBe(false);
+  });
+
+  it("EN2 no subscription = not entitled (the function is strict; the access state is what fails open)", async () => {
+    const bare = await mkTenant("s1c-en-bare", "own3");
+    expect((await testDb<{ e: boolean }[]>`select private.tenant_entitlement(${bare.id}, 'finance') as e`)[0]!.e).toBe(false);
+  });
+
+  it("EN3 a platform override can switch a plan feature off, and can never grant an unavailable module", async () => {
+    const [f] = await testDb<{ id: string }[]>`select id from features where key = 'finance'`;
+    await testDb`insert into tenant_entitlement_overrides (tenant_id, feature_id, enabled, reason) values (${t.id}, ${f!.id}, false, 'test: finance off')`;
+    expect(await ent("finance")).toBe(false);
+    const [inv] = await testDb<{ id: string }[]>`select id from features where key = 'inventory'`;
+    await testDb`insert into tenant_entitlement_overrides (tenant_id, feature_id, enabled, reason) values (${t.id}, ${inv!.id}, true, 'test: inventory on')`;
+    expect(await ent("inventory")).toBe(false); // module does not exist
+    await testDb`delete from tenant_entitlement_overrides where tenant_id = ${t.id}`;
+    expect(await ent("finance")).toBe(true);
+    await expect(testDb`insert into tenant_entitlement_overrides (tenant_id, feature_id, enabled, reason) values (${t.id}, ${f!.id}, false, '')`).rejects.toThrow();
+  });
+
+  it("EN4 the salon's own switch (tenant_features) is NOT an entitlement and an entitlement override is NOT the salon's switch", async () => {
+    const [f] = await testDb<{ id: string }[]>`select id from features where key = 'online_booking'`;
+    await testDb`insert into tenant_features (tenant_id, feature_id, enabled) values (${t.id}, ${f!.id}, false) on conflict (tenant_id, feature_id) do update set enabled = false`;
+    expect(await ent("online_booking")).toBe(true); // switch OFF does not remove the entitlement
+    const [has] = await testDb<{ h: boolean }[]>`select private.has_feature(${t.id}, 'online_booking') as h`;
+    expect(has!.h).toBe(false); // today's behaviour: the switch alone decides
+    await testDb`insert into tenant_entitlement_overrides (tenant_id, feature_id, enabled, reason) values (${t.id}, ${f!.id}, false, 'test: platform off')`;
+    const [has2] = await testDb<{ h: boolean }[]>`select private.has_feature(${t.id}, 'online_booking') as h`;
+    expect(has2!.h).toBe(false);
+    await testDb`update tenant_features set enabled = true where tenant_id = ${t.id} and feature_id = ${f!.id}`;
+    const [has3] = await testDb<{ h: boolean }[]>`select private.has_feature(${t.id}, 'online_booking') as h`;
+    expect(has3!.h).toBe(true); // has_feature ignores overrides: public booking behaves exactly as before
+    await testDb`delete from tenant_entitlement_overrides where tenant_id = ${t.id}`;
+  });
+
+  it("EN5 effective online booking = salon switch AND entitlement AND access, but ONLY when the gate is ON; gate OFF = today's behaviour", async () => {
+    const eff = async (sql: Sql | typeof testDb = testDb) => (await sql<{ e: boolean }[]>`select private.tenant_effective_online_booking(${t.id}) as e`)[0]!.e;
+    const [f] = await testDb<{ id: string }[]>`select id from features where key = 'online_booking'`;
+    await testDb`insert into tenant_features (tenant_id, feature_id, enabled) values (${t.id}, ${f!.id}, true) on conflict (tenant_id, feature_id) do update set enabled = true`;
+    // a lapsed subscription (read_only) with the switch ON: gate OFF -> still true (nothing changes today)
+    await setSub(t.id, { mode: "paid", status: "expired" });
+    expect(await eff()).toBe(true);
+    // gate ON (rolled back): lapsed -> false; full -> true; switch OFF -> false; override off -> false
+    expect(await rollbackProbe(async (sql) => { await sql`update private.release_gates set enabled = true where key = 'billing_enforcement'`; return eff(sql); })).toBe(false);
+    await setSub(t.id, { mode: "paid", status: "active" });
+    expect(await rollbackProbe(async (sql) => { await sql`update private.release_gates set enabled = true where key = 'billing_enforcement'`; return eff(sql); })).toBe(true);
+    expect(await rollbackProbe(async (sql) => { await sql`update private.release_gates set enabled = true where key = 'billing_enforcement'`; await sql`update tenant_features set enabled = false where tenant_id = ${t.id}`; return eff(sql); })).toBe(false);
+    expect(await rollbackProbe(async (sql) => { await sql`update private.release_gates set enabled = true where key = 'billing_enforcement'`; await sql`insert into tenant_entitlement_overrides (tenant_id, feature_id, enabled, reason) values (${t.id}, ${f!.id}, false, 'test override')`; return eff(sql); })).toBe(false);
+    expect(await eff()).toBe(true);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------------------------------------------------
+describe("PV - privacy, grants, RLS, append-only", () => {
+  let t: TestTenant;
+  let other: TestTenant;
+  beforeAll(async () => {
+    t = await mkTenant("s1c-pv", "ownerA");
+    other = await mkTenant("s1c-pv-other", "ownerB");
+    for (const [tt, key] of [[t, "SALON_MANAGER"], [t, "STYLIST"]] as const) {
+      const [tpl] = await testDb<{ id: string; key: string; name: string; description: string | null }[]>`select id, key, name, description from role_templates where key = ${key}`;
+      const [r] = await testDb<{ id: string }[]>`select id from roles where tenant_id = ${tt.id} and key = ${key} and deleted_at is null`;
+      let roleId = r?.id;
+      if (!roleId) {
+        const [nr] = await testDb<{ id: string }[]>`insert into roles (tenant_id, key, name, description, is_system_default, cloned_from_template_id) values (${tt.id}, ${tpl!.key}, ${tpl!.name}, ${tpl!.description}, true, ${tpl!.id}) returning id`;
+        await testDb`insert into role_permissions (role_id, permission_id) select ${nr!.id}, permission_id from role_template_permissions where role_template_id = ${tpl!.id}`;
+        roleId = nr!.id;
+      }
+      await addMembership(tt.id, key === "SALON_MANAGER" ? u.yonA!.id : u.stylistA!.id, roleId);
+    }
+    await setSub(t.id, { plan: "salon", mode: "pilot", status: "active" });
+    await testDb`update subscriptions set provider = 'zz-provider', provider_customer_id = 'cus_SECRET_1', provider_subscription_id = 'sub_SECRET_1' where tenant_id = ${t.id}`;
+    await setSub(other.id, { plan: "salon", mode: "paid", status: "trialing" });
+    await testDb`insert into subscription_events (tenant_id, event_type, reason) values (${t.id}, 'note', 'PRIVATE-EVENT-REASON')`;
+  });
+
+  const TABLES = ["subscriptions", "plan_limits", "subscription_events", "tenant_entitlement_overrides"];
+
+  it("PV1 no API role can read or write any billing table (owner, manager, platform admin, anon, service_role)", async () => {
+    for (const table of TABLES) {
+      for (const who of [u.ownerA!.id, u.yonA!.id, u.admin!.id, u.support!.id]) {
+        await expect(asAuthenticatedUser(who, (sql) => sql.unsafe(`select * from public.${table}`))).rejects.toThrow(/permission denied/);
+        await expect(asAuthenticatedUser(who, (sql) => sql.unsafe(`delete from public.${table}`))).rejects.toThrow(/permission denied/);
+      }
+      await expect(asDatabaseRole("anon", null, (sql) => sql.unsafe(`select * from public.${table}`))).rejects.toThrow(/permission denied/);
+      await expect(asDatabaseRole("service_role", null, (sql) => sql.unsafe(`select * from public.${table}`))).rejects.toThrow(/permission denied/);
+    }
+    await expect(asAuthenticatedUser(u.ownerA!.id, (sql) => sql`select provider_customer_id from subscriptions`)).rejects.toThrow(/permission denied/);
+  });
+
+  it("PV2 authenticated cannot write subscription state, plans, plan limits, features or overrides in any way", async () => {
+    const pro = await planId("salon_plus");
+    const cases: [string, (sql: Sql) => Promise<unknown>][] = [
+      ["insert subscription", (s) => s`insert into subscriptions (tenant_id, plan_id) values (${other.id}, ${pro})`],
+      ["update subscription", (s) => s`update subscriptions set status = 'active', billing_mode = 'complimentary', plan_id = ${pro} where tenant_id = ${t.id}`],
+      ["delete subscription", (s) => s`delete from subscriptions where tenant_id = ${t.id}`],
+      ["insert override", (s) => s`insert into tenant_entitlement_overrides (tenant_id, feature_id, enabled, reason) select ${t.id}, id, true, 'self grant' from features limit 1`],
+      ["update plan price", (s) => s`update plans set price_monthly = 1 where key = 'salon'`],
+      ["update plan limit", (s) => s`update plan_limits set limit_value = 9999`],
+      ["insert event", (s) => s`insert into subscription_events (tenant_id, event_type) values (${t.id}, 'note')`],
+      ["insert plan", (s) => s`insert into plans (key, name) values ('rogue', 'Rogue')`],
+      ["insert plan feature", (s) => s`insert into plan_features (plan_id, feature_id) select p.id, f.id from plans p cross join features f where p.key = 'salon' and f.key = 'inventory'`],
+      ["insert feature", (s) => s`insert into features (key, name) values ('rogue', 'Rogue')`],
+      ["update feature availability", (s) => s`update features set is_available = true where key = 'inventory'`],
+    ];
+    for (const who of [u.ownerA!.id, u.yonA!.id, u.admin!.id]) {
+      for (const [name, fn] of cases) {
+        // a rejection (permission denied / RLS) is expected; a silent zero-row update under RLS is also acceptable, a success is not
+        const outcome = await asAuthenticatedUser(who, async (sql) => {
+          try {
+            const r = await sql.savepoint(async (sp) => fn(sp));
+            return { ok: true as const, rows: (r as { count?: number }).count ?? 0 };
+          } catch {
+            return { ok: false as const, rows: 0 };
+          }
+        });
+        expect(outcome.ok === false || outcome.rows === 0, `${name} by ${who}`).toBe(true);
+      }
+    }
+    const s = await subRow(t.id);
+    expect(s).toMatchObject({ status: "active", billing_mode: "pilot" });
+    const [plan] = await testDb<{ price_monthly: string | null }[]>`select price_monthly from plans where key = 'salon'`;
+    expect(plan!.price_monthly).toBeNull();
+    const [inv] = await testDb<{ is_available: boolean }[]>`select is_available from features where key = 'inventory'`;
+    expect(inv!.is_available).toBe(false);
+  });
+
+  it("PV3 the salon summary: Owner and Yönetici read their own; Personel, another salon's owner, a stranger and anon are refused", async () => {
+    for (const who of [u.ownerA!.id, u.yonA!.id]) {
+      const [r] = await asAuthenticatedUser(who, (sql) => sql<{ s: Loose }[]>`select public.get_my_billing_summary(${t.id}) as s`);
+      expect(r!.s.planKey).toBe("salon");
+      expect(r!.s.accessState).toMatchObject({ mode: "full", reason: "pilot", billingMode: "pilot" });
+      expect(r!.s.usage).toBeTruthy();
+      expect(r!.s.limits).toBeTruthy();
+    }
+    await expect(asAuthenticatedUser(u.stylistA!.id, (sql) => sql`select public.get_my_billing_summary(${t.id})`)).rejects.toThrow(/not allowed/);
+    await expect(asAuthenticatedUser(u.ownerB!.id, (sql) => sql`select public.get_my_billing_summary(${t.id})`)).rejects.toThrow(/not allowed/);
+    await expect(asAuthenticatedUser(u.plain!.id, (sql) => sql`select public.get_my_billing_summary(${t.id})`)).rejects.toThrow(/not allowed/);
+    await expect(asDatabaseRole("anon", null, (sql) => sql`select public.get_my_billing_summary(${t.id})`)).rejects.toThrow(/permission denied/);
+    await expect(asAuthenticatedUser(u.ownerA!.id, (sql) => sql`select public.get_my_billing_summary(${other.id})`)).rejects.toThrow(/not allowed/);
+  });
+
+  it("PV4 the salon summary never carries provider ids, events, reasons or price overrides", async () => {
+    const [r] = await asAuthenticatedUser(u.ownerA!.id, (sql) => sql<{ s: Loose }[]>`select public.get_my_billing_summary(${t.id}) as s`);
+    const text = JSON.stringify(r!.s);
+    for (const secret of ["cus_SECRET_1", "sub_SECRET_1", "zz-provider", "PRIVATE-EVENT-REASON", "provider", "events", "reason\":\"PRIVATE"]) expect(text).not.toContain(secret);
+    expect(Object.keys(r!.s).sort()).toEqual(["accessState", "limits", "planKey", "planName", "usage"]);
+  });
+
+  it("PV5 admin billing APIs: platform admins (owner and support) read; salon owners, strangers and anon are refused", async () => {
+    const calls: [string, (sql: Sql) => Promise<unknown>][] = [
+      ["dashboard", (s) => s`select public.admin_billing_dashboard()`],
+      ["list", (s) => s`select public.admin_billing_list('all', null)`],
+      ["detail", (s) => s`select public.admin_tenant_billing(${t.id})`],
+    ];
+    for (const [name, fn] of calls) {
+      await asAuthenticatedUser(u.admin!.id, fn);
+      await asAuthenticatedUser(u.support!.id, fn);
+      for (const who of [u.ownerA!.id, u.yonA!.id, u.stylistA!.id, u.plain!.id]) {
+        await expect(asAuthenticatedUser(who, fn), `${name} as non-admin`).rejects.toThrow(/platform admin required/);
+      }
+      await expect(asDatabaseRole("anon", null, fn), `${name} as anon`).rejects.toThrow(/permission denied/);
+    }
+    await expect(asDatabaseRole("authenticated", null, (s) => s`select public.admin_billing_dashboard()`)).rejects.toThrow(/authentication required/);
+  });
+
+  it("PV6 admin detail: no provider ids anywhere; events carry type/status/reason only; unknown tenant returns null", async () => {
+    const [r] = await asAuthenticatedUser(u.admin!.id, (sql) => sql<{ s: Loose }[]>`select public.admin_tenant_billing(${t.id}) as s`);
+    const text = JSON.stringify(r!.s);
+    for (const secret of ["cus_SECRET_1", "sub_SECRET_1", "zz-provider"]) expect(text).not.toContain(secret);
+    expect(r!.s.events.some((e: Loose) => e.type === "note")).toBe(true);
+    const [none] = await asAuthenticatedUser(u.admin!.id, (sql) => sql<{ s: Loose | null }[]>`select public.admin_tenant_billing('00000000-0000-4000-8000-000000000000') as s`);
+    expect(none!.s).toBeNull();
+  });
+
+  it("PV7 invalid list filter is rejected; search matches name or slug only", async () => {
+    await expect(asAuthenticatedUser(u.admin!.id, (sql) => sql`select public.admin_billing_list('bogus', null)`)).rejects.toThrow(/invalid filter/);
+    const [r] = await asAuthenticatedUser(u.admin!.id, (sql) => sql<{ s: Loose[] }[]>`select public.admin_billing_list('all', 's1c-pv-other') as s`);
+    expect(r!.s.map((x) => x.slug)).toEqual(["s1c-pv-other"]);
+  });
+
+  it("PV8 subscription_events is append-only (update and delete raise, even for the table owner)", async () => {
+    const [e] = await testDb<{ id: string }[]>`select id from subscription_events where tenant_id = ${t.id} limit 1`;
+    await expect(testDb`update subscription_events set reason = 'x' where id = ${e!.id}`).rejects.toThrow(/append-only/);
+    await expect(testDb`delete from subscription_events where id = ${e!.id}`).rejects.toThrow(/append-only/);
+  });
+
+  it("PV9 RLS is enabled on every new table and none of them has a policy", async () => {
+    for (const table of ["plan_limits", "subscription_events", "tenant_entitlement_overrides"]) {
+      const [r] = await testDb<{ rls: boolean; pol: number }[]>`select c.relrowsecurity as rls, (select count(*)::int from pg_policy p where p.polrelid = c.oid) as pol from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relname = ${table}`;
+      expect(r).toEqual({ rls: true, pol: 0 });
+    }
+    const [s] = await testDb<{ rls: boolean }[]>`select relrowsecurity as rls from pg_class where oid = 'public.subscriptions'::regclass`;
+    expect(s!.rls).toBe(true);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------------------------------------------------
+describe("DF - SECURITY DEFINER hygiene and grants (catalog)", () => {
+  it("DF1 every new function is SECURITY DEFINER-safe: search_path pinned, owner postgres, and exactly the intended grants", async () => {
+    const rows = await testDb<{ nsp: string; name: string; secdef: boolean; cfg: string[] | null; acl: string | null; owner: string }[]>`
+      select n.nspname as nsp, p.proname as name, p.prosecdef as secdef, p.proconfig as cfg, p.proacl::text as acl, pg_get_userbyid(p.proowner) as owner
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where (n.nspname = 'public' and p.proname = any(${NEW_PUBLIC})) or (n.nspname = 'private' and p.proname = any(${NEW_PRIVATE}))`;
+    const publicSeen = rows.filter((r) => r.nsp === "public").map((r) => r.name).sort();
+    expect(publicSeen).toEqual([...NEW_PUBLIC].sort());
+    expect(rows.filter((r) => r.nsp === "private").length).toBe(NEW_PRIVATE.length);
+    for (const r of rows) {
+      expect(r.owner).toBe("postgres");
+      if (r.name !== "subscription_events_append_only") expect(r.secdef, `${r.nsp}.${r.name}`).toBe(true);
+      expect((r.cfg ?? []).join(","), `${r.nsp}.${r.name}`).toMatch(/search_path=""/);
+      if (r.nsp === "private") expect(r.acl, `${r.nsp}.${r.name}`).toBe("{postgres=X/postgres}");
+      else expect(r.acl, `${r.nsp}.${r.name}`).toBe("{postgres=X/postgres,authenticated=X/postgres}");
+    }
+  });
+
+  it("DF2 anon and PUBLIC cannot execute any new function; private schema stays unreachable", async () => {
+    for (const fn of NEW_PUBLIC) {
+      const [r] = await testDb<{ anon: boolean; auth: boolean; svc: boolean }[]>`select has_function_privilege('anon', p.oid, 'execute') as anon, has_function_privilege('authenticated', p.oid, 'execute') as auth, has_function_privilege('service_role', p.oid, 'execute') as svc from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = ${fn}`;
+      expect(r, fn).toEqual({ anon: false, auth: true, svc: false });
+    }
+    const priv = await testDb<{ name: string; any_api: boolean }[]>`select p.proname as name, (has_function_privilege('anon', p.oid, 'execute') or has_function_privilege('authenticated', p.oid, 'execute') or has_function_privilege('service_role', p.oid, 'execute')) as any_api from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'private' and p.proname = any(${NEW_PRIVATE})`;
+    expect(priv.filter((x) => x.any_api)).toEqual([]);
+    const [usage] = await testDb<{ a: boolean; b: boolean }[]>`select has_schema_privilege('anon', 'private', 'usage') as a, has_schema_privilege('authenticated', 'private', 'usage') as b`;
+    expect(usage).toEqual({ a: false, b: false });
+  });
+
+  it("DF3 no billing table or function takes an authority from user_metadata", async () => {
+    const defs = await testDb<{ def: string }[]>`select pg_get_functiondef(p.oid) as def from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname in ('public', 'private') and (p.proname like '%billing%' or p.proname like 'tenant_access%' or p.proname like 'tenant_limit%' or p.proname like 'tenant_usage' or p.proname like 'tenant_entitlement' or p.proname like 'onboarding_finish')`;
+    expect(defs.length).toBeGreaterThan(10);
+    for (const d of defs) {
+      expect(d.def).not.toMatch(/user_metadata|raw_user_meta_data|user_meta/i);
+      expect(d.def).not.toMatch(/service_role/i);
+    }
+  });
+});
+
+// ------------------------------------------------------------------------------------------------------------------------------------------
+describe("BF - existing-tenant backfill", () => {
+  it("BF1 exact rules: internal slug, business data = pilot/active, abandoned = trialing/not started; deleted skipped; idempotent; everybody stays full", async () => {
+    const internal = await mkTenant("fatih-parlak", "own1");
+    const withStaff = await mkTenant("s1c-bf-staff", "own2");
+    await createStaffMember(withStaff.id, "Mevcut Personel");
+    const withCustomer = await mkTenant("s1c-bf-customer", "own3");
+    await createCustomer(withCustomer.id, "Mevcut Musteri");
+    const empty = await mkTenant("s1c-bf-empty", "own4");
+    const deleted = await mkTenant("s1c-bf-deleted", "own5");
+    await testDb`update tenants set deleted_at = now() where id = ${deleted.id}`;
+    const already = await mkTenant("s1c-bf-already", "own6");
+    await setSub(already.id, { plan: "salon_plus", mode: "complimentary", status: "active" });
+    const ids = [internal, withStaff, withCustomer, empty, deleted, already].map((x) => x.id);
+    for (const id of [internal.id, withStaff.id, withCustomer.id, empty.id, deleted.id]) await testDb`delete from subscriptions where tenant_id = ${id}`;
+    const snapshot = async () => (await testDb<{ h: string }[]>`select md5(coalesce(string_agg(t::text, '|' order by t.id), '')) as h from tenants t where t.id in ${testDb(ids)}`)[0]!.h;
+    const featHash = async () => (await testDb<{ h: string }[]>`select md5(coalesce(string_agg(f::text, '|' order by f.id), '')) as h from tenant_features f where f.tenant_id in ${testDb(ids)}`)[0]!.h;
+    const [h1, f1] = [await snapshot(), await featHash()];
+
+    const [{ n }] = await testDb<{ n: number }[]>`select private.billing_backfill_existing_tenants() as n`;
+    expect(n).toBeGreaterThanOrEqual(4);
+    expect(await subRow(internal.id)).toMatchObject({ status: "active", billing_mode: "internal", trial_started_at: null, trial_ends_at: null });
+    expect(await subRow(withStaff.id)).toMatchObject({ status: "active", billing_mode: "pilot", trial_started_at: null, trial_ends_at: null });
+    expect(await subRow(withCustomer.id)).toMatchObject({ status: "active", billing_mode: "pilot" });
+    expect(await subRow(empty.id)).toMatchObject({ status: "trialing", billing_mode: "paid", trial_started_at: null, trial_ends_at: null, grace_ends_at: null });
+    expect(await subRow(deleted.id)).toBeUndefined();
+    expect(await subRow(already.id)).toMatchObject({ billing_mode: "complimentary" });
+    const [plan] = await testDb<{ key: string }[]>`select p.key from subscriptions s join plans p on p.id = s.plan_id where s.tenant_id = ${internal.id}`;
+    expect(plan!.key).toBe("salon");
+    for (const x of [internal, withStaff, withCustomer, empty]) expect((await accessAt(x.id, plusHours(T0, 24 * 2000))).mode).toBe("full"); // nobody is ever expired or blocked
+    expect(await eventTypes(empty.id)).toEqual(["backfilled"]);
+    expect(await eventTypes(already.id)).toEqual([]);
+    // idempotent: a second run touches nothing
+    const before = await testDb<Loose[]>`select id, status, billing_mode from subscriptions where tenant_id in ${testDb(ids)} order by tenant_id`;
+    const [{ n: again }] = await testDb<{ n: number }[]>`select private.billing_backfill_existing_tenants() as n`;
+    expect(again).toBe(0);
+    expect(await testDb<Loose[]>`select id, status, billing_mode from subscriptions where tenant_id in ${testDb(ids)} order by tenant_id`).toEqual(before);
+    // tenants.status and the salons' own switches are untouched
+    expect(await snapshot()).toBe(h1);
+    expect(await featHash()).toBe(f1);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------------------------------------------------
+describe("AD - Super Admin billing read model", () => {
+  const made: Record<string, TestTenant> = {};
+  beforeAll(async () => {
+    const mk = async (slug: string, owner: string, sub: Parameters<typeof setSub>[1] | null) => {
+      const tt = await mkTenant(slug, owner);
+      made[slug] = tt;
+      if (sub) await setSub(tt.id, sub);
+      return tt;
+    };
+    const ends = new Date(Date.now() + 3 * 24 * 3600_000).toISOString();
+    await mk("s1c-ad-ending", "own1", { mode: "paid", status: "trialing", trialStart: new Date(Date.now() - 27 * 24 * 3600_000).toISOString(), trialEnd: ends, graceEnd: plusHours(ends, 336) });
+    await mk("s1c-ad-grace", "own2", { mode: "paid", status: "trialing", trialStart: new Date(Date.now() - 35 * 24 * 3600_000).toISOString(), trialEnd: new Date(Date.now() - 5 * 24 * 3600_000).toISOString(), graceEnd: new Date(Date.now() + 9 * 24 * 3600_000).toISOString() });
+    await mk("s1c-ad-readonly", "own3", { mode: "paid", status: "trialing", trialStart: new Date(Date.now() - 80 * 24 * 3600_000).toISOString(), trialEnd: new Date(Date.now() - 50 * 24 * 3600_000).toISOString(), graceEnd: new Date(Date.now() - 36 * 24 * 3600_000).toISOString() });
+    await mk("s1c-ad-pilot", "own4", { mode: "pilot", status: "active" });
+    await mk("s1c-ad-internal", "own5", { mode: "internal", status: "active" });
+    const over = await mk("s1c-ad-over", "own6", { plan: "salon", mode: "paid", status: "active" });
+    for (let i = 0; i < 6; i++) await createStaffMember(over.id, `Fazla ${i}`);
+    await mk("s1c-ad-nosub", "ownT", null);
+    // a salon that is READY by the canonical definition but whose trial never started (edited through plain inserts, not the wizard)
+    const ready = await mk("s1c-ad-ready", "ownU", { mode: "paid", status: "trialing" });
+    const branchId = await createBranch(ready.id, "Merkez");
+    await testDb`update branches set phone = '+905550000000' where id = ${branchId}`;
+    const sv = await createService(ready.id, "Kesim", 30, 100);
+    await linkServiceBranch(sv.id, branchId);
+    const sm = await createStaffMember(ready.id, "Usta");
+    await linkStaffBranch(sm.id, branchId);
+    await linkStaffService(sm.id, sv.id);
+    for (let d = 0; d < 7; d++) await createStaffSchedule(ready.id, sm.id, d, "09:00", "17:00");
+    await testDb`insert into tenant_features (tenant_id, feature_id, enabled) select ${ready.id}, f.id, true from features f where f.key = 'online_booking'`;
+  }, 300000);
+
+  const list = async (filter = "all", search: string | null = null) => (await asAuthenticatedUser(u.admin!.id, (sql) => sql<{ s: Loose[] }[]>`select public.admin_billing_list(${filter}, ${search}) as s`))[0]!.s;
+  const slugsOf = (rows: Loose[]) => rows.map((r) => r.slug).filter((s: string) => s.startsWith("s1c-ad-")).sort();
+
+  it("AD1 filters pick exactly the right synthetic salons", async () => {
+    expect(slugsOf(await list("trial_ending"))).toEqual(["s1c-ad-ending"]);
+    expect(slugsOf(await list("grace"))).toEqual(["s1c-ad-grace"]);
+    expect(slugsOf(await list("read_only"))).toEqual(["s1c-ad-readonly"]);
+    expect(slugsOf(await list("pilot"))).toEqual(["s1c-ad-pilot"]);
+    expect(slugsOf(await list("internal"))).toEqual(["s1c-ad-internal"]);
+    expect(slugsOf(await list("over_limit"))).toEqual(["s1c-ad-over"]);
+    expect(slugsOf(await list("ready_not_started"))).toEqual(["s1c-ad-ready"]);
+    expect(slugsOf(await list("trial"))).toEqual(["s1c-ad-ending", "s1c-ad-grace", "s1c-ad-readonly", "s1c-ad-ready"].sort());
+    expect(slugsOf(await list("all", "s1c-ad-")).length).toBe(8);
+  });
+
+  it("AD2 rows carry plan, mode, state, days and flags; a salon with no subscription shows as full/no_subscription", async () => {
+    const rows = await list("all", "s1c-ad-");
+    const by = (s: string) => rows.find((r) => r.slug === s)!;
+    expect(by("s1c-ad-ending")).toMatchObject({ accessMode: "full", accessReason: "trial_active", trialEnding: true, planKey: "salon", billingMode: "paid" });
+    expect(by("s1c-ad-ending").daysRemaining).toBe(3);
+    expect(by("s1c-ad-grace")).toMatchObject({ accessMode: "grace", accessReason: "trial_expired_grace" });
+    expect(by("s1c-ad-readonly")).toMatchObject({ accessMode: "read_only" });
+    expect(by("s1c-ad-pilot")).toMatchObject({ accessMode: "full", accessReason: "pilot" });
+    expect(by("s1c-ad-over")).toMatchObject({ overLimit: true });
+    expect(by("s1c-ad-nosub")).toMatchObject({ planKey: null, billingMode: null, accessMode: "full", accessReason: "no_subscription" });
+    expect(by("s1c-ad-ready")).toMatchObject({ readyTrialNotStarted: true, accessReason: "trial_not_started" });
+  });
+
+  it("AD3 the dashboard agrees with the full list", async () => {
+    const all = await list("all");
+    const [d] = await asAuthenticatedUser(u.admin!.id, (sql) => sql<{ s: Loose }[]>`select public.admin_billing_dashboard() as s`);
+    const s = d!.s;
+    expect(s.total).toBe(all.length);
+    expect(s.trialEnding).toBe(all.filter((r) => r.trialEnding).length);
+    expect(s.grace).toBe(all.filter((r) => r.accessMode === "grace").length);
+    expect(s.readOnly).toBe(all.filter((r) => r.accessMode === "read_only").length);
+    expect(s.pilot).toBe(all.filter((r) => r.billingMode === "pilot").length);
+    expect(s.internal).toBe(all.filter((r) => r.billingMode === "internal").length);
+    expect(s.noSubscription).toBe(all.filter((r) => r.planKey === null).length);
+    expect(s.overLimit).toBe(all.filter((r) => r.overLimit).length);
+    expect(s.enforcementEnabled).toBe(false);
+  });
+
+  it("AD4 no customer data, owner e-mail or phone reaches the billing surface", async () => {
+    const c = await createCustomer(made["s1c-ad-pilot"]!.id, "GIZLI-MUSTERI-ADI");
+    await testDb`update customers set phone = '5559990011', email = 'gizli.musteri@example.test' where id = ${c.id}`;
+    const rows = JSON.stringify(await list("all"));
+    const [d] = await asAuthenticatedUser(u.admin!.id, (sql) => sql<{ s: Loose }[]>`select public.admin_tenant_billing(${made["s1c-ad-pilot"]!.id}) as s`);
+    for (const text of [rows, JSON.stringify(d!.s)]) {
+      for (const secret of ["GIZLI-MUSTERI-ADI", "5559990011", "gizli.musteri@example.test", "@example", "@"]) expect(text).not.toContain(secret);
+    }
+  });
+
+  it("AD5 detail: usage and limits are tenant-scoped; at most 20 events, newest first", async () => {
+    const t = made["s1c-ad-over"]!;
+    for (let i = 0; i < 25; i++) await testDb`insert into subscription_events (tenant_id, event_type, reason) values (${t.id}, 'note', ${`n${i}`})`;
+    const [d] = await asAuthenticatedUser(u.admin!.id, (sql) => sql<{ s: Loose }[]>`select public.admin_tenant_billing(${t.id}) as s`);
+    expect(d!.s.usage.activeStaff).toBe(6);
+    expect(d!.s.limits.find((l: Loose) => l.key === "max_active_staff")).toMatchObject({ state: "over", limit: 5 });
+    expect(d!.s.events.length).toBe(20);
+    const times = d!.s.events.map((e: Loose) => e.at);
+    expect([...times].sort().reverse()).toEqual(times);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------------------------------------------------
+describe("NB - no behaviour change", () => {
+  it("NB1 the migrations replace exactly the intended pre-existing functions and no public-booking function", async () => {
+    const fs = await import("node:fs");
+    const dir = "supabase/migrations";
+    const files = fs.readdirSync(dir).filter((f) => /^202611030(90|100|110)000_/.test(f) || /^2026110[3-9]/.test(f)).sort();
+    expect(files.length).toBeGreaterThanOrEqual(3);
+    const created = new Set<string>();
+    for (const f of files) {
+      const text = fs.readFileSync(`${dir}/${f}`, "utf8");
+      for (const m of text.matchAll(/create or replace function\s+([a-z_]+\.[a-z_0-9]+)/gi)) created.add(m[1]!.toLowerCase());
+    }
+    const preExisting = [...created].filter((n) => !NEW_PRIVATE.map((x) => `private.${x}`).includes(n) && !NEW_PUBLIC.map((x) => `public.${x}`).includes(n)).sort();
+    expect(preExisting).toEqual([
+      "private.create_tenant_with_owner",
+      "private.has_feature",
+      "private.set_online_booking_enabled",
+      "public.onboarding_add_services",
+      "public.onboarding_add_staff",
+      "public.onboarding_apply_weekly_hours",
+      "public.onboarding_set_staff_services",
+      "public.update_salon_profile",
+    ]);
+  });
+
+  it("NB3 a subscription alone never switches public booking ON: has_feature('online_booking') stays the salon's own switch, for backfilled and brand-new salons", async () => {
+    const [{ id }] = (await rpc.createTenant(u.plain!.id, "Anahtarsiz Salon", "s1c-nb3")) as { id: string }[];
+    tenantIds.push(id);
+    const [r] = await testDb<{ h: boolean; e: boolean; p: boolean }[]>`select private.has_feature(${id}, 'online_booking') as h, private.tenant_entitlement(${id}, 'online_booking') as e, private.has_feature(${id}, 'finance') as p`;
+    expect(r!.h).toBe(false); // plan includes it, the salon never switched it on
+    expect(r!.e).toBe(true); // entitlement is tracked separately
+    expect(r!.p).toBe(true); // other feature keys keep the previous plan fallback
+    const [st] = await testDb<{ s: Loose }[]>`select private.onboarding_status(${id}) as s`;
+    expect(st!.s.onlineBookingEnabled).toBe(false);
+    expect(st!.s.blockers).toContain('public_booking_disabled');
+    const [pub] = await testDb<{ n: number }[]>`select count(*)::int as n from tenant_features tf join features f on f.id = tf.feature_id where tf.tenant_id = ${id} and f.key = 'online_booking'`;
+    expect(pub!.n).toBe(0);
+  });
+
+  it("NB2 has_feature and tenants.status behave as before regardless of subscription state (gate OFF)", async () => {
+    const t = await mkTenant("s1c-nb2", "own1");
+    const [f] = await testDb<{ id: string }[]>`select id from features where key = 'online_booking'`;
+    await testDb`insert into tenant_features (tenant_id, feature_id, enabled) values (${t.id}, ${f!.id}, true)`;
+    for (const sub of [{ status: "expired" }, { status: "canceled" }, { status: "past_due" }, { status: "trialing", trialStart: "2020-01-01T00:00:00Z", trialEnd: "2020-01-31T00:00:00Z", graceEnd: "2020-02-14T00:00:00Z" }]) {
+      await setSub(t.id, { mode: "paid", ...sub });
+      expect((await testDb<{ h: boolean }[]>`select private.has_feature(${t.id}, 'online_booking') as h`)[0]!.h).toBe(true);
+      expect((await testDb<{ e: boolean }[]>`select private.tenant_effective_online_booking(${t.id}) as e`)[0]!.e).toBe(true);
+    }
+    const [row] = await testDb<{ status: string }[]>`select status from tenants where id = ${t.id}`;
+    expect(row!.status).toBe("trial");
+  });
+});

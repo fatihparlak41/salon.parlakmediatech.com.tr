@@ -21,6 +21,9 @@ export default async function SuperAdminLayout({ children }: LayoutProps<"/[loca
             <Link href="/super-admin/salons" className="text-muted-foreground hover:text-foreground">
               {t("nav.salons")}
             </Link>
+            <Link href="/super-admin/billing" className="text-muted-foreground hover:text-foreground">
+              {t("nav.billing")}
+            </Link>
           </nav>
         </div>
         <span className="text-muted-foreground text-xs">{t("readOnlyNote")}</span>

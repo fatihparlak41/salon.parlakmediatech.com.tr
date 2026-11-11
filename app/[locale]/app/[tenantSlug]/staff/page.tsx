@@ -8,6 +8,10 @@ import {
   getAvailableMemberships,
 } from "@/lib/modules/staff/queries";
 import { StaffPageClient } from "@/components/staff/staff-page-client";
+import { createClient } from "@/lib/supabase/server";
+import { getMyBillingSummary } from "@/lib/modules/billing/queries";
+import { staffLimitHint } from "@/lib/modules/billing/model";
+import { StaffLimitHint } from "@/components/billing/billing-views";
 
 export default async function StaffPage({
   params,
@@ -29,16 +33,26 @@ export default async function StaffPage({
     redirect(`/app/${tenantSlug}`);
   }
 
-  const [staff, branches, services, memberships] = await Promise.all([
+  const [staff, branches, services, memberships, billingSummary] = await Promise.all([
     getStaffList(access.tenant.id),
     getBranchOptions(access.tenant.id),
     getServiceOptions(access.tenant.id),
     canManage ? getAvailableMemberships(access.tenant.id) : Promise.resolve([]),
+    // Faz SAAS.1C.1 - the soft active-staff limit is a HINT only: it never blocks adding staff. Only a staff manager is asked.
+    canManage ? createClient().then((c) => getMyBillingSummary(c, access.tenant.id)) : Promise.resolve(null),
   ]);
+  const limitHint = staffLimitHint(billingSummary?.limits);
 
   const t = await getTranslations("Staff");
+  const tBilling = await getTranslations("Billing");
 
   return (
+    <div className="flex flex-col gap-4">
+      {limitHint ? (
+        <StaffLimitHint
+          text={limitHint.state === "over" ? tBilling("staffLimit.over", { used: limitHint.used, limit: limitHint.limit }) : tBilling("staffLimit.at", { limit: limitHint.limit })}
+        />
+      ) : null}
     <StaffPageClient
       tenantId={access.tenant.id}
       tenantSlug={tenantSlug}
@@ -61,5 +75,6 @@ export default async function StaffPage({
         noBranchWarning: t("noBranchWarning"),
       }}
     />
+    </div>
   );
 }

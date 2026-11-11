@@ -455,7 +455,8 @@ describe("PG page guards and request validation", () => {
     await SuperAdminSalonsPage({ searchParams: Promise.resolve({}) } as never);
     await SuperAdminSalonDetailPage({ params: Promise.resolve({ tenantId: TENANT }) } as never);
     const names = new Set(h.rpc.mock.calls.map((c) => c[0]));
-    expect([...names].sort()).toEqual(["admin_dashboard_summary", "admin_list_tenants", "admin_tenant_audit", "admin_tenant_detail"]);
+    // SAAS.1C.1 added one more READ function to the salon detail page (the billing section); the rule itself is unchanged: platform-admin functions only.
+    expect([...names].sort()).toEqual(["admin_dashboard_summary", "admin_list_tenants", "admin_tenant_audit", "admin_tenant_billing", "admin_tenant_detail"]);
   });
 
   it("PG7 the layout asks for a platform admin BEFORE it renders anything: a refused visitor gets no children and no navigation", async () => {

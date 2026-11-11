@@ -81,10 +81,11 @@ const AUTHENTICATED_TABLE_WHITELIST: Record<string, string[]> = {
   // SECURITY DEFINER.
   tenant_memberships: ["SELECT"],
   platform_admins: ["INSERT", "SELECT", "UPDATE"],
-  plans: ["INSERT", "SELECT", "UPDATE"],
-  features: ["INSERT", "SELECT", "UPDATE"],
-  plan_features: ["DELETE", "INSERT", "SELECT"],
-  subscriptions: ["SELECT"],
+  // Faz SAAS.1C.1 (20261103090000): the plan catalogue is read-only through the API (writes only by migration / a future audited RPC) and
+  // subscriptions, plan_limits, subscription_events and tenant_entitlement_overrides have NO API-role privilege at all.
+  plans: ["SELECT"],
+  features: ["SELECT"],
+  plan_features: ["SELECT"],
   tenant_features: ["SELECT"],
   audit_logs: ["SELECT"],
   // Phase 2A (20260819...). appointments/appointment_items are
@@ -293,6 +294,12 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   "public.admin_list_tenants",
   "public.admin_tenant_detail",
   "public.admin_tenant_audit",
+  // Faz SAAS.1C.1 (20261103110000) — the billing READ model: three Super Admin reads (private.admin_require() first) and the salon's own
+  // safe summary (settings.manage or staff.manage of the asked tenant). Authenticated only, never anon or service_role; no write function.
+  "public.admin_billing_dashboard",
+  "public.admin_billing_list",
+  "public.admin_tenant_billing",
+  "public.get_my_billing_summary",
   // Faz SAAS.1E.1 (20260921113330) — appointment-scoped customer display.
   // Authenticated only, never anon: gated internally by appointments.view in
   // the requested tenant, returns (appointment_id, customer_display_name)

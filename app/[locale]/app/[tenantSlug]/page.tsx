@@ -33,6 +33,9 @@ import {
 } from "@/components/dashboard/today-schedule";
 import { PersonalDashboard } from "@/components/dashboard/personal-dashboard";
 import { SetupCard } from "@/components/onboarding/setup-card";
+import { getMyBillingSummary } from "@/lib/modules/billing/queries";
+import { billingNotice } from "@/lib/modules/billing/model";
+import { BillingNoticeStrip } from "@/components/billing/billing-views";
 import { remainingSetupTasks, shouldOfferOnboarding, type OnboardingStatus } from "@/lib/modules/onboarding/model";
 import { getOnboardingStatus, getPendingSchedulingServiceNames } from "@/lib/modules/onboarding/queries";
 import { DailyOwnerOverview } from "@/components/dashboard/daily-owner-overview";
@@ -205,7 +208,7 @@ export default async function TenantAppPage({
 
   // Step 2 (salon-wide dashboard): every section's own read, each only when
   // the caller may see that section — all of them independent of each other.
-  const [todayAppointments, activeStaff, monthSummary, hasActiveService, onboardingStatus, dailyOverview] =
+  const [todayAppointments, activeStaff, monthSummary, hasActiveService, onboardingStatus, dailyOverview, billingSummary] =
     await Promise.all([
       canViewAppointments
         ? getTodayAppointments(supabase, tenantId, tenantTimezone)
@@ -227,7 +230,12 @@ export default async function TenantAppPage({
       // Faz FIN.2A — the one canonical daily finance read model, read in parallel with the rest. Only a caller who
       // holds finance.view is asked (the database re-checks); everyone else gets no finance block at all.
       canViewFinance ? getDailyOwnerOverview(tenantId) : Promise.resolve<DailyOverview | null>(null),
+      // Faz SAAS.1C.1 - the salon's own INFORMATIONAL trial / grace notice (never blocks anything; billing enforcement is OFF). Only Owner /
+      // Yönetici are asked; the database re-checks. A failure answers null and changes nothing on the page.
+      canManageStaff || canManageSettings ? getMyBillingSummary(supabase, tenantId) : Promise.resolve(null),
     ]);
+  const tBilling = await getTranslations("Billing");
+  const notice = billingNotice(billingSummary?.accessState);
   // RC.1C: while the salon is still being set up, name what is left (hours, calendar durations, opening online booking). Derived next
   // to - never instead of - the one readiness answer; read only for a salon that is offered the setup card.
   const pendingSchedulingNames = onboardingStatus && shouldOfferOnboarding(onboardingStatus) ? await getPendingSchedulingServiceNames(tenantId) : [];
@@ -320,6 +328,15 @@ export default async function TenantAppPage({
           <p className="mt-2 text-sm">{summarySentence}</p>
         )}
       </div>
+
+      {notice ? (
+        <BillingNoticeStrip
+          notice={notice}
+          text={notice.kind === "expired" ? tBilling("notice.expired") : tBilling(notice.kind === "grace" ? "notice.grace" : "notice.trial_ending", { days: notice.days })}
+          href={`/app/${tenantSlug}/billing`}
+          cta={tBilling("notice.cta")}
+        />
+      ) : null}
 
       {onboardingStatus && shouldOfferOnboarding(onboardingStatus) && (
         <SetupCard
