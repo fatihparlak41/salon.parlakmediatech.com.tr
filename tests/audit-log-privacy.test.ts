@@ -141,7 +141,7 @@ describe("audit_logs — read requires permissions.manage_unrestricted, not mere
   }, 60000);
 });
 
-describe("subscriptions / tenant_features — the same migration also narrows these to unrestricted-only", () => {
+describe("subscriptions / tenant_features — narrowed to unrestricted-only, then (SAAS.1C.1) subscriptions closed to every member", () => {
   let tenant: TestTenant;
   const users: Record<string, TestUser> = {};
   const role: Record<string, string> = {};
@@ -155,11 +155,11 @@ describe("subscriptions / tenant_features — the same migration also narrows th
     await addMembership(tenant.id, users.manager!.id, role.SALON_MANAGER!);
   }, 90000);
 
-  it("subscriptions: Owner reads (if a row exists), Manager reads nothing", async () => {
-    const asManager = await asAuthenticatedUser(users.manager!.id, (sql) => sql<{ id: string }[]>`select id from subscriptions where tenant_id = ${tenant.id}`);
-    expect(asManager).toEqual([]);
+  it("subscriptions: no member reads the table directly any more (Faz SAAS.1C.1: provider ids must not be tenant-readable; members use the billing summary RPC)", async () => {
+    await expect(asAuthenticatedUser(users.manager!.id, (sql) => sql`select id from subscriptions where tenant_id = ${tenant.id}`)).rejects.toThrow(/permission denied/);
+    await expect(asAuthenticatedUser(users.owner!.id, (sql) => sql`select id from subscriptions where tenant_id = ${tenant.id}`)).rejects.toThrow(/permission denied/);
     const starAttempt = await attemptAs(users.manager!.id, (sql) => sql`select * from subscriptions where tenant_id = ${tenant.id}`);
-    expect(starAttempt).toEqual({ ok: true }); // grant-readable, just row-filtered to nothing
+    expect(starAttempt.ok).toBe(false);
   });
 
   it("tenant_features: Owner reads (if a row exists), Manager reads nothing", async () => {
