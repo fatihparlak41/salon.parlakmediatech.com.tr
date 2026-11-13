@@ -280,6 +280,15 @@ describe("LS - tenant lifecycle RPC (platform owner only)", () => {
     expect(ev[0]!.request_id).not.toBeNull();
   });
 
+  it("LS1b unsuspend is refused for a tenant that is not suspended (trial, active, deleted)", async () => {
+    const t = await mk("s2a-ls1b");
+    expect(await fails(A.life(u.padmin!, t.id, "unsuspend", 1))).toBe("invalid_transition");
+    await testDb`update tenants set status = 'active' where id = ${t.id}`;
+    expect(await fails(A.life(u.padmin!, t.id, "unsuspend", 2))).toBe("invalid_transition");
+    expect((await testDb<Loose[]>`select status from tenants where id = ${t.id}`)[0]!.status).toBe("active");
+    expect((await events(t.id)).length).toBe(0);
+  });
+
   it("LS2 stale lifecycle version, replay and conflicting replay", async () => {
     const t = await mk("s2a-ls2");
     expect(await fails(A.life(u.padmin!, t.id, "suspend", 7, { slug: "s2a-ls2" }))).toBe("stale_version");
@@ -406,6 +415,16 @@ describe("MB - manual billing transitions", () => {
     expect(rs.accessState.mode).toBe("full");
     expect(await fails(A.restore(u.padmin!, t.id, 3, { end: inDays(30) }))).toBe("invalid_transition"); // already active
     expect(await fails(A.pastDue(u.padmin!, t.id, 14, 3, { slug: "x" }))).toBe("confirmation_required");
+  });
+
+  it("MB7b mark past_due is refused on a trial, on a non-paid mode and on a row that is already past_due", async () => {
+    const trial = await mk("s2a-mb7b", { status: "trialing", mode: "paid", trialStarted: inDays(-2), trialEnds: inDays(28), grace: inDays(42) });
+    expect(await fails(A.pastDue(u.padmin!, trial.id, 7, 1, { slug: "s2a-mb7b" }))).toBe("invalid_transition");
+    const comp = await mk("s2a-mb7c", { status: "active", mode: "complimentary" });
+    expect(await fails(A.pastDue(u.padmin!, comp.id, 7, 1, { slug: "s2a-mb7c" }))).toBe("invalid_transition");
+    const pd = await mk("s2a-mb7d", { status: "past_due", mode: "paid", periodStart: inDays(-40), periodEnd: inDays(-5), grace: inDays(5) });
+    expect(await fails(A.pastDue(u.padmin!, pd.id, 7, 1, { slug: "s2a-mb7d" }))).toBe("invalid_transition");
+    expect((await events(trial.id)).length + (await events(comp.id)).length + (await events(pd.id)).length).toBe(0);
   });
 
   it("MB8 cancel at period end, undo, and immediate (read_only, not blocked); every guard", async () => {
@@ -563,6 +582,17 @@ describe("ID - versioning, idempotency, concurrency", () => {
     expect((bad[0]!.reason as Error).message).toBe("stale_version");
     expect((await events(t.id)).length).toBe(1);
     expect(await ver(t.id)).toBe(2);
+  });
+
+  it("ID6b concurrent lifecycle writers on a tenant WITHOUT a subscription row: exactly one wins (the tenant lock alone serializes them)", async () => {
+    const t = await createTestTenant("s2a-id6b", u.towner!.id);
+    tenantIds.push(t.id);
+    const res = await Promise.allSettled([A.life(u.padmin!, t.id, "suspend", 1, { slug: "s2a-id6b" }), A.life(u.padmin!, t.id, "suspend", 1, { slug: "s2a-id6b" })]);
+    expect(res.filter((r) => r.status === "fulfilled").length).toBe(1);
+    const bad = res.find((r) => r.status === "rejected") as PromiseRejectedResult;
+    expect((bad.reason as Error).message).toMatch(/stale_version|request_conflict/);
+    expect(await lifeVer(t.id)).toBe(2);
+    expect((await events(t.id)).length).toBe(1);
   });
 
   it("ID7 concurrent TWIN requests (same request id): one event, both callers get the same result", async () => {
@@ -759,6 +789,8 @@ describe("BR - branch hard limit", () => {
     const b1 = await createBranch(t.id, "Legacy 1");
     await createBranch(t.id, "Legacy 2"); // operator session: exempt, stands in for pre-existing data
     await asApi(u.towner!.id, (s) => s`update branches set name = 'Legacy 1 edited' where id = ${b1}`);
+    // a no-op write of the columns the trigger watches must not be treated as a new active branch
+    await asApi(u.towner!.id, (s) => s`update branches set deleted_at = null where id = ${b1}`);
     expect(await fails(insBranch(t.id, u.towner!.id, "Third"))).toMatch(/branch_limit_reached/);
     expect((await testDb<Loose[]>`select count(*)::int n from branches where tenant_id = ${t.id}`)[0]!.n).toBe(2);
   });
