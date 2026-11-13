@@ -54,7 +54,11 @@ begin
      or new.created_at is distinct from old.created_at then
     -- operator sessions (migrations, backups, break-glass) are the only direct writers; every API-reachable path (authenticator / service_role /
     -- SECURITY DEFINER functions called from them) must come through the sanctioned RPC, which sets the transaction-local marker.
-    if session_user not in ('postgres', 'supabase_admin')
+    -- Operator sessions are EXACTLY these three login roles (no pattern, no prefix match): postgres and supabase_admin (dashboard SQL editor, backups,
+    -- `supabase db query`) and cli_login_postgres, the temporary login role the Supabase CLI creates for the project owner and runs `supabase db push`
+    -- migrations as (hosted acceptance proved: session_user = cli_login_postgres, current_user = postgres, member of postgres, not a superuser, never
+    -- reachable by the Data API, anon, authenticated or service_role).
+    if session_user not in ('postgres', 'supabase_admin', 'cli_login_postgres')
        and coalesce(current_setting('salonos.sanctioned_lifecycle', true), 'off') <> 'on' then
       raise exception 'tenant_lifecycle_protected' using errcode = '42501';
     end if;

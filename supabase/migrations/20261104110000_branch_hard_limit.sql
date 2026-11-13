@@ -3,8 +3,8 @@
 -- Until now plan_limits (max_branches = 1, hard) was display-only: `authenticated` holds INSERT on public.branches (policy branches_insert_settings_manage,
 -- settings.manage) and nothing stopped a second branch, although the product has no multi-branch behaviour. This migration enforces it for every
 -- API-reachable path: direct table INSERT / UPDATE through PostgREST, the service-role client, SECURITY DEFINER functions called from them and the
--- public-booking gateway role. Operator sessions (postgres / supabase_admin: migrations, backups, the break-glass procedure) are exempt, exactly like the
--- tenant lifecycle guard.
+-- public-booking gateway role. Operator sessions (exactly postgres, supabase_admin and the Supabase CLI's cli_login_postgres: migrations, backups, the
+-- break-glass procedure) are exempt, exactly like the tenant lifecycle guard.
 --
 -- "Active" means deleted_at IS NULL (branches have no other status). The limit comes from plan_limits (hard max_branches) and falls back to 1 when a
 -- tenant has no subscription row. Concurrency: the trigger locks the TENANT row (SELECT ... FOR UPDATE) before counting, so two concurrent creations
@@ -27,7 +27,9 @@ declare
   v_limit integer;
   v_count integer;
 begin
-  if session_user in ('postgres', 'supabase_admin') then
+  -- operator sessions only, EXACTLY these three login roles (the same list as the tenant lifecycle guard): postgres, supabase_admin and the Supabase CLI's
+  -- temporary cli_login_postgres (the role `supabase db push` runs migrations as). No pattern or prefix match.
+  if session_user in ('postgres', 'supabase_admin', 'cli_login_postgres') then
     return new;
   end if;
   -- only a row that is (or becomes) an ACTIVE branch of this tenant can exceed the limit

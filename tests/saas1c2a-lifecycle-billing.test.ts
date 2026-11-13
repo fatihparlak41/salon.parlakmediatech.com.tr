@@ -112,6 +112,9 @@ const A = {
   life: (user: TestUser, t: string, action: string, v: number, p: { reason?: string; req?: string; slug?: string | null } = {}) =>
     call(user, "admin_set_tenant_lifecycle($1::uuid,$2::text,$3::text,$4::uuid,$5::int,$6::text)", [t, action, p.reason ?? "lifecycle decision", p.req ?? rid(), v, p.slug ?? null]),
 };
+async function tenantRow(tenantId: string): Promise<Loose> {
+  return (await testDb<Loose[]>`select * from tenants where id = ${tenantId}`)[0]!;
+}
 async function lifeVer(tenantId: string): Promise<number> {
   const [r] = await testDb<{ v: number }[]>`select lifecycle_version v from tenants where id = ${tenantId}`;
   return r!.v;
@@ -130,11 +133,17 @@ beforeAll(async () => {
   await testDb.unsafe(`grant execute on function public.${DEFINER_FN}(uuid, text) to authenticated, service_role`);
   await testDb.unsafe(`create or replace function public.${DEFINER_FN}_col(p_id uuid, p_col text, p_val text) returns void language plpgsql security definer set search_path = '' as $$ begin execute format('update public.tenants set %I = %L where id = %L', p_col, p_val, p_id); end $$`);
   await testDb.unsafe(`grant execute on function public.${DEFINER_FN}_col(uuid, text, text) to authenticated, service_role`);
+  // the Supabase CLI's temporary login role (hosted acceptance: session_user = cli_login_postgres, member of postgres) and a LOOKALIKE that must stay refused
+  for (const r of ["cli_login_postgres", "cli_login_postgres_x", "cli_login_other"]) {
+    await testDb.unsafe(`do $$ begin if not exists (select 1 from pg_roles where rolname = '${r}') then create role ${r} login; end if; end $$`);
+    await testDb.unsafe(`grant postgres to ${r}`);
+  }
 }, 120000);
 
 afterAll(async () => {
   await testDb.unsafe(`drop function if exists public.${DEFINER_FN}(uuid, text)`);
   await testDb.unsafe(`drop function if exists public.${DEFINER_FN}_col(uuid, text, text)`);
+  for (const r of ["cli_login_postgres", "cli_login_postgres_x", "cli_login_other"]) await testDb.unsafe(`drop role if exists ${r}`);
   await cleanupTenants(tenantIds);
   await cleanupPlatformAdmins([u.padmin!.id, u.psupport!.id]);
   await cleanupUsers(userIds);
@@ -239,6 +248,31 @@ describe("LC - tenant lifecycle hardening", () => {
     // a profile column through the same definer path is NOT refused (only the platform-controlled set is guarded)
     await asApi(u.towner!.id, (s) => s.unsafe(`select public.${DEFINER_FN}_col($1::uuid, 'name', 'Definer Rename')`, [t.id] as never[]));
     expect((await testDb<Loose[]>`select name from tenants where id = ${t.id}`)[0]!.name).toBe("Definer Rename");
+  });
+
+  it("LC6c deployment tooling: the Supabase CLI's cli_login_postgres session (what `supabase db push` runs migrations as) may write lifecycle columns and a second branch; a lookalike login role (cli_login_other, cli_login_postgres_x) is refused, i.e. the exemption is an EXACT name, never a pattern", async () => {
+    const t = await mk("s2a-lc6c");
+    await createBranch(t.id, "Merkez");
+    const asLogin = (login: string, fn: (s: Sql) => Promise<unknown>) =>
+      testDb.begin(async (s) => {
+        await s.unsafe(`set local session authorization ${login}`);
+        await s.unsafe(`set local role postgres`);
+        return fn(s);
+      });
+    // exact CLI role: allowed (and the version moves as it always does)
+    await asLogin("cli_login_postgres", (s) => s`update tenants set status = 'suspended' where id = ${t.id}`);
+    expect((await tenantRow(t.id)).status).toBe("suspended");
+    expect(await lifeVer(t.id)).toBe(2);
+    await asLogin("cli_login_postgres", (s) => s`update tenants set status = 'trial', slug = 's2a-lc6c-fixed' where id = ${t.id}`);
+    await asLogin("cli_login_postgres", (s) => s`insert into branches (tenant_id, name) values (${t.id}, 'CLI branch')`);
+    expect((await testDb<Loose[]>`select count(*)::int n from branches where tenant_id = ${t.id}`)[0]!.n).toBe(2);
+    // lookalikes: refused by the guard and by the branch limit
+    for (const login of ["cli_login_other", "cli_login_postgres_x"]) {
+      expect(await fails(asLogin(login, (s) => s`update tenants set status = 'suspended' where id = ${t.id}`)), login).toMatch(/tenant_lifecycle_protected/);
+      expect(await fails(asLogin(login, (s) => s`insert into branches (tenant_id, name) values (${t.id}, 'Lookalike branch')`)), login).toMatch(/branch_limit_reached/);
+    }
+    expect((await testDb<Loose[]>`select count(*)::int n from branches where tenant_id = ${t.id}`)[0]!.n).toBe(2);
+    expect((await tenantRow(t.id)).status).toBe("trial");
   });
 
   it("LC7 operator sessions (migrations, break-glass) still work, and lifecycle_version moves only with status / deleted_at", async () => {
