@@ -645,7 +645,11 @@ describe("GR grants and catalog, SC scale", () => {
   it("GR2 the functions write nothing: every one is STABLE", async () => {
     const rows = await testDb<{ name: string; vol: string }[]>`
       select p.proname as name, p.provolatile as vol from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-      where p.proname like 'admin\_%' and n.nspname in ('public', 'private')`;
+      where p.proname like 'admin\_%' and n.nspname in ('public', 'private')
+        -- Faz SAAS.1C.2a: the ten audited platform-OWNER write wrappers are deliberately VOLATILE (tests/saas1c2a-lifecycle-billing.test.ts SE5/SE6 pin them);
+        -- everything else named admin_* stays a read
+        and p.proname not in ('admin_billing_activate_paid', 'admin_billing_set_mode', 'admin_billing_extend_trial', 'admin_billing_extend_grace', 'admin_billing_mark_past_due',
+                              'admin_billing_restore_active', 'admin_billing_cancel', 'admin_billing_change_plan', 'admin_billing_set_protection', 'admin_set_tenant_lifecycle')`;
     expect(rows.length).toBeGreaterThanOrEqual(10);
     for (const r of rows) expect(r.vol, r.name).toBe("s");
   });

@@ -1176,7 +1176,14 @@
           "plan_changed": "Plan değişti",
           "billing_mode_changed": "Ödeme türü değişti",
           "override_changed": "İstisna değişti",
-          "note": "Not"
+          "note": "Not",
+          "trial_extended": "Deneme süresi uzatıldı",
+          "grace_extended": "Ek süre uzatıldı",
+          "cancel_scheduled": "Dönem sonunda iptal planlandı",
+          "cancel_unscheduled": "Dönem sonunda iptal geri alındı",
+          "period_set": "Ödeme dönemi tanımlandı",
+          "protection_changed": "Koruma durumu değişti",
+          "tenant_lifecycle_changed": "Salon durumu değişti"
         }
       },
       "reasons": {

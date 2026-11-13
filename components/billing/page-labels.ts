@@ -9,7 +9,8 @@ const ofLabel = (used: number, limit: number) => `${used} / ${limit}`;
 
 export async function adminSectionLabels(): Promise<AdminBillingSectionLabels> {
   const t = await getTranslations("SuperAdmin.billing");
-  const eventTypes = ["created", "backfilled", "trial_started", "status_changed", "plan_changed", "billing_mode_changed", "override_changed", "note"];
+  const eventTypes = ["created", "backfilled", "trial_started", "status_changed", "plan_changed", "billing_mode_changed", "override_changed", "note",
+    "trial_extended", "grace_extended", "cancel_scheduled", "cancel_unscheduled", "period_set", "protection_changed", "tenant_lifecycle_changed"];
   return {
     heading: t("detail.heading"),
     noSubscription: t("detail.noSubscription"),

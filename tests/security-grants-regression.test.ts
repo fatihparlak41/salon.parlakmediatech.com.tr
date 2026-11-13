@@ -48,7 +48,10 @@ import { testDb } from "./helpers";
  */
 
 const AUTHENTICATED_TABLE_WHITELIST: Record<string, string[]> = {
-  tenants: ["SELECT", "UPDATE"],
+  // Faz SAAS.1C.2a (20261104090000): no table-level UPDATE any more. authenticated may update only the genuine salon-profile columns
+  // (pinned in the column-level test below); status, deleted_at, slug, trial_ends_at, created_by, created_at, id, updated_at and
+  // lifecycle_version are platform-controlled (tenant lifecycle hardening).
+  tenants: ["SELECT"],
   profiles: ["SELECT", "UPDATE"],
   branches: ["INSERT", "SELECT", "UPDATE"],
   permissions: ["SELECT"],
@@ -300,6 +303,20 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   "public.admin_billing_list",
   "public.admin_tenant_billing",
   "public.get_my_billing_summary",
+  // Faz SAAS.1C.2a (20261104100000) — the manual billing / tenant lifecycle WRITE wrappers. Every one starts with private.admin_require_owner()
+  // (auth.uid() + an ACTIVE platform_admins row with role 'owner'; the support role and tenant users are refused), then calls the single private
+  // core private.billing_manual_action (reason, request id, expected version, idempotency, protected-tenant guard, append-only event). Authenticated
+  // only, never anon / PUBLIC / service_role. Dedicated review in the migration header and tests/saas1c2a-lifecycle-billing.test.ts (SE1-SE6).
+  "public.admin_billing_activate_paid",
+  "public.admin_billing_set_mode",
+  "public.admin_billing_extend_trial",
+  "public.admin_billing_extend_grace",
+  "public.admin_billing_mark_past_due",
+  "public.admin_billing_restore_active",
+  "public.admin_billing_cancel",
+  "public.admin_billing_change_plan",
+  "public.admin_billing_set_protection",
+  "public.admin_set_tenant_lifecycle",
   // Faz SAAS.1E.1 (20260921113330) — appointment-scoped customer display.
   // Authenticated only, never anon: gated internally by appointments.view in
   // the requested tenant, returns (appointment_id, customer_display_name)
@@ -983,9 +1000,12 @@ describe("security grants regression", () => {
       { table: "staff_schedule_exceptions", columns: STAFF_SCHEDULE_EXCEPTIONS_SELECT_COLUMNS, expectedHidden: ["reason"] },
     ];
 
-    const expectedRows = pinned
-      .flatMap(({ table, columns }) => columns.map((column) => ({ table, column, grantee: "authenticated", privilege: "SELECT" })))
-      .sort((a, b) => `${a.table}.${a.column}`.localeCompare(`${b.table}.${b.column}`));
+    // Faz SAAS.1C.2a: the ONE column-level UPDATE grant is the salon-profile column set of tenants (everything else on tenants is platform-controlled).
+    const TENANT_PROFILE_UPDATE_COLUMNS = ["currency", "customer_cancellation_cutoff_minutes", "customer_cancellation_enabled", "customer_reschedule_cutoff_minutes", "customer_reschedule_enabled", "name", "timezone"];
+    const expectedRows = [
+      ...pinned.flatMap(({ table, columns }) => columns.map((column) => ({ table, column, grantee: "authenticated", privilege: "SELECT" }))),
+      ...TENANT_PROFILE_UPDATE_COLUMNS.map((column) => ({ table: "tenants", column, grantee: "authenticated", privilege: "UPDATE" })),
+    ].sort((a, b) => `${a.table}.${a.column}`.localeCompare(`${b.table}.${b.column}`));
     expect(rows).toEqual(expectedRows);
 
     for (const { table, columns, expectedHidden } of pinned) {

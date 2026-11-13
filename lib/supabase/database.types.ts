@@ -2207,6 +2207,8 @@ export type Database = {
           tenant_id: string
           to_plan_id: string | null
           to_status: string | null
+          request_hash: string | null
+          request_id: string | null
         }
         Insert: {
           actor_user_id?: string | null
@@ -2221,6 +2223,8 @@ export type Database = {
           tenant_id: string
           to_plan_id?: string | null
           to_status?: string | null
+          request_hash?: string | null
+          request_id?: string | null
         }
         Update: {
           actor_user_id?: string | null
@@ -2235,6 +2239,8 @@ export type Database = {
           tenant_id?: string
           to_plan_id?: string | null
           to_status?: string | null
+          request_hash?: string | null
+          request_id?: string | null
         }
         Relationships: [
           {
@@ -2286,6 +2292,8 @@ export type Database = {
           trial_ends_at: string | null
           trial_started_at: string | null
           updated_at: string
+          protected: boolean
+          version: number
         }
         Insert: {
           billing_mode?: string
@@ -2305,6 +2313,8 @@ export type Database = {
           trial_ends_at?: string | null
           trial_started_at?: string | null
           updated_at?: string
+          protected?: boolean
+          version?: number
         }
         Update: {
           billing_mode?: string
@@ -2324,6 +2334,8 @@ export type Database = {
           trial_ends_at?: string | null
           trial_started_at?: string | null
           updated_at?: string
+          protected?: boolean
+          version?: number
         }
         Relationships: [
           {
@@ -2593,6 +2605,7 @@ export type Database = {
           timezone: string
           trial_ends_at: string | null
           updated_at: string
+          lifecycle_version: number
         }
         Insert: {
           created_at?: string
@@ -2610,6 +2623,7 @@ export type Database = {
           timezone?: string
           trial_ends_at?: string | null
           updated_at?: string
+          lifecycle_version?: number
         }
         Update: {
           created_at?: string
@@ -2627,6 +2641,7 @@ export type Database = {
           timezone?: string
           trial_ends_at?: string | null
           updated_at?: string
+          lifecycle_version?: number
         }
         Relationships: []
       }
@@ -2793,6 +2808,16 @@ export type Database = {
           occurred_at: string
         }[]
       }
+      admin_billing_activate_paid: { Args: { p_expected_version: number; p_period_end: string; p_plan_key?: string; p_reason: string; p_request_id: string; p_tenant_id: string }; Returns: Json }
+      admin_billing_cancel: { Args: { p_confirm_slug?: string; p_expected_version: number; p_mode: string; p_reason: string; p_request_id: string; p_tenant_id: string }; Returns: Json }
+      admin_billing_change_plan: { Args: { p_expected_version: number; p_plan_key: string; p_reason: string; p_request_id: string; p_tenant_id: string }; Returns: Json }
+      admin_billing_extend_grace: { Args: { p_expected_version: number; p_reason: string; p_request_id: string; p_tenant_id: string; p_until: string }; Returns: Json }
+      admin_billing_extend_trial: { Args: { p_days: number; p_expected_version: number; p_reason: string; p_request_id: string; p_tenant_id: string }; Returns: Json }
+      admin_billing_mark_past_due: { Args: { p_confirm_slug?: string; p_expected_version: number; p_grace_days: number; p_reason: string; p_request_id: string; p_tenant_id: string }; Returns: Json }
+      admin_billing_restore_active: { Args: { p_expected_version: number; p_period_end?: string; p_reason: string; p_request_id: string; p_tenant_id: string }; Returns: Json }
+      admin_billing_set_mode: { Args: { p_confirm_slug?: string; p_expected_version: number; p_mode: string; p_reason: string; p_request_id: string; p_tenant_id: string }; Returns: Json }
+      admin_billing_set_protection: { Args: { p_confirm_slug?: string; p_expected_version: number; p_protected: boolean; p_reason: string; p_request_id: string; p_tenant_id: string }; Returns: Json }
+      admin_set_tenant_lifecycle: { Args: { p_action: string; p_confirm_slug?: string; p_expected_version: number; p_reason: string; p_request_id: string; p_tenant_id: string }; Returns: Json }
       admin_tenant_billing: { Args: { p_tenant_id: string }; Returns: Json }
       admin_tenant_detail: {
         Args: { p_tenant_id: string }

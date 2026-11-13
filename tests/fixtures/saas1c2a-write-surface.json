@@ -1,0 +1,253 @@
+{
+  "tables": {
+    "branches": {
+      "authenticated": {
+        "insert": true,
+        "delete": false,
+        "update": "all-columns"
+      }
+    },
+    "customers": {
+      "authenticated": {
+        "insert": true,
+        "delete": false,
+        "update": "all-columns"
+      }
+    },
+    "platform_admins": {
+      "authenticated": {
+        "insert": true,
+        "delete": false,
+        "update": "all-columns"
+      }
+    },
+    "profiles": {
+      "authenticated": {
+        "insert": false,
+        "delete": false,
+        "update": "all-columns"
+      }
+    },
+    "service_branches": {
+      "authenticated": {
+        "insert": true,
+        "delete": true,
+        "update": false
+      }
+    },
+    "services": {
+      "authenticated": {
+        "insert": true,
+        "delete": false,
+        "update": "all-columns"
+      }
+    },
+    "staff_branches": {
+      "authenticated": {
+        "insert": true,
+        "delete": true,
+        "update": false
+      }
+    },
+    "staff_members": {
+      "authenticated": {
+        "insert": true,
+        "delete": false,
+        "update": "all-columns"
+      }
+    },
+    "staff_schedule_exceptions": {
+      "authenticated": {
+        "insert": true,
+        "delete": false,
+        "update": "all-columns"
+      }
+    },
+    "staff_schedules": {
+      "authenticated": {
+        "insert": true,
+        "delete": false,
+        "update": "all-columns"
+      }
+    },
+    "staff_services": {
+      "authenticated": {
+        "insert": true,
+        "delete": true,
+        "update": false
+      }
+    },
+    "tenants": {
+      "authenticated": {
+        "insert": false,
+        "delete": false,
+        "update": [
+          "currency",
+          "customer_cancellation_cutoff_minutes",
+          "customer_cancellation_enabled",
+          "customer_reschedule_cutoff_minutes",
+          "customer_reschedule_enabled",
+          "name",
+          "timezone"
+        ]
+      }
+    }
+  },
+  "rpc": {
+    "authenticated": [
+      "accept_team_invitation(p_token text)",
+      "admin_billing_activate_paid(p_tenant_id uuid, p_period_end timestamp with time zone, p_reason text, p_request_id uuid, p_expected_version integer, p_plan_key text)",
+      "admin_billing_cancel(p_tenant_id uuid, p_mode text, p_reason text, p_request_id uuid, p_expected_version integer, p_confirm_slug text)",
+      "admin_billing_change_plan(p_tenant_id uuid, p_plan_key text, p_reason text, p_request_id uuid, p_expected_version integer)",
+      "admin_billing_dashboard()",
+      "admin_billing_extend_grace(p_tenant_id uuid, p_until timestamp with time zone, p_reason text, p_request_id uuid, p_expected_version integer)",
+      "admin_billing_extend_trial(p_tenant_id uuid, p_days integer, p_reason text, p_request_id uuid, p_expected_version integer)",
+      "admin_billing_list(p_filter text, p_search text)",
+      "admin_billing_mark_past_due(p_tenant_id uuid, p_grace_days integer, p_reason text, p_request_id uuid, p_expected_version integer, p_confirm_slug text)",
+      "admin_billing_restore_active(p_tenant_id uuid, p_reason text, p_request_id uuid, p_expected_version integer, p_period_end timestamp with time zone)",
+      "admin_billing_set_mode(p_tenant_id uuid, p_mode text, p_reason text, p_request_id uuid, p_expected_version integer, p_confirm_slug text)",
+      "admin_billing_set_protection(p_tenant_id uuid, p_protected boolean, p_reason text, p_request_id uuid, p_expected_version integer, p_confirm_slug text)",
+      "admin_dashboard_summary()",
+      "admin_list_tenants(p_search text, p_filter text, p_sort text, p_limit integer, p_offset integer)",
+      "admin_set_tenant_lifecycle(p_tenant_id uuid, p_action text, p_reason text, p_request_id uuid, p_expected_version integer, p_confirm_slug text)",
+      "admin_tenant_audit(p_tenant_id uuid, p_limit integer)",
+      "admin_tenant_billing(p_tenant_id uuid)",
+      "admin_tenant_detail(p_tenant_id uuid)",
+      "cancel_expense(p_expense_id uuid, p_reason text)",
+      "cancel_my_appointment(p_appointment_id uuid)",
+      "check_appointment_availability(p_tenant_id uuid, p_branch_id uuid, p_staff_member_id uuid, p_service_id uuid, p_scheduled_start_at timestamp with time zone, p_exclude_appointment_id uuid)",
+      "claim_my_recent_booking(p_claim_ref uuid, p_claim_secret_hash text)",
+      "commit_customer_import(p_tenant_id uuid, p_rows jsonb)",
+      "complete_appointment(p_appointment_id uuid, p_performer_overrides jsonb)",
+      "confirm_treatment_photo(p_tenant_id uuid, p_media_id uuid)",
+      "create_appointment(p_tenant_id uuid, p_branch_id uuid, p_customer_id uuid, p_items jsonb, p_notes text, p_source text)",
+      "create_expense(p_tenant_id uuid, p_category_key text, p_description text, p_expense_date date, p_amount numeric, p_idempotency_key uuid, p_branch_id uuid, p_vendor_name text, p_due_date date, p_note text, p_initial_payment jsonb)",
+      "create_my_link_code(p_tenant_slug text, p_code_hash text)",
+      "create_role(p_tenant_id uuid, p_name text, p_description text, p_permission_keys text[])",
+      "create_team_invitation(p_tenant_id uuid, p_email text, p_role_id uuid, p_staff_member_id uuid)",
+      "create_tenant(p_name text, p_slug text)",
+      "delete_treatment_photo(p_tenant_id uuid, p_media_id uuid)",
+      "get_appointment_customer_display(p_tenant_id uuid, p_appointment_ids uuid[])",
+      "get_appointment_private_details(p_tenant_id uuid, p_appointment_id uuid)",
+      "get_appointment_sale_for_appointment(p_appointment_id uuid)",
+      "get_customer_account_link_status(p_customer_id uuid)",
+      "get_customer_history(p_customer_id uuid, p_limit integer)",
+      "get_customer_notification_health(p_tenant_id uuid)",
+      "get_customer_notification_settings(p_tenant_id uuid)",
+      "get_customer_treatment_history(p_tenant_id uuid, p_customer_id uuid, p_limit integer)",
+      "get_daily_owner_overview(p_tenant_id uuid, p_date date)",
+      "get_expense(p_expense_id uuid, p_reference_date date)",
+      "get_expense_overview(p_tenant_id uuid, p_month date, p_branch_id uuid, p_general_only boolean, p_reference_date date)",
+      "get_my_account_profile()",
+      "get_my_appointments()",
+      "get_my_billing_summary(p_tenant_id uuid)",
+      "get_my_link_salon_context(p_tenant_slug text)",
+      "get_my_notification_preferences(p_tenant_id uuid)",
+      "get_my_reschedule_slots(p_appointment_id uuid, p_date date)",
+      "get_my_staff_link(p_tenant_id uuid)",
+      "get_onboarding_status(p_tenant_id uuid)",
+      "get_or_create_appointment_sale(p_appointment_id uuid)",
+      "get_public_availability_slots(p_tenant_slug text, p_branch_id uuid, p_service_id uuid, p_date date, p_staff_member_id uuid)",
+      "get_public_booking_context(p_tenant_slug text)",
+      "get_public_eligible_staff(p_tenant_slug text, p_branch_id uuid, p_service_id uuid)",
+      "get_staff_commission(p_tenant_id uuid, p_from date, p_to date)",
+      "get_staff_commission_detail(p_tenant_id uuid, p_staff_id uuid, p_from date, p_to date, p_limit integer)",
+      "get_staff_exception_reasons(p_tenant_id uuid, p_staff_member_id uuid)",
+      "get_staff_link_for_membership(p_tenant_id uuid, p_membership_id uuid)",
+      "get_staff_management_details(p_tenant_id uuid, p_staff_member_ids uuid[])",
+      "get_staff_performance_summary(p_tenant_id uuid, p_start_at timestamp with time zone, p_end_at timestamp with time zone, p_branch_id uuid, p_staff_ids uuid[], p_service_ids uuid[])",
+      "get_staff_utilization(p_tenant_id uuid, p_start_at timestamp with time zone, p_end_at timestamp with time zone, p_branch_id uuid, p_staff_ids uuid[])",
+      "get_treatment_photo_access(p_tenant_id uuid, p_media_id uuid)",
+      "get_treatment_rebook_defaults(p_tenant_id uuid, p_item_id uuid)",
+      "has_feature(p_tenant_id uuid, p_feature_key text)",
+      "has_permission(p_tenant_id uuid, p_permission_key text)",
+      "is_platform_admin()",
+      "link_customer_account_with_code(p_customer_id uuid, p_code_hash text)",
+      "link_staff_membership(p_tenant_id uuid, p_staff_member_id uuid, p_membership_id uuid)",
+      "list_commission_rules(p_tenant_id uuid)",
+      "list_expense_categories(p_tenant_id uuid)",
+      "list_expenses(p_tenant_id uuid, p_from_date date, p_to_date date, p_branch_id uuid, p_general_only boolean, p_category_key text, p_status text, p_include_cancelled boolean, p_overdue_only boolean, p_search text, p_limit integer, p_cursor_date date, p_cursor_id uuid, p_reference_date date)",
+      "list_my_devices(p_tenant_id uuid)",
+      "list_team_invitations(p_tenant_id uuid)",
+      "list_team_members(p_tenant_id uuid)",
+      "onboarding_add_services(p_tenant_id uuid, p_items jsonb)",
+      "onboarding_add_staff(p_tenant_id uuid, p_items jsonb)",
+      "onboarding_apply_weekly_hours(p_tenant_id uuid, p_staff_ids uuid[], p_days jsonb)",
+      "onboarding_set_staff_services(p_tenant_id uuid, p_assignments jsonb)",
+      "preview_customer_import(p_tenant_id uuid, p_rows jsonb)",
+      "reactivate_membership(p_tenant_id uuid, p_membership_id uuid)",
+      "record_appointment_payment(p_sale_id uuid, p_amount numeric, p_method text, p_paid_at timestamp with time zone, p_note text, p_idempotency_key uuid)",
+      "record_expense_payment(p_expense_id uuid, p_amount numeric, p_method text, p_paid_at timestamp with time zone, p_note text, p_idempotency_key uuid)",
+      "register_treatment_photo(p_tenant_id uuid, p_item_id uuid, p_kind text, p_mime text, p_size integer)",
+      "remove_membership_access(p_tenant_id uuid, p_membership_id uuid)",
+      "remove_push_subscription(p_subscription_id uuid)",
+      "reschedule_appointment(p_appointment_id uuid, p_items jsonb)",
+      "reschedule_my_appointment(p_appointment_id uuid, p_new_start_at timestamp with time zone)",
+      "resend_team_invitation(p_invitation_id uuid, p_expected_expires_at timestamp with time zone)",
+      "revoke_team_invitation(p_invitation_id uuid)",
+      "save_push_subscription(p_tenant_id uuid, p_endpoint text, p_p256dh text, p_auth_key text, p_device_label text)",
+      "search_customers(p_tenant_id uuid, p_query text, p_status text, p_limit integer, p_offset integer)",
+      "set_commission_rule(p_tenant_id uuid, p_staff_id uuid, p_service_id uuid, p_kind text, p_value numeric, p_effective_from date)",
+      "set_customer_notification_setting(p_tenant_id uuid, p_notification_type text, p_enabled boolean)",
+      "set_online_booking_enabled(p_tenant_id uuid, p_enabled boolean)",
+      "set_treatment_note(p_tenant_id uuid, p_item_id uuid, p_note text)",
+      "suspend_membership(p_tenant_id uuid, p_membership_id uuid)",
+      "unlink_salon_assisted_customer_account(p_customer_id uuid)",
+      "unlink_staff_membership(p_tenant_id uuid, p_staff_member_id uuid)",
+      "update_appointment_sale_pricing(p_sale_id uuid, p_items jsonb, p_discount_amount numeric, p_discount_reason text)",
+      "update_appointment_status(p_appointment_id uuid, p_new_status text)",
+      "update_expense(p_expense_id uuid, p_category_key text, p_description text, p_expense_date date, p_amount numeric, p_expected_version integer, p_branch_id uuid, p_vendor_name text, p_due_date date, p_note text)",
+      "update_membership_role(p_membership_id uuid, p_new_role_id uuid)",
+      "update_my_account_profile(p_full_name text, p_phone text)",
+      "update_my_notification_preferences(p_tenant_id uuid, p_new_appointment boolean, p_cancellation boolean, p_reschedule boolean, p_assignment_change boolean)",
+      "update_role_permissions(p_role_id uuid, p_permission_keys text[])",
+      "update_salon_profile(p_tenant_id uuid, p_name text, p_timezone text, p_currency text, p_phone text, p_address text)",
+      "void_appointment_payment(p_payment_id uuid, p_reason text)",
+      "void_expense_payment(p_payment_id uuid, p_reason text)"
+    ],
+    "anon": [
+      "get_public_availability_slots(p_tenant_slug text, p_branch_id uuid, p_service_id uuid, p_date date, p_staff_member_id uuid)",
+      "get_public_booking_context(p_tenant_slug text)",
+      "get_public_eligible_staff(p_tenant_slug text, p_branch_id uuid, p_service_id uuid)"
+    ],
+    "service_role": [
+      "begin_customer_notification_send(p_job_id uuid, p_lock_token uuid)",
+      "cancel_expense(p_expense_id uuid, p_reason text)",
+      "claim_customer_notification_jobs(p_batch_size integer, p_lease_seconds integer)",
+      "claim_notification_delivery_targets(p_batch_size integer, p_lease_seconds integer)",
+      "create_expense(p_tenant_id uuid, p_category_key text, p_description text, p_expense_date date, p_amount numeric, p_idempotency_key uuid, p_branch_id uuid, p_vendor_name text, p_due_date date, p_note text, p_initial_payment jsonb)",
+      "get_appointment_sale_for_appointment(p_appointment_id uuid)",
+      "get_expense(p_expense_id uuid, p_reference_date date)",
+      "get_expense_overview(p_tenant_id uuid, p_month date, p_branch_id uuid, p_general_only boolean, p_reference_date date)",
+      "get_notification_delivery_activation()",
+      "get_or_create_appointment_sale(p_appointment_id uuid)",
+      "get_push_subscriptions_for_test_send(p_tenant_id uuid, p_user_id uuid)",
+      "list_expense_categories(p_tenant_id uuid)",
+      "list_expenses(p_tenant_id uuid, p_from_date date, p_to_date date, p_branch_id uuid, p_general_only boolean, p_category_key text, p_status text, p_include_cancelled boolean, p_overdue_only boolean, p_search text, p_limit integer, p_cursor_date date, p_cursor_id uuid, p_reference_date date)",
+      "list_team_members(p_tenant_id uuid)",
+      "log_team_invitation_email_delivery(p_invitation_id uuid, p_actor_user_id uuid, p_attempt_type text, p_outcome text, p_provider text, p_provider_message_id text, p_error_class text, p_duration_ms integer)",
+      "materialize_notification_deliveries(p_event_id uuid)",
+      "materialize_pending_notification_events(p_batch_size integer)",
+      "prepare_notification_delivery_targets(p_batch_size integer)",
+      "purge_customer_notification_data(p_retention_days integer, p_batch_size integer)",
+      "purge_expired_notification_event_display_snapshots(p_batch_size integer)",
+      "record_appointment_payment(p_sale_id uuid, p_amount numeric, p_method text, p_paid_at timestamp with time zone, p_note text, p_idempotency_key uuid)",
+      "record_customer_notification_result(p_job_id uuid, p_lock_token uuid, p_disposition text, p_error_class text, p_provider_message_id text, p_skip_reason text)",
+      "record_expense_payment(p_expense_id uuid, p_amount numeric, p_method text, p_paid_at timestamp with time zone, p_note text, p_idempotency_key uuid)",
+      "record_notification_delivery_target_result(p_target_id uuid, p_lock_token uuid, p_outcome text, p_error_code text, p_error_message text)",
+      "update_appointment_sale_pricing(p_sale_id uuid, p_items jsonb, p_discount_amount numeric, p_discount_reason text)",
+      "update_expense(p_expense_id uuid, p_category_key text, p_description text, p_expense_date date, p_amount numeric, p_expected_version integer, p_branch_id uuid, p_vendor_name text, p_due_date date, p_note text)",
+      "void_appointment_payment(p_payment_id uuid, p_reason text)",
+      "void_expense_payment(p_payment_id uuid, p_reason text)"
+    ],
+    "booking_gateway": [
+      "create_guest_booking(p_tenant_slug text, p_branch_id uuid, p_service_id uuid, p_scheduled_start_at timestamp with time zone, p_customer_full_name text, p_customer_phone text, p_staff_member_id uuid, p_customer_email text, p_idempotency_key uuid, p_customer_account_user_id uuid, p_claim_secret_hash text)"
+    ]
+  },
+  "billingTriggers": [
+    "branches.branches_hard_limit",
+    "subscription_events.subscription_events_append_only",
+    "subscriptions.subscriptions_bump_version",
+    "tenants.tenants_lifecycle_guard"
+  ]
+}
