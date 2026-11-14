@@ -129,10 +129,13 @@ describe("HL - tenant lifecycle hardening over the REAL Data API", () => {
     for (const [col, val] of attempts) {
       const r = await c.towner!.from("tenants").update({ [col]: val } as never).eq("id", t.id).select();
       expect(r.error, col).not.toBeNull();
+      // the PRIVILEGE layer must hold on its own (the guard trigger is a second layer and answers with a different message)
       expect(r.error!.code, col).toBe("42501");
+      expect(r.error!.message, col).toMatch(/permission denied/i);
     }
     const multi = await c.towner!.from("tenants").update({ name: "x", status: "active" } as never).eq("id", t.id).select();
     expect(multi.error!.code).toBe("42501");
+    expect(multi.error!.message).toMatch(/permission denied/i);
     expect(await tenantRow(t.id)).toEqual(before);
   });
 
@@ -181,6 +184,7 @@ describe("HL - tenant lifecycle hardening over the REAL Data API", () => {
     const svc = await admin.from("tenants").update({ status: "suspended" } as never).eq("id", t.id).select();
     expect(svc.error).not.toBeNull();
     expect(svc.error!.code).toBe("42501");
+    expect(svc.error!.message).toMatch(/permission denied/i); // the privilege layer on its own, not only the guard trigger
     // SECURITY DEFINER function called through the REAL API as authenticated and as service_role
     for (const [name, client] of [["authenticated", c.towner!], ["service_role", admin as unknown as Client]] as [string, Client][]) {
       const r1 = await rpc(client, "h_s2a_probe_status", { p_id: t.id, p_status: "suspended" });
@@ -309,8 +313,8 @@ describe("HV - versioning", () => {
   it("HV3 the version cannot be set by any API role (service_role included)", async () => {
     const t = await mk("h-s2a-hv3", trialFx());
     for (const [name, client] of [["towner", c.towner!], ["padmin", c.padmin!], ["service_role", admin as unknown as Client]] as [string, Client][]) {
-      const r = await client.from("subscriptions" as never).update({ version: 50 } as never).eq("tenant_id", t.id).select();
-      expect(r.error?.code ?? "denied", name).toBe("42501");
+      const r = await client.from("subscriptions" as never).update({ version: 50 } as never).eq("tenant_id", t.id); // no .select(): a RETURNING would mask a granted write
+      expect(r.error?.code ?? "no-error", name).toBe("42501");
     }
     expect((await sub(t.id)).version).toBe(1);
   });
@@ -446,10 +450,13 @@ describe("HE - event audit trail", () => {
     const before = await sub(t.id);
     for (const client of [c.towner!, c.yon!, c.psupport!, c.padmin!, admin as unknown as Client]) {
       for (const patch of [{ status: "canceled" }, { billing_mode: "paid" }, { trial_ends_at: inDays(1) }, { protected: false }, { cancel_at_period_end: true }]) {
-        const r = await client.from("subscriptions" as never).update(patch as never).eq("tenant_id", t.id).select();
-        expect(r.error?.code).toBe("42501");
+        const r = await client.from("subscriptions" as never).update(patch as never).eq("tenant_id", t.id); // no .select(): a RETURNING would mask a granted write
+        expect(r.error?.code ?? "no-error").toBe("42501");
       }
       expect((await client.from("tenant_entitlement_overrides" as never).insert({ tenant_id: t.id } as never)).error?.code).toBe("42501");
+      for (const col of ["provider", "provider_customer_id", "provider_subscription_id", "protected", "version"]) {
+        expect((await client.from("subscriptions" as never).select(col)).error?.code, `read ${col}`).toBe("42501");
+      }
     }
     expect(await sub(t.id)).toEqual(before);
   });

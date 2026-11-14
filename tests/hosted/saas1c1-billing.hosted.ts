@@ -982,8 +982,8 @@ describe("NB - no behaviour change", () => {
   it("NB1 the migrations replace exactly the intended pre-existing functions and no public-booking function", async () => {
     const fs = await import("node:fs");
     const dir = "supabase/migrations";
-    const files = fs.readdirSync(dir).filter((f) => /^202611030(90|100|110)000_/.test(f) || /^2026110[3-9]/.test(f)).sort();
-    expect(files.length).toBeGreaterThanOrEqual(3);
+    const files = fs.readdirSync(dir).filter((f) => /^20261103(090000|100000|110000)_/.test(f)).sort(); // the three 1C.1 migrations; 1C.2a has its own pins
+    expect(files.length).toBe(3);
     const created = new Set<string>();
     for (const f of files) {
       const text = fs.readFileSync(`${dir}/${f}`, "utf8");
