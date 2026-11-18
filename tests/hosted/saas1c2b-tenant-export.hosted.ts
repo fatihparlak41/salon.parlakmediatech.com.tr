@@ -652,6 +652,43 @@ describe("AU audit model on the real database", () => {
   });
 });
 
+describe("SC scope straight from the real RPCs (self-contained; used by the hosted mutation run)", () => {
+  it("SC1 every section returns exactly the declared columns, only tenant A's rows, and no secret / provider / internal value", async () => {
+    await reset(A.id);
+    const id = await startDownload(c.ownerA!, A.id);
+    const all: string[] = [];
+    for (const s of SECTIONS) {
+      const p = await page(c.ownerA!, id, s.key, null, 500);
+      expect(p.error, s.key).toBeNull();
+      expect(p.data!.rows.length, s.key).toBe(await countOf(s.key, A.id));
+      for (const row of p.data!.rows) expect(Object.keys(row).sort(), s.key).toEqual([...s.columns].sort());
+      all.push(JSON.stringify(p.data));
+    }
+    const text = all.join("|");
+    for (const bad of [SENTINELS.providerCustomer, SENTINELS.providerSub, SENTINELS.otherTenantMarker, "SECRETHASH-A", "snap-A@", u.padmin!.email, B.id, "provider_customer_id", "created_by", "idempotency", "storage_path", "encrypted_password", env.serviceRoleKey]) {
+      expect(text.includes(bad), `forbidden: ${bad.slice(0, 12)}`).toBe(false);
+    }
+    expect((await complete(c.ownerA!, id, { customers: 1 }, 1)).data).toEqual({ ok: true });
+  });
+});
+
+describe("AU3 audit contents for one full cycle (self-contained; used by the hosted mutation run)", () => {
+  it("AU3 requested -> downloaded -> completed with counts and size, and no PII / token anywhere in the audit", async () => {
+    await reset(A.id);
+    const mark = Number((await testDb`select coalesce(max(id), 0)::bigint m from private.tenant_export_audit`)[0]!.m);
+    const { t, r } = await request(c.ownerA!, A.id);
+    expect(r.data).toMatchObject({ ok: true });
+    const k = await consume(c.ownerA!, t.tokenHash);
+    expect((await complete(c.ownerA!, k.data!.request_id, { customers: 3, branches: 1 }, 4321)).data).toEqual({ ok: true });
+    const rows = await testDb<Loose[]>`select * from private.tenant_export_audit where id > ${mark} and tenant_id = ${A.id} order by id`;
+    expect(rows.map((x) => x.event)).toEqual(["requested", "downloaded", "completed"]);
+    expect(rows.at(-1)).toMatchObject({ entity_counts: { customers: 3, branches: 1 }, actor_id: u.ownerA!.id });
+    expect(Number(rows.at(-1)!.archive_bytes)).toBe(4321);
+    const all = JSON.stringify(rows) + JSON.stringify(await testDb`select * from private.tenant_export_audit where actor_id = ${u.ownerA!.id}`);
+    for (const pii of ["Müşteri", "example.test", "+90500", u.ownerA!.email, "işlem notu", t.token, t.tokenHash]) expect(all.includes(pii), pii.slice(0, 10)).toBe(false);
+  });
+});
+
 describe("BI billing independence", () => {
   it("BI1 export authorization and data do not depend on the subscription state, and the subscription is not changed by an export", async () => {
     const [plan] = await testDb<{ id: string }[]>`select id from plans limit 1`;
@@ -684,6 +721,11 @@ describe("CG catalog and grants on the real project", () => {
     expect(t.length).toBe(2);
     for (const r of t) expect(r.relrowsecurity).toBe(true);
     expect((await testDb`select count(*)::int n from pg_policies where schemaname = 'private'`)[0]!.n).toBe(0);
+    for (const role of ["anon", "authenticated", "service_role"]) {
+      for (const tbl of ["tenant_export_audit", "tenant_export_requests"]) {
+        expect((await testDb`select has_table_privilege(${role}, ${"private." + tbl}, 'select,insert,update,delete,truncate,references,trigger') as x`)[0]!.x, `${role} ${tbl}`).toBe(false);
+      }
+    }
     const f = await testDb<Loose[]>`select p.proname, p.prosecdef, p.proconfig, has_function_privilege('anon', p.oid, 'execute') a, has_function_privilege('authenticated', p.oid, 'execute') u, has_function_privilege('service_role', p.oid, 'execute') s, has_function_privilege('public', p.oid, 'execute') pub from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = any(${fns})`;
     expect(f.length).toBe(6);
     for (const r of f) { expect(r.prosecdef).toBe(true); expect(JSON.stringify(r.proconfig)).toMatch(/search_path=/); expect([r.a, r.u, r.s, r.pub], r.proname).toEqual([false, true, false, false]); }
