@@ -21,8 +21,8 @@ export function TenantExportPanel({ tenantSlug, status }: { tenantSlug: string; 
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<Exclude<PrepareExportResult, { ok: true }>["error"] | null>(null);
   const [started, setStarted] = useState(false);
-  const [token, setToken] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
+  const tokenRef = useRef<HTMLInputElement>(null);
   const blocked = status.remaining <= 0 || status.inProgress;
 
   function start() {
@@ -33,13 +33,18 @@ export function TenantExportPanel({ tenantSlug, status }: { tenantSlug: string; 
         setError(result.error);
         return;
       }
-      setToken(result.token);
+      // The token never goes through React state (a state-driven value is not in the DOM yet when a timer fires - found in the hosted browser test:
+      // the form was posted with an EMPTY token). It is written straight into the hidden input, posted synchronously, and cleared in the same tick.
+      const form = formRef.current;
+      const input = tokenRef.current;
+      if (!form || !input) {
+        setError("unexpected");
+        return;
+      }
+      input.value = result.token;
+      form.submit();
+      input.value = "";
       setStarted(true);
-      // the form is rendered with the token on the next tick; submit it then and forget the token
-      setTimeout(() => {
-        formRef.current?.submit();
-        setToken("");
-      }, 0);
     });
   }
 
@@ -83,7 +88,7 @@ export function TenantExportPanel({ tenantSlug, status }: { tenantSlug: string; 
 
       {/* POST, token in the body: never in a URL, a log line or a Referer */}
       <form ref={formRef} method="post" action="/api/tenant-export" className="hidden" aria-hidden="true">
-        <input type="hidden" name="token" value={token} readOnly />
+        <input ref={tokenRef} type="hidden" name="token" defaultValue="" />
       </form>
     </div>
   );

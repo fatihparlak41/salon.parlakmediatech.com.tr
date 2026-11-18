@@ -238,4 +238,24 @@ describe("UI page and panel", () => {
     expect(document.body.innerHTML).not.toContain(t.token);
     submit.mockRestore();
   });
+  it("UI7 the form data carries the token AT THE MOMENT of submit, without any timer (regression: hosted browser posted an EMPTY token)", async () => {
+    const t = newExportToken();
+    h.prepare.mockResolvedValue({ ok: true, token: t.token, expiresAt: "x", remainingAfter: 2 });
+    vi.useFakeTimers({ toFake: ["setTimeout", "setInterval"] });
+    try {
+      let seen: string | null = null;
+      const submit = vi.spyOn(HTMLFormElement.prototype, "submit").mockImplementation(function (this: HTMLFormElement) {
+        seen = new FormData(this).get("token") as string | null;
+      });
+      render(<TenantExportPanel tenantSlug="s" status={base} />);
+      fireEvent.click(screen.getByRole("button"));
+      for (let i = 0; i < 20; i++) await act(async () => { await Promise.resolve(); });
+      expect(submit).toHaveBeenCalledTimes(1); // no timer was needed
+      expect(seen).toBe(t.token);
+      expect(new FormData(document.querySelector("form")!).get("token")).toBe("");
+      submit.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
