@@ -303,6 +303,14 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   "public.admin_billing_list",
   "public.admin_tenant_billing",
   "public.get_my_billing_summary",
+  // Faz SAAS.1C.2b (20261105090000) — the secure tenant export. Six SECURITY DEFINER RPCs, authenticated only (never anon / PUBLIC / service_role);
+  // each re-checks the Owner role, the fresh sign-in, the single-use token and the tenant itself. Review: tests/saas1c2b-tenant-export.test.ts (EO, FA, TK, SE).
+  "public.request_tenant_export",
+  "public.consume_tenant_export_token",
+  "public.export_read_section",
+  "public.complete_tenant_export",
+  "public.fail_tenant_export",
+  "public.get_tenant_export_status",
   // Faz SAAS.1C.2a (20261104100000) — the manual billing / tenant lifecycle WRITE wrappers. Every one starts with private.admin_require_owner()
   // (auth.uid() + an ACTIVE platform_admins row with role 'owner'; the support role and tenant users are refused), then calls the single private
   // core private.billing_manual_action (reason, request id, expected version, idempotency, protected-tenant guard, append-only event). Authenticated

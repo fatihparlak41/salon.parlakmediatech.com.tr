@@ -1524,6 +1524,36 @@
       }
     }
   },
+  "Export": {
+    "title": "Verilerimi dışa aktar",
+    "description": "Salonunuzun verilerini tek bir ZIP dosyası olarak indirin. Bu özellik yalnızca salon sahibine açıktır.",
+    "scopeHeading": "Pakette neler var",
+    "scopeBody": "Salon bilgileri, şubeler, personel, hizmetler, müşteriler, randevular, satış ve ödemeler, giderler, komisyon kuralları, işlem notları, işlem fotoğraflarının yalnızca kayıt bilgisi ve onay kayıtları. Her tablo için bir CSV dosyası ve tek bir JSON dosyası bulunur.",
+    "notIncludedHeading": "Pakette olmayanlar",
+    "notIncludedBody": "Fotoğraf dosyalarının kendisi, şifreler ve oturum bilgileri, abonelik ve ödeme sağlayıcı kayıtları ve iç denetim kayıtları pakete girmez.",
+    "piiWarning": "Bu dosya müşterilerinizin adlarını, telefonlarını ve e-posta adreslerini içerir. İndirdikten sonra güvenli bir yerde saklayın ve başkalarıyla paylaşmayın.",
+    "freshLoginNote": "Güvenliğiniz için son 15 dakika içinde giriş yapmış olmanız gerekir.",
+    "lastExport": "Son dışa aktarım: {date}",
+    "neverExported": "Henüz dışa aktarım yapılmadı.",
+    "quota": "Bugün kalan hak: {remaining} / {limit}",
+    "quotaNext": "Günlük hakkınız doldu. Yeni dışa aktarım için en erken: {date}",
+    "inProgress": "Bir dışa aktarım şu anda sürüyor. Birkaç dakika sonra tekrar deneyin.",
+    "start": "Dışa aktarımı hazırla ve indir",
+    "preparing": "Hazırlanıyor...",
+    "started": "İndirme başladı. Dosya hazırlanırken sayfayı kapatmayın.",
+    "relogin": "Yeniden giriş yap",
+    "errors": {
+      "not_owner": "Bu işlem yalnızca salon sahibi tarafından yapılabilir.",
+      "fresh_auth_required": "Güvenlik için yeniden giriş yapmanız gerekiyor.",
+      "rate_limited": "Günlük dışa aktarım hakkınız doldu. Lütfen daha sonra tekrar deneyin.",
+      "export_in_progress": "Bir dışa aktarım zaten sürüyor. Birkaç dakika sonra tekrar deneyin.",
+      "too_many_failures": "Çok sayıda başarısız deneme oldu. Lütfen daha sonra tekrar deneyin.",
+      "unauthenticated": "Oturumunuz sona ermiş. Lütfen yeniden giriş yapın.",
+      "invalid_request": "İstek geçersiz. Sayfayı yenileyip tekrar deneyin.",
+      "duplicate_request": "Bu istek zaten işlendi. Sayfayı yenileyip tekrar deneyin.",
+      "unexpected": "Dışa aktarım hazırlanamadı. Lütfen tekrar deneyin."
+    }
+  },
   "Billing": {
     "title": "Plan ve kullanım",
     "description": "Planınız, deneme süreniz ve kullanımınız. Bu sayfa yalnızca bilgi içindir: hiçbir özelliğiniz bu bilgiye göre kapatılmaz.",

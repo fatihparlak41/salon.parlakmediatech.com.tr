@@ -38,6 +38,8 @@ export default async function SettingsPage({
   ]);
   const t = await getTranslations("Settings");
   const canViewFinance = await hasPermission(access.tenant.id, "finance.view");
+  // Faz SAAS.1C.2b: Owner-only export. Only the link is hidden here; the export page and every export RPC re-check Owner status in the database.
+  const canExport = await hasPermission(access.tenant.id, "permissions.manage_unrestricted");
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 p-6">
@@ -61,6 +63,12 @@ export default async function SettingsPage({
           <span className="font-medium">Plan ve kullanım</span>
           <span className="text-muted-foreground text-xs">Planınız, deneme süreniz ve kullanımınız (yalnızca bilgi).</span>
         </Link>
+        {canExport ? (
+          <Link href={`/app/${tenantSlug}/export`} className="flex flex-col gap-0.5 p-3 hover:bg-muted/50">
+            <span className="font-medium">Verilerimi dışa aktar</span>
+            <span className="text-muted-foreground text-xs">Salon verilerinizi ZIP olarak indirin (yalnızca salon sahibi).</span>
+          </Link>
+        ) : null}
         <Link href={`/app/${tenantSlug}/account#notifications`} className="flex flex-col gap-0.5 p-3 hover:bg-muted/50">
           <span className="font-medium">Hesabım ve kişisel bildirimler</span>
           <span className="text-muted-foreground text-xs">Adınız, şifreniz ve bu cihazdaki bildirimler.</span>

@@ -3011,6 +3011,12 @@ export type Database = {
       get_customer_notification_settings: { Args: { p_tenant_id: string }; Returns: Json }
       get_my_appointments: { Args: never; Returns: Json }
       get_my_billing_summary: { Args: { p_tenant_id: string }; Returns: Json }
+      get_tenant_export_status: { Args: { p_tenant_id: string }; Returns: Json }
+      request_tenant_export: { Args: { p_client_request_id: string; p_tenant_id: string; p_token_hash: string }; Returns: Json }
+      consume_tenant_export_token: { Args: { p_token_hash: string }; Returns: Json }
+      export_read_section: { Args: { p_after?: string; p_limit?: number; p_request_id: string; p_section: string }; Returns: Json }
+      complete_tenant_export: { Args: { p_bytes: number; p_counts: Json; p_request_id: string }; Returns: Json }
+      fail_tenant_export: { Args: { p_error_code: string; p_request_id: string }; Returns: Json }
       get_my_link_salon_context: {
         Args: { p_tenant_slug: string }
         Returns: Json

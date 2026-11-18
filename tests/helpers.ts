@@ -269,6 +269,10 @@ export async function cleanupTenants(tenantIds: string[]): Promise<void> {
   // Faz SAAS.1C.1: subscription_events is append-only; a full test teardown is the only legitimate delete
   const appendOnlyTrigger = await testDb`select 1 as x from pg_trigger where tgname = 'subscription_events_append_only' and tgrelid = 'public.subscription_events'::regclass`;
   if (appendOnlyTrigger.length > 0) await testDb`alter table subscription_events disable trigger subscription_events_append_only`;
+  // Faz SAAS.1C.2b: tenant_export_audit is append-only too (same full-teardown exception); absent before that migration
+  const exportAudit = await testDb`select to_regclass('private.tenant_export_audit') is not null as present`;
+  const hasExportAudit = exportAudit[0]?.present === true;
+  if (hasExportAudit) await testDb`alter table private.tenant_export_audit disable trigger tenant_export_audit_append_only`;
 
   try {
     await cleanupTenantsInner(tenantIds);
@@ -276,12 +280,17 @@ export async function cleanupTenants(tenantIds: string[]): Promise<void> {
     await testDb`alter table tenant_memberships enable trigger tenant_memberships_unrestricted_holder_guard`;
     await testDb`alter table role_permissions enable trigger role_permissions_unrestricted_holder_guard`;
     if (appendOnlyTrigger.length > 0) await testDb`alter table subscription_events enable trigger subscription_events_append_only`;
+    if (hasExportAudit) await testDb`alter table private.tenant_export_audit enable trigger tenant_export_audit_append_only`;
   }
 }
 
 async function cleanupTenantsInner(tenantIds: string[]): Promise<void> {
   // Faz SAAS.1C.1: billing rows (events reference the subscription, so they go first)
   await testDb`delete from subscription_events where tenant_id in ${testDb(tenantIds)}`;
+  if ((await testDb`select to_regclass('private.tenant_export_audit') is not null as present`)[0]?.present === true) {
+    await testDb`delete from private.tenant_export_audit where tenant_id in ${testDb(tenantIds)}`;
+    await testDb`delete from private.tenant_export_requests where tenant_id in ${testDb(tenantIds)}`;
+  }
   await testDb`delete from tenant_entitlement_overrides where tenant_id in ${testDb(tenantIds)}`;
   await testDb`delete from subscriptions where tenant_id in ${testDb(tenantIds)}`;
   // notification_delivery_targets (Faz NOTIF.2E.2): FKs into
