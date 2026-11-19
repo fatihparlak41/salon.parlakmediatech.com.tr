@@ -2819,6 +2819,9 @@ export type Database = {
       admin_billing_set_protection: { Args: { p_confirm_slug?: string; p_expected_version: number; p_protected: boolean; p_reason: string; p_request_id: string; p_tenant_id: string }; Returns: Json }
       admin_set_tenant_lifecycle: { Args: { p_action: string; p_confirm_slug?: string; p_expected_version: number; p_reason: string; p_request_id: string; p_tenant_id: string }; Returns: Json }
       admin_tenant_billing: { Args: { p_tenant_id: string }; Returns: Json }
+      admin_billing_enforcement_status: { Args: Record<PropertyKey, never>; Returns: Json }
+      admin_billing_enforcement_preflight: { Args: { p_app_sha?: string; p_expected_protected?: number; p_target_stage: number }; Returns: Json }
+      admin_set_billing_enforcement_stage: { Args: { p_expected_stage: number; p_expected_version: number; p_preflight_hash?: string; p_reason: string; p_request_id: string; p_target_stage: number }; Returns: Json }
       admin_tenant_detail: {
         Args: { p_tenant_id: string }
         Returns: Json

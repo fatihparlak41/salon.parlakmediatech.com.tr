@@ -311,6 +311,11 @@ const AUTHENTICATED_FUNCTION_WHITELIST = [
   "public.complete_tenant_export",
   "public.fail_tenant_export",
   "public.get_tenant_export_status",
+  // Faz SAAS.1C.2c-A1 (20261119115510) — the INERT enforcement control plane. Three SECURITY DEFINER RPCs, authenticated only; the status read needs an active
+  // platform admin, preflight and the stage setter need the platform OWNER. Review: tests/saas1c2c-a1-foundation.test.ts (EO, ST, SE).
+  "public.admin_billing_enforcement_status",
+  "public.admin_billing_enforcement_preflight",
+  "public.admin_set_billing_enforcement_stage",
   // Faz SAAS.1C.2a (20261104100000) — the manual billing / tenant lifecycle WRITE wrappers. Every one starts with private.admin_require_owner()
   // (auth.uid() + an ACTIVE platform_admins row with role 'owner'; the support role and tenant users are refused), then calls the single private
   // core private.billing_manual_action (reason, request id, expected version, idempotency, protected-tenant guard, append-only event). Authenticated

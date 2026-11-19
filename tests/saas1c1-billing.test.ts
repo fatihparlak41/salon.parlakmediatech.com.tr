@@ -802,7 +802,8 @@ describe("DF - SECURITY DEFINER hygiene and grants (catalog)", () => {
     expect(defs.length).toBeGreaterThan(10);
     for (const d of defs) {
       expect(d.def).not.toMatch(/user_metadata|raw_user_meta_data|user_meta/i);
-      expect(d.def).not.toMatch(/service_role/i);
+      // Faz SAAS.1C.2c-A1: the registry-completeness scan NAMES the API roles it inspects (it does not authorize on them; tests/saas1c2c-a1-foundation.test.ts SE3 pins its grants)
+      if (!d.def.includes("billing_registry_unregistered")) expect(d.def).not.toMatch(/service_role/i);
     }
   });
 });
