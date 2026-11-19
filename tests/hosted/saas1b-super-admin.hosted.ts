@@ -654,7 +654,9 @@ describe("GR grants and catalog, SC scale", () => {
       where p.proname like 'admin\_%' and n.nspname in ('public', 'private')
         -- Faz SAAS.1C.2a: the ten audited platform-OWNER write wrappers are deliberately VOLATILE (pinned by the 1C.2a hosted suite, HG1)
         and p.proname not in ('admin_billing_activate_paid', 'admin_billing_set_mode', 'admin_billing_extend_trial', 'admin_billing_extend_grace', 'admin_billing_mark_past_due',
-                              'admin_billing_restore_active', 'admin_billing_cancel', 'admin_billing_change_plan', 'admin_billing_set_protection', 'admin_set_tenant_lifecycle')`;
+                              'admin_billing_restore_active', 'admin_billing_cancel', 'admin_billing_change_plan', 'admin_billing_set_protection', 'admin_set_tenant_lifecycle',
+                              -- Faz SAAS.1C.2c-A1: the preflight records a run row and the stage setter changes the config: both are VOLATILE
+                              'admin_billing_enforcement_preflight', 'admin_set_billing_enforcement_stage')`;
     expect(rows.length).toBeGreaterThanOrEqual(10);
     for (const r of rows) expect(r.vol, r.name).toBe("s");
   });

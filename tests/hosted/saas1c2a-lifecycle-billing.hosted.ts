@@ -732,6 +732,7 @@ describe("HG - catalog, grants, RLS, definer hygiene on the hosted database", ()
     expect(g!.enabled).toBe(false);
     const [h] = await testDb<Loose[]>`select max(version) v, count(*)::int n from supabase_migrations.schema_migrations`;
     // Faz SAAS.1C.2b: the pin follows the accepted chain - 1C.2a head, or 1C.2a + the single tenant-export migration on top of it.
-    expect([ ["20261104110000", 139], ["20261105090000", 140] ]).toContainEqual([h!.v, h!.n]);
+    // Faz SAAS.1C.2c-A1: ... or + the A1 enforcement-foundation migration (control plane, stage 0).
+    expect([ ["20261104110000", 139], ["20261105090000", 140], ["20261119115510", 141] ]).toContainEqual([h!.v, h!.n]);
   });
 });
