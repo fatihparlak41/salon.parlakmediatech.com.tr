@@ -731,7 +731,7 @@ describe("HG - catalog, grants, RLS, definer hygiene on the hosted database", ()
     const [g] = await testDb<Loose[]>`select enabled from private.release_gates where key = 'billing_enforcement'`;
     expect(g!.enabled).toBe(false);
     const [h] = await testDb<Loose[]>`select max(version) v, count(*)::int n from supabase_migrations.schema_migrations`;
-    expect(h!.v).toBe("20261104110000");
-    expect(h!.n).toBe(139);
+    // Faz SAAS.1C.2b: the pin follows the accepted chain - 1C.2a head, or 1C.2a + the single tenant-export migration on top of it.
+    expect([ ["20261104110000", 139], ["20261105090000", 140] ]).toContainEqual([h!.v, h!.n]);
   });
 });
