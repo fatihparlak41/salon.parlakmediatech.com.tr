@@ -516,7 +516,8 @@ describe("UL - usage and limits (measured, never enforced)", () => {
     });
     const after = (await testDb<{ n: number }[]>`select count(*)::int as n from staff_members where tenant_id = ${t.id} and status = 'active' and deleted_at is null`)[0]!.n;
     expect(after).toBe(before + 1);
-    const triggers = await testDb<{ tgname: string }[]>`select tgname from pg_trigger tg join pg_class c on c.oid = tg.tgrelid where c.relname in ('staff_members', 'appointments', 'customers', 'services') and not tg.tgisinternal and (tgname ilike '%billing%' or tgname ilike '%subscription%' or tgname ilike '%plan%' or tgname ilike '%limit%')`;
+    const triggers = await testDb<{ tgname: string }[]>`select tgname from pg_trigger tg join pg_class c on c.oid = tg.tgrelid where c.relname in ('staff_members', 'appointments', 'customers', 'services') and not tg.tgisinternal and tgname <> 'billing_a2_guard' and (tgname ilike '%billing%' or tgname ilike '%subscription%' or tgname ilike '%plan%' or tgname ilike '%limit%')`;
+    // Faz SAAS.1C.2c-A2: the enforcement GUARD trigger (billing_a2_guard) decides by the access STATE and is inert at stage 0; it never counts a plan limit, so the limit stays soft
     expect(triggers).toEqual([]);
     const [s] = await testDb<{ s: Loose[] }[]>`select private.tenant_limit_status(${t.id}) as s`;
     expect(s!.s.find((x) => x.key === "max_active_staff")!.state).toBe("over");

@@ -471,6 +471,9 @@ describe("DT direct-table triggers", () => {
     expect(await direct(susp, (sql) => sql`update services set name = 'X' where id = ${i.svc}`)).toMatchObject({ ok: false, code: "BL002", msg: "tenant_blocked" });
     expect(await direct(susp, (sql) => sql`update tenants set name = 'X' where id = ${susp.id}`)).toMatchObject({ ok: false, code: "BL002" });
     expect(await direct(susp, (sql) => sql`insert into staff_services (staff_member_id, service_id) values (${i.staff}, ${i.svc})`)).toMatchObject({ ok: false, code: "BL002" });
+    // the relation tables have no tenant column: the tenant comes from the parent row (service / staff member)
+    expect(await direct(susp, (sql) => sql`insert into service_branches (service_id, branch_id) values (${i.svc}, ${i.branch})`)).toMatchObject({ ok: false, code: "BL002" });
+    expect(await direct(susp, (sql) => sql`insert into staff_branches (staff_member_id, branch_id) values (${i.staff}, ${i.branch})`)).toMatchObject({ ok: false, code: "BL002" });
     const p = ids[roP.id]!;
     expect((await direct(roP, ins(roP))).ok).toBe(true);
     expect((await direct(roP, (sql) => sql`update services set name = 'Y' where id = ${p.svc}`)).ok).toBe(true);
@@ -494,6 +497,16 @@ describe("DT direct-table triggers", () => {
     expect(await sum(`tenant_id = $1 and action_key like 'table:%'`, ro.id)).toBe(0);
     await setStage(4);
     await testDb`insert into services (tenant_id, name, duration_minutes, price) values (${susp.id}, 'Operator', 20, 1)`; // postgres session on a blocked tenant at stage 4
+    await setStage(0);
+  });
+
+  it("DT8 a row that is moved to ANOTHER tenant is guarded for BOTH tenants: leaving a restricted tenant cannot be used to dodge its policy", async () => {
+    const full = tn["full|U"]!;
+    const moving = await createService(susp.id, "Tasinacak", 30, 10); // created at stage 0 in the suspended tenant
+    await setStage(4);
+    // the same owner belongs to both tenants, so RLS lets the statement through; the DESTINATION (full) would allow it, the SOURCE (suspended, blocked) does not
+    const r = await direct(susp, (sql) => sql`update services set tenant_id = ${full.id} where id = ${moving.id}`);
+    expect(r).toMatchObject({ ok: false, code: "BL002" });
     await setStage(0);
   });
 

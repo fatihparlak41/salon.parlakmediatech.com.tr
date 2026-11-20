@@ -2,6 +2,9 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+/** Faz SAAS.1C.2c-A2: a hooked function carries ONE extra marked guard line; everything else must still be byte-identical to the frozen migration text. */
+const withoutA2Hook = (src: string | undefined): string | undefined => src?.replace(/ {2}(select|perform) private\.billing_guard\([^\n]*-- a2-billing-hook\n/g, "");
 import {
   testDb,
   createExpenseWorld,
@@ -752,7 +755,7 @@ describe("S schema, catalog, grants, RLS", () => {
       const [row] = await testDb<{ prosrc: string }[]>`
         select p.prosrc from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = ${schema} and p.proname = ${fn}`;
       expect(
-        row?.prosrc,
+        withoutA2Hook(row?.prosrc),
         `${name} must exist and be byte-identical to the frozen FIN.1A migration`,
       ).toBe(body);
     }
@@ -791,7 +794,7 @@ describe("S schema, catalog, grants, RLS", () => {
       const [row] = await testDb<{ prosrc: string }[]>`
         select p.prosrc from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = ${schema} and p.proname = ${fn}`;
       expect(
-        row?.prosrc,
+        withoutA2Hook(row?.prosrc),
         `${name} must be byte-identical to the migration text`,
       ).toBe(body);
     }

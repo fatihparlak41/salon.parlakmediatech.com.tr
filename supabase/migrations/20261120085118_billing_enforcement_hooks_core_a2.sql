@@ -261,7 +261,7 @@ begin
     return;
   end if;
   -- operator sessions (migrations, backups, break-glass) are exempt by the exact login-role list the lifecycle and branch guards use;
-  -- service_role is NOT exempt: its only way in is a definer function whose hook names the action
+  -- no API role is exempt: the only way in for a trusted backend is a definer function whose hook names the action
   if session_user in ('postgres', 'supabase_admin', 'cli_login_postgres') then
     return;
   end if;
