@@ -226,7 +226,9 @@ describe("HP preflight", () => {
     const b = await preflight(c.padmin!, 1, null, "06105a7");
     expect(a.error).toBeNull();
     expect(a.data!.passed, JSON.stringify((a.data!.checks as Loose[]).filter((x) => !x.pass))).toBe(true);
-    expect((a.data!.checks as Loose[]).length).toBe(16);
+    // Faz SAAS.1C.2c-A2 adds exactly one check (hook_coverage), same as the committed local test
+    expect((a.data!.checks as Loose[]).length).toBe(17);
+    expect((a.data!.checks as Loose[]).map((x) => x.id)).toContain("hook_coverage");
     expect(b.data!.hash).toBe(a.data!.hash);
     expect(a.data!.runId).not.toBe(b.data!.runId);
     expect((await testDb`select count(*)::int n from private.billing_preflight_runs where result_hash = ${a.data!.hash as string}`)[0]!.n).toBe(2);
@@ -444,7 +446,10 @@ describe("HZ stage 0 is inert (nothing records, nothing blocks)", () => {
     const own = new Set(["billing_stage", "billing_effective_access", "billing_decide", "billing_enforcement_counters", "billing_registry_unregistered", "billing_check", "billing_preflight_core", "billing_enforcement_refuse", "billing_enforcement_append_only", "billing_enforcement_config_guard", "billing_enforcement_config_audit", "admin_billing_enforcement_status", "admin_billing_enforcement_preflight", "admin_set_billing_enforcement_stage"]);
     const rows = await testDb<{ proname: string; src: string }[]>`select p.proname, pg_get_functiondef(p.oid) src from pg_proc p where p.prokind = 'f' and p.pronamespace in ('public'::regnamespace, 'private'::regnamespace)`;
     expect(rows.length).toBeGreaterThan(500);
-    expect(rows.filter((r) => !own.has(r.proname) && needles.some((n) => r.src.includes(n))).map((r) => r.proname)).toEqual([]);
+    // Faz SAAS.1C.2c-A2 adds these private helpers; an existing function may reference the foundation ONLY through its one marked hook line (proved exactly by the A2 catalog suite)
+    for (const h of ["billing_scope_tenant", "billing_health_bump", "billing_decision_record", "billing_guard", "billing_public_booking_open", "billing_hook_coverage", "billing_trigger_guard"]) own.add(h);
+    const unhooked = (src: string) => src.replace(/[^\n]*-- a2-billing-hook[^\n]*\n?/g, "");
+    expect(rows.filter((r) => !own.has(r.proname) && needles.some((n) => unhooked(r.src).includes(n))).map((r) => r.proname)).toEqual([]);
     const trg = await testDb<{ f: string }[]>`select p.proname f from pg_trigger t join pg_class c on c.oid = t.tgrelid join pg_proc p on p.oid = t.tgfoid where c.relnamespace = 'public'::regnamespace and not t.tgisinternal`;
     expect(trg.filter((x) => /billing_(stage|decide|effective|preflight|enforcement)/.test(x.f))).toEqual([]);
   });
@@ -670,7 +675,7 @@ describe("HR registry completeness against the hosted catalog", () => {
         await sql`create function public.zz_h_outer() returns void language plpgsql security definer set search_path = '' as $f$ begin perform private.zz_h_inner(); end $f$`;
         await sql`grant execute on function public.zz_h_outer() to authenticated`;
         if (!(await sql<{ action_key: string }[]>`select action_key from private.billing_registry_unregistered()`).some((x) => x.action_key === "fn:zz_h_outer")) throw new Error("TRANSITIVE_NOT_DETECTED");
-        await sql`insert into private.billing_action_registry (action_key, kind, category) values ('fn:zz_h_a1_probe', 'function', 'CUSTOMER_EDIT'), ('fn:zz_h_outer', 'function', 'CUSTOMER_EDIT')`;
+        await sql`insert into private.billing_action_registry (action_key, kind, category, enforcement_class, hooked, audience) values ('fn:zz_h_a1_probe', 'function', 'CUSTOMER_EDIT', 'EXISTING_RECORD_OPERATION', false, 'member'), ('fn:zz_h_outer', 'function', 'CUSTOMER_EDIT', 'EXISTING_RECORD_OPERATION', false, 'member')`;
         if ((await sql`select 1 from private.billing_registry_unregistered()`).length !== 0) throw new Error("STILL_FLAGGED");
       }),
     ).toBe("ROLLBACK_OK");
