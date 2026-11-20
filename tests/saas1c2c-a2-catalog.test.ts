@@ -225,7 +225,7 @@ describe("CG completeness gate (every case rolled back)", () => {
       return { cov: await coverage(sql), check: (pre.checks as Loose[]).find((c) => c.id === "hook_coverage") };
     });
     expect(out.cov).toEqual(["fn:update_salon_profile:missing_hook"]);
-    expect(out.check.pass).toBe(false);
+    expect(out.check?.pass).toBe(false);
   });
 
   it("CG2 a NEW API-reachable writer that is not in the registry is reported by the A1 scan and fails the preflight", async () => {
@@ -237,7 +237,7 @@ describe("CG completeness gate (every case rolled back)", () => {
       return { unreg, reg: (pre.checks as Loose[]).find((c) => c.id === "registry_complete") };
     });
     expect(out.unreg).toEqual(["fn:zz_a2_new_writer"]);
-    expect(out.reg.pass).toBe(false);
+    expect(out.reg?.pass).toBe(false);
   });
 
   it("CG3 a NEW writable table (an API role gets INSERT) is reported as an unregistered table operation", async () => {
@@ -259,7 +259,7 @@ describe("CG completeness gate (every case rolled back)", () => {
       return { cov: await coverage(sql), integrity: (pre.checks as Loose[]).find((c) => c.id === "registry_integrity") };
     });
     expect(out.cov).toContain("fn:cancel_expense:function_missing_or_overloaded");
-    expect(out.integrity.pass).toBe(false);
+    expect(out.integrity?.pass).toBe(false);
   });
 
   it("CG5 a removed trigger, or a trigger added where none is registered, is reported", async () => {

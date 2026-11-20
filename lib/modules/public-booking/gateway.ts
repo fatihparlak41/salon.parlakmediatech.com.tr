@@ -100,7 +100,8 @@ export async function processGuestBooking(
   });
 
   if (!dbResult.success) {
-    if (!dbResult.code.startsWith("BK")) {
+    // BL003 / BL004 (SAAS.1C.2c-A2) are the billing enforcement guard's own stable refusals: an expected outcome, not an internal problem
+    if (!dbResult.code.startsWith("BK") && !dbResult.code.startsWith("BL")) {
       // Anything that isn't one of our own stable BK0nn codes — a raw
       // connection failure, an unexpected constraint, etc. — is a
       // genuine internal problem. Logged with a stable category and the

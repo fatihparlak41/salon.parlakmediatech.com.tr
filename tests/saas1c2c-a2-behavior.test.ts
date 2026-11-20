@@ -214,6 +214,10 @@ describe("S0 / S1 shadow model", () => {
       probe(users.owner!.id, "fn:create_appointment", "tenant", tn["full|U"]!.id),
     ]);
     expect(results.every((r) => r.ok)).toBe(true);
+    // the shadow verdict must equal the independent policy's stage-4 verdict
+    expect(wouldBlock("APPT_CREATE", "read_only", false)).toBe(true);
+    expect(wouldBlock("APPT_CONTINUITY", "read_only", false)).toBe(false);
+    expect(wouldBlock("APPT_CREATE", "read_only", true)).toBe(false);
     const c = await testDb<Loose[]>`select tenant_id, stage, category, action_key, mode, decision, reason, n, config_version from private.billing_decision_counters order by action_key, tenant_id`;
     const find = (t: string, a: string) => c.find((r) => r.tenant_id === t && r.action_key === a)!;
     expect(find(ro.id, "fn:create_appointment")).toMatchObject({ stage: 1, category: "APPT_CREATE", mode: "read_only", decision: "would_block", reason: "trial_expired" });

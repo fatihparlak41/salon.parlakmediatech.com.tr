@@ -5,6 +5,7 @@
  * taxonomy so a portal failure never gets translated through the
  * booking-domain's message set by accident.
  */
+import { enforcementMessage } from "@/lib/modules/billing/enforcement-errors";
 export const ACCOUNT_ERROR_MESSAGES: Record<string, string> = {
   AC001: "Bu işlem için giriş yapmanız gerekiyor.",
   AC002: "Lütfen ad soyad bilgisini kontrol edin.",
@@ -37,6 +38,8 @@ export const ACCOUNT_ERROR_MESSAGES: Record<string, string> = {
 const DEFAULT_MESSAGE = "İşlem gerçekleştirilemedi, lütfen tekrar deneyin.";
 
 export function mapAccountErrorCode(code: string | undefined | null): string {
+  const enforcement = enforcementMessage(code); // BL001-BL004 (SAAS.1C.2c-A2): never raised at stage 0 / 1
+  if (enforcement) return enforcement;
   if (code && code in ACCOUNT_ERROR_MESSAGES) {
     return ACCOUNT_ERROR_MESSAGES[code]!;
   }

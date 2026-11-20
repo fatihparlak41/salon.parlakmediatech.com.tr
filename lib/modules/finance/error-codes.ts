@@ -4,6 +4,7 @@
  * string-match the raw English exception text, which is not a stable
  * contract.
  */
+import { enforcementMessage } from "@/lib/modules/billing/enforcement-errors";
 export const FINANCE_ERROR_MESSAGES: Record<string, string> = {
   FN001: "Oturumunuz sona ermiş, lütfen tekrar giriş yapın.",
   FN002: "Bu işlem için yetkiniz yok.",
@@ -21,6 +22,8 @@ const DEFAULT_MESSAGE = "İşlem gerçekleştirilemedi, lütfen tekrar deneyin."
 
 /** error.code from a Supabase/PostgREST response for any finance RPC call. */
 export function mapFinanceErrorCode(code: string | undefined | null): string {
+  const enforcement = enforcementMessage(code); // BL001-BL004 (SAAS.1C.2c-A2): never raised at stage 0 / 1
+  if (enforcement) return enforcement;
   if (code && code in FINANCE_ERROR_MESSAGES) {
     return FINANCE_ERROR_MESSAGES[code]!;
   }

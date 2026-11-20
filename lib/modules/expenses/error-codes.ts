@@ -1,4 +1,5 @@
 import { fail, type ActionResult, type AppErrorCode } from "@/lib/errors";
+import { enforcementMessage } from "@/lib/modules/billing/enforcement-errors";
 
 /**
  * Faz FIN.1B.1 — the expense module's OWN operator-facing messages for the FN0nn SQLSTATE codes raised by the expense RPCs
@@ -31,6 +32,8 @@ export const EXPENSE_DEFAULT_ERROR_MESSAGE =
 
 /** error.code from a Supabase/PostgREST response for any expense RPC call. */
 export function mapExpenseErrorCode(code: string | undefined | null): string {
+  const enforcement = enforcementMessage(code); // BL001-BL004 (SAAS.1C.2c-A2): never raised at stage 0 / 1
+  if (enforcement) return enforcement;
   if (
     code &&
     Object.prototype.hasOwnProperty.call(EXPENSE_ERROR_MESSAGES, code)

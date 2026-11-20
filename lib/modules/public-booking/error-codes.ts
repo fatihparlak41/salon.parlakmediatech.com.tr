@@ -9,6 +9,7 @@
  * into this smaller, generic-on-purpose set before they ever leave the
  * database. Never string-match raw error text.
  */
+import { enforcementMessage } from "@/lib/modules/billing/enforcement-errors";
 export const PUBLIC_BOOKING_ERROR_MESSAGES: Record<string, string> = {
   BK001: "Online randevu şu anda kullanılamıyor.",
   BK002: "Geçersiz şube.",
@@ -25,6 +26,8 @@ const DEFAULT_MESSAGE = "İşlem gerçekleştirilemedi, lütfen tekrar deneyin."
  * RPC call. Never surfaces the raw DB message, a SQLSTATE the customer
  * wouldn't recognize, or anything AP0nn-flavored. */
 export function mapPublicBookingErrorCode(code: string | undefined | null): string {
+  const enforcement = enforcementMessage(code); // BL003 / BL004 (SAAS.1C.2c-A2): never raised at stage 0 / 1
+  if (enforcement) return enforcement;
   if (code && code in PUBLIC_BOOKING_ERROR_MESSAGES) {
     return PUBLIC_BOOKING_ERROR_MESSAGES[code]!;
   }

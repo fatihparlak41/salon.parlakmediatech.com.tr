@@ -9,6 +9,7 @@
  * interpolated-name variants (e.g. two different "staff not eligible"
  * messages naming different people).
  */
+import { enforcementMessage } from "@/lib/modules/billing/enforcement-errors";
 export const APPOINTMENT_ERROR_MESSAGES: Record<string, string> = {
   AP001: "Oturumunuz sona ermiş, lütfen tekrar giriş yapın.",
   AP002: "Bu işlem için yetkiniz yok.",
@@ -36,6 +37,8 @@ const DEFAULT_MESSAGE = "İşlem gerçekleştirilemedi, lütfen tekrar deneyin."
  * update_appointment_status, or check_appointment_availability's own
  * permission-denied raise. Never surfaces the raw DB message. */
 export function mapAppointmentErrorCode(code: string | undefined | null): string {
+  const enforcement = enforcementMessage(code); // BL001-BL004 (SAAS.1C.2c-A2): never raised at stage 0 / 1
+  if (enforcement) return enforcement;
   if (code && code in APPOINTMENT_ERROR_MESSAGES) {
     return APPOINTMENT_ERROR_MESSAGES[code]!;
   }
