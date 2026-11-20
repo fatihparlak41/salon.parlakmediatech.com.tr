@@ -40,3 +40,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local rig / test artifacts and dumps (never source; keep them out of Git)
+playwright-report/
+test-results/
+*.dump
+*.sql.gz
+*.zip
+*.log
+vitest.local-*
+tests/*.local.test.ts
