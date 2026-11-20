@@ -347,6 +347,16 @@ async function cleanupTenantsInner(tenantIds: string[]): Promise<void> {
     await testDb`delete from expense_payments where tenant_id in ${testDb(tenantIds)}`;
     await testDb`delete from expenses where tenant_id in ${testDb(tenantIds)}`;
   }
+  // Faz FIN.1C.1: staff_payments -> staff_period_lines -> staff_finance_periods hold NO ACTION FKs into tenants and
+  // staff_members (the periods also hold the composite FK that children use), so children go first and all of it before
+  // staff_members and tenants are deleted below. No delete trigger exists, so a plain delete is safe. Guarded for the same
+  // reason as the blocks above: the migration is not applied to every database this helper runs against.
+  const [staffFinanceTables] = await testDb<{ present: boolean }[]>`select to_regclass('public.staff_finance_periods') is not null as present`;
+  if (staffFinanceTables?.present) {
+    await testDb`delete from staff_payments where tenant_id in ${testDb(tenantIds)}`;
+    await testDb`delete from staff_period_lines where tenant_id in ${testDb(tenantIds)}`;
+    await testDb`delete from staff_finance_periods where tenant_id in ${testDb(tenantIds)}`;
+  }
   await testDb`delete from appointment_items where tenant_id in ${testDb(tenantIds)}`;
   await testDb`delete from appointments where tenant_id in ${testDb(tenantIds)}`;
   await testDb`delete from staff_schedule_exceptions where tenant_id in ${testDb(tenantIds)}`;
