@@ -62,7 +62,7 @@ describe("RG registry completeness", () => {
         const pf = (await sql`select private.billing_preflight_core(1::smallint, null, null) as r`)[0]!.r as Loose;
         const ck = (pf.checks as Loose[]).find((c) => c.id === "registry_complete")!;
         if (ck.pass || pf.passed) throw new Error("PREFLIGHT_PASSED");
-        await sql`insert into private.billing_action_registry (action_key, kind, category) values ('fn:zz_a1_probe_write', 'function', 'CUSTOMER_EDIT')`;
+        await sql`insert into private.billing_action_registry (action_key, kind, category, enforcement_class, hooked, audience) values ('fn:zz_a1_probe_write', 'function', 'CUSTOMER_EDIT', 'EXISTING_RECORD_OPERATION', false, 'member')`;
         if ((await sql`select 1 from private.billing_registry_unregistered()`).length !== 0) throw new Error("STILL_FLAGGED");
         throw new Error("ROLLBACK_OK");
       }),

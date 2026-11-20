@@ -1,5 +1,5 @@
 {
-  "_comment": "SAAS.1C.2c-A1 enforcement registry: the single source of truth. Generated once from the 1C.2c discovery (75 write functions + 22 direct table operations) plus the 2 A1 control-plane functions; maintained by hand from now on. See scripts/billing-registry.mjs and tests/saas1c2c-a1-registry.test.ts.",
+  "_comment": "SAAS.1C.2c-A2: class / hooked / audience / scope / scope_arg added by scripts/billing-a2-classify.mjs (accepted classification). Regenerate with `node scripts/billing-registry.mjs` (catalog) then `node scripts/billing-a2-classify.mjs`.",
   "categories": [
     {
       "category": "PUBLIC_BOOKING_CREATE",
@@ -167,497 +167,877 @@
     {
       "action_key": "fn:accept_team_invitation",
       "kind": "function",
-      "category": "TEAM_GROWTH"
+      "category": "TEAM_GROWTH",
+      "class": "TENANT_BUSINESS_WRITE",
+      "hooked": true,
+      "audience": "self",
+      "scope": "invitation_token",
+      "scope_arg": "p_token"
     },
     {
       "action_key": "fn:admin_billing_activate_paid",
       "kind": "function",
-      "category": "PLATFORM_ADMIN"
+      "category": "PLATFORM_ADMIN",
+      "class": "CONTROL_PLANE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:admin_billing_cancel",
       "kind": "function",
-      "category": "PLATFORM_ADMIN"
+      "category": "PLATFORM_ADMIN",
+      "class": "CONTROL_PLANE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:admin_billing_change_plan",
       "kind": "function",
-      "category": "PLATFORM_ADMIN"
+      "category": "PLATFORM_ADMIN",
+      "class": "CONTROL_PLANE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:admin_billing_enforcement_preflight",
       "kind": "function",
-      "category": "PLATFORM_ADMIN"
+      "category": "PLATFORM_ADMIN",
+      "class": "CONTROL_PLANE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:admin_billing_extend_grace",
       "kind": "function",
-      "category": "PLATFORM_ADMIN"
+      "category": "PLATFORM_ADMIN",
+      "class": "CONTROL_PLANE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:admin_billing_extend_trial",
       "kind": "function",
-      "category": "PLATFORM_ADMIN"
+      "category": "PLATFORM_ADMIN",
+      "class": "CONTROL_PLANE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:admin_billing_mark_past_due",
       "kind": "function",
-      "category": "PLATFORM_ADMIN"
+      "category": "PLATFORM_ADMIN",
+      "class": "CONTROL_PLANE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:admin_billing_restore_active",
       "kind": "function",
-      "category": "PLATFORM_ADMIN"
+      "category": "PLATFORM_ADMIN",
+      "class": "CONTROL_PLANE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:admin_billing_set_mode",
       "kind": "function",
-      "category": "PLATFORM_ADMIN"
+      "category": "PLATFORM_ADMIN",
+      "class": "CONTROL_PLANE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:admin_billing_set_protection",
       "kind": "function",
-      "category": "PLATFORM_ADMIN"
+      "category": "PLATFORM_ADMIN",
+      "class": "CONTROL_PLANE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:admin_set_billing_enforcement_stage",
       "kind": "function",
-      "category": "PLATFORM_ADMIN"
+      "category": "PLATFORM_ADMIN",
+      "class": "CONTROL_PLANE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:admin_set_tenant_lifecycle",
       "kind": "function",
-      "category": "PLATFORM_ADMIN"
+      "category": "PLATFORM_ADMIN",
+      "class": "CONTROL_PLANE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:begin_customer_notification_send",
       "kind": "function",
-      "category": "SYSTEM_NOTIFY"
+      "category": "SYSTEM_NOTIFY",
+      "class": "SYSTEM_WRITE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:cancel_expense",
       "kind": "function",
-      "category": "FINANCE_BOOKKEEPING"
+      "category": "FINANCE_BOOKKEEPING",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "expense",
+      "scope_arg": "p_expense_id"
     },
     {
       "action_key": "fn:cancel_my_appointment",
       "kind": "function",
-      "category": "CUSTOMER_SELF_SERVICE_CANCEL"
+      "category": "CUSTOMER_SELF_SERVICE_CANCEL",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": false,
+      "audience": "self"
     },
     {
       "action_key": "fn:claim_customer_notification_jobs",
       "kind": "function",
-      "category": "SYSTEM_NOTIFY"
+      "category": "SYSTEM_NOTIFY",
+      "class": "SYSTEM_WRITE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:claim_my_recent_booking",
       "kind": "function",
-      "category": "CUSTOMER_ACCOUNT"
+      "category": "CUSTOMER_ACCOUNT",
+      "class": "SECURITY_ACCOUNT_ACTION",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:claim_notification_delivery_targets",
       "kind": "function",
-      "category": "SYSTEM_NOTIFY"
+      "category": "SYSTEM_NOTIFY",
+      "class": "SYSTEM_WRITE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:commit_customer_import",
       "kind": "function",
-      "category": "CUSTOMER_CREATE_IMPORT"
+      "category": "CUSTOMER_CREATE_IMPORT",
+      "class": "TENANT_BUSINESS_WRITE",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant",
+      "scope_arg": "p_tenant_id"
     },
     {
       "action_key": "fn:complete_appointment",
       "kind": "function",
-      "category": "APPT_CONTINUITY"
+      "category": "APPT_CONTINUITY",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "appointment",
+      "scope_arg": "p_appointment_id"
     },
     {
       "action_key": "fn:complete_tenant_export",
       "kind": "function",
-      "category": "EXPORT"
+      "category": "EXPORT",
+      "class": "EXPORT",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:confirm_treatment_photo",
       "kind": "function",
-      "category": "TREATMENT"
+      "category": "TREATMENT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant",
+      "scope_arg": "p_tenant_id"
     },
     {
       "action_key": "fn:consume_tenant_export_token",
       "kind": "function",
-      "category": "EXPORT"
+      "category": "EXPORT",
+      "class": "EXPORT",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:create_appointment",
       "kind": "function",
-      "category": "APPT_CREATE"
+      "category": "APPT_CREATE",
+      "class": "TENANT_BUSINESS_WRITE",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant",
+      "scope_arg": "p_tenant_id"
     },
     {
       "action_key": "fn:create_expense",
       "kind": "function",
-      "category": "FINANCE_BOOKKEEPING"
+      "category": "FINANCE_BOOKKEEPING",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant",
+      "scope_arg": "p_tenant_id"
     },
     {
       "action_key": "fn:create_guest_booking",
       "kind": "function",
-      "category": "PUBLIC_BOOKING_CREATE"
+      "category": "PUBLIC_BOOKING_CREATE",
+      "class": "PUBLIC_BOOKING_WRITE",
+      "hooked": true,
+      "audience": "public",
+      "scope": "slug",
+      "scope_arg": "p_tenant_slug"
     },
     {
       "action_key": "fn:create_my_link_code",
       "kind": "function",
-      "category": "CUSTOMER_ACCOUNT"
+      "category": "CUSTOMER_ACCOUNT",
+      "class": "SECURITY_ACCOUNT_ACTION",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:create_role",
       "kind": "function",
-      "category": "TEAM_SECURITY"
+      "category": "TEAM_SECURITY",
+      "class": "SECURITY_ACCOUNT_ACTION",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:create_team_invitation",
       "kind": "function",
-      "category": "TEAM_GROWTH"
+      "category": "TEAM_GROWTH",
+      "class": "TENANT_BUSINESS_WRITE",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant",
+      "scope_arg": "p_tenant_id"
     },
     {
       "action_key": "fn:create_tenant",
       "kind": "function",
-      "category": "TENANT_CREATE"
+      "category": "TENANT_CREATE",
+      "class": "OTHER",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:delete_treatment_photo",
       "kind": "function",
-      "category": "TREATMENT"
+      "category": "TREATMENT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant",
+      "scope_arg": "p_tenant_id"
     },
     {
       "action_key": "fn:fail_tenant_export",
       "kind": "function",
-      "category": "EXPORT"
+      "category": "EXPORT",
+      "class": "EXPORT",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:get_or_create_appointment_sale",
       "kind": "function",
-      "category": "FINANCE_SETTLE"
+      "category": "FINANCE_SETTLE",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "appointment",
+      "scope_arg": "p_appointment_id"
     },
     {
       "action_key": "fn:link_customer_account_with_code",
       "kind": "function",
-      "category": "CUSTOMER_ACCOUNT"
+      "category": "CUSTOMER_ACCOUNT",
+      "class": "SECURITY_ACCOUNT_ACTION",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:link_staff_membership",
       "kind": "function",
-      "category": "TEAM_SECURITY"
+      "category": "TEAM_SECURITY",
+      "class": "SECURITY_ACCOUNT_ACTION",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:log_team_invitation_email_delivery",
       "kind": "function",
-      "category": "TEAM_GROWTH"
+      "category": "TEAM_GROWTH",
+      "class": "SYSTEM_WRITE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:materialize_notification_deliveries",
       "kind": "function",
-      "category": "SYSTEM_NOTIFY"
+      "category": "SYSTEM_NOTIFY",
+      "class": "SYSTEM_WRITE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:materialize_pending_notification_events",
       "kind": "function",
-      "category": "SYSTEM_NOTIFY"
+      "category": "SYSTEM_NOTIFY",
+      "class": "SYSTEM_WRITE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:onboarding_add_services",
       "kind": "function",
-      "category": "ONBOARDING"
+      "category": "ONBOARDING",
+      "class": "TENANT_BUSINESS_WRITE",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant",
+      "scope_arg": "p_tenant_id"
     },
     {
       "action_key": "fn:onboarding_add_staff",
       "kind": "function",
-      "category": "ONBOARDING"
+      "category": "ONBOARDING",
+      "class": "TENANT_BUSINESS_WRITE",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant",
+      "scope_arg": "p_tenant_id"
     },
     {
       "action_key": "fn:onboarding_apply_weekly_hours",
       "kind": "function",
-      "category": "ONBOARDING"
+      "category": "ONBOARDING",
+      "class": "TENANT_BUSINESS_WRITE",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant",
+      "scope_arg": "p_tenant_id"
     },
     {
       "action_key": "fn:onboarding_set_staff_services",
       "kind": "function",
-      "category": "ONBOARDING"
+      "category": "ONBOARDING",
+      "class": "TENANT_BUSINESS_WRITE",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant",
+      "scope_arg": "p_tenant_id"
     },
     {
       "action_key": "fn:prepare_notification_delivery_targets",
       "kind": "function",
-      "category": "SYSTEM_NOTIFY"
+      "category": "SYSTEM_NOTIFY",
+      "class": "SYSTEM_WRITE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:purge_customer_notification_data",
       "kind": "function",
-      "category": "SYSTEM_HYGIENE"
+      "category": "SYSTEM_HYGIENE",
+      "class": "SYSTEM_WRITE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:purge_expired_notification_event_display_snapshots",
       "kind": "function",
-      "category": "SYSTEM_HYGIENE"
+      "category": "SYSTEM_HYGIENE",
+      "class": "SYSTEM_WRITE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:reactivate_membership",
       "kind": "function",
-      "category": "TEAM_SECURITY"
+      "category": "TEAM_SECURITY",
+      "class": "SECURITY_ACCOUNT_ACTION",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:record_appointment_payment",
       "kind": "function",
-      "category": "FINANCE_SETTLE"
+      "category": "FINANCE_SETTLE",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "sale",
+      "scope_arg": "p_sale_id"
     },
     {
       "action_key": "fn:record_customer_notification_result",
       "kind": "function",
-      "category": "SYSTEM_NOTIFY"
+      "category": "SYSTEM_NOTIFY",
+      "class": "SYSTEM_WRITE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:record_expense_payment",
       "kind": "function",
-      "category": "FINANCE_BOOKKEEPING"
+      "category": "FINANCE_BOOKKEEPING",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "expense",
+      "scope_arg": "p_expense_id"
     },
     {
       "action_key": "fn:record_notification_delivery_target_result",
       "kind": "function",
-      "category": "SYSTEM_NOTIFY"
+      "category": "SYSTEM_NOTIFY",
+      "class": "SYSTEM_WRITE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:register_treatment_photo",
       "kind": "function",
-      "category": "TREATMENT"
+      "category": "TREATMENT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant",
+      "scope_arg": "p_tenant_id"
     },
     {
       "action_key": "fn:remove_membership_access",
       "kind": "function",
-      "category": "TEAM_SECURITY"
+      "category": "TEAM_SECURITY",
+      "class": "SECURITY_ACCOUNT_ACTION",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:remove_push_subscription",
       "kind": "function",
-      "category": "PERSONAL_PREFS"
+      "category": "PERSONAL_PREFS",
+      "class": "SECURITY_ACCOUNT_ACTION",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:request_tenant_export",
       "kind": "function",
-      "category": "EXPORT"
+      "category": "EXPORT",
+      "class": "EXPORT",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:reschedule_appointment",
       "kind": "function",
-      "category": "APPT_CONTINUITY"
+      "category": "APPT_CONTINUITY",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "appointment",
+      "scope_arg": "p_appointment_id"
     },
     {
       "action_key": "fn:reschedule_my_appointment",
       "kind": "function",
-      "category": "CUSTOMER_SELF_SERVICE_CHANGE"
+      "category": "CUSTOMER_SELF_SERVICE_CHANGE",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "self",
+      "scope": "appointment",
+      "scope_arg": "p_appointment_id"
     },
     {
       "action_key": "fn:resend_team_invitation",
       "kind": "function",
-      "category": "TEAM_GROWTH"
+      "category": "TEAM_GROWTH",
+      "class": "TENANT_BUSINESS_WRITE",
+      "hooked": true,
+      "audience": "member",
+      "scope": "invitation",
+      "scope_arg": "p_invitation_id"
     },
     {
       "action_key": "fn:revoke_team_invitation",
       "kind": "function",
-      "category": "TEAM_SECURITY"
+      "category": "TEAM_SECURITY",
+      "class": "SECURITY_ACCOUNT_ACTION",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:save_push_subscription",
       "kind": "function",
-      "category": "PERSONAL_PREFS"
+      "category": "PERSONAL_PREFS",
+      "class": "SECURITY_ACCOUNT_ACTION",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:set_commission_rule",
       "kind": "function",
-      "category": "CATALOG_EDIT"
+      "category": "CATALOG_EDIT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant",
+      "scope_arg": "p_tenant_id"
     },
     {
       "action_key": "fn:set_customer_notification_setting",
       "kind": "function",
-      "category": "SETTINGS_EDIT"
+      "category": "SETTINGS_EDIT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant",
+      "scope_arg": "p_tenant_id"
     },
     {
       "action_key": "fn:set_online_booking_enabled",
       "kind": "function",
-      "category": "SETTINGS_EDIT"
+      "category": "SETTINGS_EDIT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant",
+      "scope_arg": "p_tenant_id"
     },
     {
       "action_key": "fn:set_treatment_note",
       "kind": "function",
-      "category": "TREATMENT"
+      "category": "TREATMENT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant",
+      "scope_arg": "p_tenant_id"
     },
     {
       "action_key": "fn:suspend_membership",
       "kind": "function",
-      "category": "TEAM_SECURITY"
+      "category": "TEAM_SECURITY",
+      "class": "SECURITY_ACCOUNT_ACTION",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:unlink_salon_assisted_customer_account",
       "kind": "function",
-      "category": "CUSTOMER_EDIT"
+      "category": "CUSTOMER_EDIT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "customer",
+      "scope_arg": "p_customer_id"
     },
     {
       "action_key": "fn:unlink_staff_membership",
       "kind": "function",
-      "category": "TEAM_SECURITY"
+      "category": "TEAM_SECURITY",
+      "class": "SECURITY_ACCOUNT_ACTION",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:update_appointment_sale_pricing",
       "kind": "function",
-      "category": "FINANCE_SETTLE"
+      "category": "FINANCE_SETTLE",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "sale",
+      "scope_arg": "p_sale_id"
     },
     {
       "action_key": "fn:update_appointment_status",
       "kind": "function",
-      "category": "APPT_CONTINUITY"
+      "category": "APPT_CONTINUITY",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "appointment",
+      "scope_arg": "p_appointment_id"
     },
     {
       "action_key": "fn:update_expense",
       "kind": "function",
-      "category": "FINANCE_BOOKKEEPING"
+      "category": "FINANCE_BOOKKEEPING",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "expense",
+      "scope_arg": "p_expense_id"
     },
     {
       "action_key": "fn:update_membership_role",
       "kind": "function",
-      "category": "TEAM_SECURITY"
+      "category": "TEAM_SECURITY",
+      "class": "SECURITY_ACCOUNT_ACTION",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:update_my_account_profile",
       "kind": "function",
-      "category": "CUSTOMER_ACCOUNT"
+      "category": "CUSTOMER_ACCOUNT",
+      "class": "SECURITY_ACCOUNT_ACTION",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:update_my_notification_preferences",
       "kind": "function",
-      "category": "PERSONAL_PREFS"
+      "category": "PERSONAL_PREFS",
+      "class": "SECURITY_ACCOUNT_ACTION",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:update_role_permissions",
       "kind": "function",
-      "category": "TEAM_SECURITY"
+      "category": "TEAM_SECURITY",
+      "class": "SECURITY_ACCOUNT_ACTION",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "fn:update_salon_profile",
       "kind": "function",
-      "category": "SETTINGS_EDIT"
+      "category": "SETTINGS_EDIT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant",
+      "scope_arg": "p_tenant_id"
     },
     {
       "action_key": "fn:void_appointment_payment",
       "kind": "function",
-      "category": "FINANCE_SETTLE"
+      "category": "FINANCE_SETTLE",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "payment",
+      "scope_arg": "p_payment_id"
     },
     {
       "action_key": "fn:void_expense_payment",
       "kind": "function",
-      "category": "FINANCE_BOOKKEEPING"
+      "category": "FINANCE_BOOKKEEPING",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "expense_payment",
+      "scope_arg": "p_payment_id"
     },
     {
       "action_key": "table:branches:INSERT",
       "kind": "table_op",
-      "category": "CATALOG_CREATE"
+      "category": "CATALOG_CREATE",
+      "class": "TENANT_BUSINESS_WRITE",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant_col"
     },
     {
       "action_key": "table:branches:UPDATE",
       "kind": "table_op",
-      "category": "CATALOG_EDIT"
+      "category": "CATALOG_EDIT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant_col"
     },
     {
       "action_key": "table:customers:INSERT",
       "kind": "table_op",
-      "category": "CUSTOMER_CREATE_IMPORT"
+      "category": "CUSTOMER_CREATE_IMPORT",
+      "class": "TENANT_BUSINESS_WRITE",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant_col"
     },
     {
       "action_key": "table:customers:UPDATE",
       "kind": "table_op",
-      "category": "CUSTOMER_EDIT"
+      "category": "CUSTOMER_EDIT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant_col"
     },
     {
       "action_key": "table:platform_admins:INSERT",
       "kind": "table_op",
-      "category": "PLATFORM_ADMIN"
+      "category": "PLATFORM_ADMIN",
+      "class": "CONTROL_PLANE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "table:platform_admins:UPDATE",
       "kind": "table_op",
-      "category": "PLATFORM_ADMIN"
+      "category": "PLATFORM_ADMIN",
+      "class": "CONTROL_PLANE",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "table:profiles:UPDATE",
       "kind": "table_op",
-      "category": "PERSONAL_PREFS"
+      "category": "PERSONAL_PREFS",
+      "class": "SECURITY_ACCOUNT_ACTION",
+      "hooked": false,
+      "audience": "member"
     },
     {
       "action_key": "table:service_branches:DELETE",
       "kind": "table_op",
-      "category": "CATALOG_EDIT"
+      "category": "CATALOG_EDIT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "relation:services:service_id"
     },
     {
       "action_key": "table:service_branches:INSERT",
       "kind": "table_op",
-      "category": "CATALOG_EDIT"
+      "category": "CATALOG_EDIT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "relation:services:service_id"
     },
     {
       "action_key": "table:services:INSERT",
       "kind": "table_op",
-      "category": "CATALOG_CREATE"
+      "category": "CATALOG_CREATE",
+      "class": "TENANT_BUSINESS_WRITE",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant_col"
     },
     {
       "action_key": "table:services:UPDATE",
       "kind": "table_op",
-      "category": "CATALOG_EDIT"
+      "category": "CATALOG_EDIT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant_col"
     },
     {
       "action_key": "table:staff_branches:DELETE",
       "kind": "table_op",
-      "category": "CATALOG_EDIT"
+      "category": "CATALOG_EDIT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "relation:staff_members:staff_member_id"
     },
     {
       "action_key": "table:staff_branches:INSERT",
       "kind": "table_op",
-      "category": "CATALOG_EDIT"
+      "category": "CATALOG_EDIT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "relation:staff_members:staff_member_id"
     },
     {
       "action_key": "table:staff_members:INSERT",
       "kind": "table_op",
-      "category": "CATALOG_CREATE"
+      "category": "CATALOG_CREATE",
+      "class": "TENANT_BUSINESS_WRITE",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant_col"
     },
     {
       "action_key": "table:staff_members:UPDATE",
       "kind": "table_op",
-      "category": "CATALOG_EDIT"
+      "category": "CATALOG_EDIT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant_col"
     },
     {
       "action_key": "table:staff_schedule_exceptions:INSERT",
       "kind": "table_op",
-      "category": "CATALOG_EDIT"
+      "category": "CATALOG_EDIT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant_col"
     },
     {
       "action_key": "table:staff_schedule_exceptions:UPDATE",
       "kind": "table_op",
-      "category": "CATALOG_EDIT"
+      "category": "CATALOG_EDIT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant_col"
     },
     {
       "action_key": "table:staff_schedules:INSERT",
       "kind": "table_op",
-      "category": "CATALOG_EDIT"
+      "category": "CATALOG_EDIT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant_col"
     },
     {
       "action_key": "table:staff_schedules:UPDATE",
       "kind": "table_op",
-      "category": "CATALOG_EDIT"
+      "category": "CATALOG_EDIT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenant_col"
     },
     {
       "action_key": "table:staff_services:DELETE",
       "kind": "table_op",
-      "category": "CATALOG_EDIT"
+      "category": "CATALOG_EDIT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "relation:staff_members:staff_member_id"
     },
     {
       "action_key": "table:staff_services:INSERT",
       "kind": "table_op",
-      "category": "CATALOG_EDIT"
+      "category": "CATALOG_EDIT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "relation:staff_members:staff_member_id"
     },
     {
       "action_key": "table:tenants:UPDATE",
       "kind": "table_op",
-      "category": "SETTINGS_EDIT"
+      "category": "SETTINGS_EDIT",
+      "class": "EXISTING_RECORD_OPERATION",
+      "hooked": true,
+      "audience": "member",
+      "scope": "tenants_id"
     }
   ]
 }

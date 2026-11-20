@@ -396,7 +396,7 @@ describe("PF preflight", () => {
     const b = await core(1, a.context.expectedProtected);
     expect(b.hash).toBe(a.hash);
     expect((a.checks as Loose[]).map((x) => x.id)).toEqual([
-      "config_valid", "transition_valid", "export_capability", "migration_head", "registry_integrity", "registry_complete", "subscription_relationship", "trial_grace_boundary",
+      "config_valid", "transition_valid", "export_capability", "migration_head", "registry_integrity", "registry_complete", "hook_coverage", "subscription_relationship", "trial_grace_boundary",
       "past_due_bounded", "status_mode_shape", "dates_wellformed", "status_values_known", "access_state_resolves", "protected_health", "counters_healthy", "stage_requirements",
     ]);
     const withSha = await core(1, null);
@@ -500,7 +500,7 @@ describe("PF preflight", () => {
       );
     expect(await sim("drop function public.get_tenant_export_status(uuid)", "export_capability")).toMatch(/ROLLBACK_OK/);
     expect(await sim("delete from supabase_migrations.schema_migrations where version >= '20261105090000'", "migration_head")).toMatch(/ROLLBACK_OK/);
-    expect(await sim("insert into private.billing_action_registry (action_key, kind, category) values ('fn:no_such_function', 'function', 'EXPORT')", "registry_integrity")).toMatch(/ROLLBACK_OK/);
+    expect(await sim("insert into private.billing_action_registry (action_key, kind, category, enforcement_class, hooked, audience) values ('fn:no_such_function', 'function', 'EXPORT', 'EXPORT', false, 'member')", "registry_integrity")).toMatch(/ROLLBACK_OK/);
   });
 });
 
@@ -677,9 +677,13 @@ describe("SE catalog and grants", () => {
 describe("IN inertness: at stage 0 the foundation changes nothing in the product", () => {
   it("IN1 no pre-existing function references any A1 object (the foundation is not wired into any write or read path)", async () => {
     const needles = ["billing_stage", "billing_decide", "billing_effective_access", "billing_preflight_core", "billing_enforcement_config", "billing_decision_counters", "billing_shadow_samples", "billing_guard_health", "billing_action_registry", "billing_categories", "billing_enforcement_counters", "billing_registry_unregistered", "billing_enforcement_events"];
-    const own = new Set(["billing_stage", "billing_effective_access", "billing_decide", "billing_enforcement_counters", "billing_registry_unregistered", "billing_check", "billing_preflight_core", "billing_enforcement_refuse", "billing_enforcement_append_only", "billing_enforcement_config_guard", "billing_enforcement_config_audit", "admin_billing_enforcement_status", "admin_billing_enforcement_preflight", "admin_set_billing_enforcement_stage"]);
+    const own = new Set(["billing_stage", "billing_effective_access", "billing_decide", "billing_enforcement_counters", "billing_registry_unregistered", "billing_check", "billing_preflight_core", "billing_enforcement_refuse", "billing_enforcement_append_only", "billing_enforcement_config_guard", "billing_enforcement_config_audit", "admin_billing_enforcement_status", "admin_billing_enforcement_preflight", "admin_set_billing_enforcement_stage",
+      // Faz SAAS.1C.2c-A2 adds these private helpers (the guard, its recorder, the resolver, the read gate, the coverage check and the trigger function)
+      "billing_scope_tenant", "billing_health_bump", "billing_decision_record", "billing_guard", "billing_public_booking_open", "billing_hook_coverage", "billing_trigger_guard"]);
     const rows = await testDb<{ proname: string; src: string }[]>`select p.proname, pg_get_functiondef(p.oid) src from pg_proc p where p.prokind = 'f' and p.pronamespace in ('public'::regnamespace, 'private'::regnamespace)`;
-    const hits = rows.filter((r) => !own.has(r.proname) && needles.some((n) => r.src.includes(n))).map((r) => r.proname);
+    // A2: the ONLY way an existing function may reference the foundation is its one marked hook line (proved exactly by tests/saas1c2c-a2-catalog.test.ts); everything else must stay unwired
+    const unhooked = (src: string) => src.replace(/[^\n]*-- a2-billing-hook[^\n]*\n?/g, "");
+    const hits = rows.filter((r) => !own.has(r.proname) && needles.some((n) => unhooked(r.src).includes(n))).map((r) => r.proname);
     expect(hits).toEqual([]);
   });
   it("IN2 no trigger on any public table calls an A1 function (no A2 hook exists); the existing billing triggers are exactly the four known", async () => {
