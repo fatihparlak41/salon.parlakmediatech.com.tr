@@ -16,7 +16,7 @@ import {
   type TestTenant,
   type TestUser,
 } from "./helpers";
-import { createTeamInvitationCore, resendTeamInvitationCore } from "@/lib/modules/team/actions";
+import { createTeamInvitationCore, resendTeamInvitationCore } from "@/lib/modules/team/invitation-core";
 import type { EmailSendOutcome, SendEmailTransport, TeamInvitationEmailInput } from "@/lib/email/email-server";
 
 /**

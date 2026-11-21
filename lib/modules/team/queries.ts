@@ -30,7 +30,7 @@ import { getStaffManagementDetails } from "@/lib/modules/staff/management-detail
  * privacy requirements (Faz SAAS.1D.1's own test matrix) need these
  * functions directly testable with a REAL signed-in client, so they
  * follow the same client-as-parameter shape already established for
- * lib/modules/team/actions.ts's ...Core functions instead. The page
+ * lib/modules/team/invitation-core.ts's ...Core functions instead. The page
  * itself creates one client and passes it to all four.
  */
 

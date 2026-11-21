@@ -19,7 +19,7 @@ import { getOneStaffManagementDetail } from "./management-details";
  * RPCs and maps their stable error codes.
  *
  * Takes an already-authenticated client as a parameter (same shape as
- * lib/modules/team/actions.ts's ...Core functions) so it is testable with a
+ * lib/modules/team/invitation-core.ts's ...Core functions) so it is testable with a
  * real signed-in client outside a Next.js request.
  */
 

@@ -12,7 +12,7 @@ import {
   type TestTenant,
   type TestUser,
 } from "./helpers";
-import { createTeamInvitationCore, resendTeamInvitationCore } from "@/lib/modules/team/actions";
+import { createTeamInvitationCore, resendTeamInvitationCore } from "@/lib/modules/team/invitation-core";
 import { buildAcceptUrl, mapCreateInvitationError, mapResendInvitationError } from "@/lib/modules/team/helpers";
 import type { EmailSendOutcome, SendEmailTransport, TeamInvitationEmailInput } from "@/lib/email/email-server";
 import { getSiteUrl } from "@/lib/site-url";

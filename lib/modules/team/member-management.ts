@@ -28,7 +28,7 @@ import {
  *    suspended. The RPCs already refuse a wrong status (membership_not_active / membership_not_suspended); this just
  *    answers without a mutation attempt.
  *
- * Takes an already-authenticated client (like lib/modules/team/actions.ts's ...Core functions) so tests can drive it
+ * Takes an already-authenticated client (like lib/modules/team/invitation-core.ts's ...Core functions) so tests can drive it
  * with a real signed-in client.
  */
 

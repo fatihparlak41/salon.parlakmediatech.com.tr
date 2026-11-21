@@ -20,13 +20,13 @@ import {
   getEligibleStaffForLinking,
   getTenantRoleOptions,
 } from "@/lib/modules/team/queries";
-import { revokeTeamInvitationCore } from "@/lib/modules/team/actions";
+import { revokeTeamInvitationCore } from "@/lib/modules/team/invitation-core";
 import { mapRevokeInvitationError } from "@/lib/modules/team/helpers";
 
 /**
  * Faz SAAS.1D.1 — Team Management page foundation: the new query layer
  * (lib/modules/team/queries.ts) and the new revoke action
- * (revokeTeamInvitationCore, lib/modules/team/actions.ts). Every query
+ * (revokeTeamInvitationCore, lib/modules/team/invitation-core.ts). Every query
  * here uses a REAL signed-in client over the network, never testDb/admin
  * for the assertions themselves — same discipline as every other
  * security-boundary test in this suite. testDb is used only for fixture
